@@ -1,8 +1,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 
-const API_BASE_URL = "http://localhost:3000/api";
-const ASSET_BASE_URL = "http://localhost:3000";
+const API_BASE_URL = "/api";
+const ASSET_BASE_URL = "";
 const TOKEN_STORAGE_KEY = "private-blog-token";
 
 const view = ref("public");
