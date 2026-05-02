@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.DS_Store
+Thumbs.db
+.env
+.env.local
+server/.env
+server/.env.test
+server/uploads/
+client/node_modules/
+server/node_modules/
+*.log
+*.out.log
+*.err.log
