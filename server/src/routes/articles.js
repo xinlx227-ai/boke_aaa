@@ -3,13 +3,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import AdmZip from "adm-zip";
 import multer from "multer";
-import { Prisma, ArticleStatus } from "@prisma/client";
+import prismaPkg from "@prisma/client";
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { renderMarkdownToSafeHtml, renderMarkdownToSafeHtmlWithToc } from "../lib/markdown.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/role.js";
 
+const { Prisma, ArticleStatus } = prismaPkg;
 const router = Router();
 
 const __filename = fileURLToPath(import.meta.url);

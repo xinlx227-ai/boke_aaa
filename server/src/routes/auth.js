@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import prismaPkg from "@prisma/client";
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import {
@@ -15,6 +15,7 @@ import {
 } from "../lib/auth.js";
 import { requireAuth } from "../middleware/auth.js";
 
+const { Prisma } = prismaPkg;
 const router = Router();
 
 function normalizeEmail(email) {

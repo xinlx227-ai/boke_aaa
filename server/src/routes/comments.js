@@ -1,9 +1,10 @@
-import { CommentStatus, ArticleStatus } from "@prisma/client";
+import prismaPkg from "@prisma/client";
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/role.js";
 
+const { CommentStatus, ArticleStatus } = prismaPkg;
 const router = Router();
 
 function formatComment(comment) {
