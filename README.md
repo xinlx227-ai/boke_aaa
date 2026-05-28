@@ -13,9 +13,9 @@
 
 | 分支 / 标签 | 状态 | 说明 |
 | --- | --- | --- |
-| `main` | 已提交 | 基础功能已经实现，并已合并 `dev/new-ui` 新 UI 改造 |
-| `dev/new-ui` | 已提交并合并 | 用于实现新 UI 界面，当前已快进合并到 `main` |
-| `codex/login-ui-dark-mode` | 已提交 | 用于修复部分新旧 UI 不匹配问题，并实现明暗色调转换功能 |
+| `main` | 已合并并推送 | 基础功能已经实现，并已合并新 UI 与明暗色调改造 |
+| `dev/new-ui` | 已合并并删除本地分支 | 用于实现新 UI 界面，提交历史已包含在 `main` |
+| `codex/login-ui-dark-mode` | 已合并并删除本地分支 | 用于修复部分新旧 UI 不匹配问题，并实现明暗色调转换功能 |
 | `version-1` | 历史标签 | 原始旧 UI |
 | `version-2` | 阶段标签 | 新 UI 改造阶段 |
 
@@ -24,7 +24,7 @@
 | 项目 | 说明 |
 | --- | --- |
 | 新 UI 来源 | 墨刀 AI 生成（`D:\mszb\private-blog.html`） |
-| 改造分支 | `dev/new-ui`、`login-ui-darkmode` |
+| 改造分支 | `dev/new-ui`、`codex/login-ui-dark-mode`，均已合并到 `main` |
 | 样式方案 | Tailwind CSS（npm 方式，非 CDN） |
 | 外部资源 | Google Fonts（Inter + Noto Sans SC）、Iconify、ECharts |
 | 样式隔离 | 旧版样式隔离在 `.legacy-ui` 类下 |
@@ -562,11 +562,10 @@ Implemented:
 - public article list and detail rendering
 - backend integration tests for auth and articles
 
-Last local validation on 2026-05-02:
-- `npm install` passed
-- `npm run prisma:deploy` passed; production database applied `20260502113000_reading_experience`
+Last local validation on 2026-05-28:
+- `npm run build` passed
 - `npm test --workspace server` passed, 4/4 tests
-- `npm run build --workspace client` passed
+- `git push origin main` passed; local `main` is synced with `origin/main`
 
 Next suggested milestone:
 - pagination, comment moderation, richer public blog navigation, and nested reply UI

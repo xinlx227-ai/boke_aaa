@@ -87,6 +87,65 @@ function parseChapterOrder(value) {
   return Math.trunc(parsed);
 }
 
+function hasExplicitChapterOrder(input) {
+  return input && Object.prototype.hasOwnProperty.call(input, "chapterOrder") && input.chapterOrder !== "";
+}
+
+async function nextArticleChapterOrder() {
+  return (await prisma.article.count()) + 1;
+}
+
+function clampChapterOrder(value, maxOrder) {
+  const parsed = parseChapterOrder(value);
+
+  if (parsed < 1) {
+    return 1;
+  }
+
+  return Math.min(parsed, maxOrder);
+}
+
+async function moveArticleToChapterOrder(articleId, requestedOrder) {
+  await prisma.$transaction(async (tx) => {
+    const articles = await tx.article.findMany({
+      select: {
+        id: true,
+        chapterOrder: true
+      },
+      orderBy: [
+        {
+          chapterOrder: "asc"
+        },
+        {
+          id: "asc"
+        }
+      ]
+    });
+    const movedArticle = articles.find((article) => article.id === articleId);
+
+    if (!movedArticle) {
+      return;
+    }
+
+    const targetIndex = clampChapterOrder(requestedOrder, articles.length) - 1;
+    const orderedArticles = articles.filter((article) => article.id !== articleId);
+    orderedArticles.splice(targetIndex, 0, movedArticle);
+
+    await Promise.all(
+      orderedArticles.map((article, index) =>
+        tx.article.update({
+          where: {
+            id: article.id
+          },
+          data: {
+            chapterOrder: index + 1
+          }
+        })
+      )
+    );
+  });
+}
+
 function sanitizeFilename(name) {
   return String(name || "image")
     .toLowerCase()
@@ -103,6 +162,7 @@ function formatArticle(article) {
     contentHtml: article.contentHtml,
     chapterOrder: article.chapterOrder,
     status: article.status,
+    publishedAt: article.publishedAt,
     createdAt: article.createdAt,
     updatedAt: article.updatedAt,
     category: article.category
@@ -141,13 +201,75 @@ function formatArticle(article) {
   };
 }
 
+function articleTimelineValue(article) {
+  const time = new Date(article?.publishedAt || article?.createdAt || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function sortByPublishedTime(articles) {
+  return [...articles].sort((firstArticle, secondArticle) => {
+    const timeDiff = articleTimelineValue(secondArticle) - articleTimelineValue(firstArticle);
+
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
+
+    return (secondArticle.id || 0) - (firstArticle.id || 0);
+  });
+}
+
+function isMissingPublishedAtColumnError(error) {
+  const message = `${error?.message || ""} ${error?.meta?.message || ""}`;
+  return message.includes("published_at") && (message.includes("Unknown column") || message.includes("no such column"));
+}
+
+async function withArticlePublishTimes(articles) {
+  if (articles.length === 0) {
+    return articles;
+  }
+
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT id, published_at AS publishedAt
+      FROM articles
+      WHERE id IN (${Prisma.join(articles.map((article) => article.id))})
+    `;
+    const publishTimesById = new Map(rows.map((row) => [Number(row.id), row.publishedAt]));
+
+    return articles.map((article) => ({
+      ...article,
+      publishedAt: publishTimesById.get(article.id) || null
+    }));
+  } catch (error) {
+    if (isMissingPublishedAtColumnError(error)) {
+      return articles;
+    }
+
+    throw error;
+  }
+}
+
+async function setPublishedAtIfMissing(articleId) {
+  try {
+    await prisma.$executeRaw`
+      UPDATE articles
+      SET published_at = COALESCE(published_at, CURRENT_TIMESTAMP(3))
+      WHERE id = ${articleId}
+    `;
+  } catch (error) {
+    if (!isMissingPublishedAtColumnError(error)) {
+      throw error;
+    }
+  }
+}
+
 function buildArticleData(input) {
   const title = String(input?.title || "").trim();
   const requestedSlug = String(input?.slug || "").trim();
   const slug = slugify(requestedSlug || title);
   const contentMarkdown = String(input?.contentMarkdown || "");
   const rendered = renderMarkdownToSafeHtmlWithToc(contentMarkdown);
-  const chapterOrder = parseChapterOrder(input?.chapterOrder);
+  const chapterOrder = hasExplicitChapterOrder(input) ? parseChapterOrder(input.chapterOrder) : null;
   const categoryName = normalizeName(input?.categoryName);
   const tagNames = normalizeTagNames(input?.tagNames ?? input?.tags);
 
@@ -181,7 +303,7 @@ function buildArticleData(input) {
       slug,
       contentMarkdown,
       contentHtml: rendered.html,
-      chapterOrder,
+      ...(chapterOrder === null ? {} : { chapterOrder }),
       categoryName,
       tagNames
     },
@@ -508,17 +630,18 @@ router.get("/", async (req, res, next) => {
       where: buildPublicArticleWhere(req.query),
       orderBy: [
         {
-          chapterOrder: "asc"
+          createdAt: "desc"
         },
         {
-          createdAt: "desc"
+          id: "desc"
         }
       ],
       include: articleInclude()
     });
+    const articlesWithPublishTimes = await withArticlePublishTimes(articles);
 
     return res.json({
-      articles: articles.map(formatArticle)
+      articles: sortByPublishedTime(articlesWithPublishTimes).map(formatArticle)
     });
   } catch (error) {
     return next(error);
@@ -562,7 +685,10 @@ router.get("/admin/list", requireAuth, requireRole("ADMIN"), async (_req, res, n
     const articles = await prisma.article.findMany({
       orderBy: [
         {
-          updatedAt: "desc"
+          chapterOrder: "asc"
+        },
+        {
+          id: "asc"
         }
       ],
       include: articleInclude()
@@ -654,7 +780,7 @@ router.post(
               slug,
               contentMarkdown,
               contentHtml: renderMarkdownToSafeHtml(contentMarkdown),
-              chapterOrder: index + 1,
+              chapterOrder: await nextArticleChapterOrder(),
               status: ArticleStatus.DRAFT
             }
           });
@@ -738,6 +864,7 @@ router.post("/admin", requireAuth, requireRole("ADMIN"), async (req, res, next) 
     }
 
     const { categoryName, tagNames, ...articleData } = built.data;
+    const requestedChapterOrder = articleData.chapterOrder ?? (await nextArticleChapterOrder());
     const relations = await buildArticleRelations({
       categoryName,
       tagNames
@@ -746,6 +873,7 @@ router.post("/admin", requireAuth, requireRole("ADMIN"), async (req, res, next) 
     const article = await prisma.article.create({
       data: {
         ...articleData,
+        chapterOrder: requestedChapterOrder,
         categoryId: relations.categoryId,
         authorId: req.auth.userId,
         status: ArticleStatus.DRAFT
@@ -754,6 +882,7 @@ router.post("/admin", requireAuth, requireRole("ADMIN"), async (req, res, next) 
     });
 
     await replaceArticleTags(article.id, relations.tagIds);
+    await moveArticleToChapterOrder(article.id, requestedChapterOrder);
 
     const articleWithTags = await prisma.article.findUnique({
       where: {
@@ -803,6 +932,7 @@ router.patch("/admin/:id", requireAuth, requireRole("ADMIN"), async (req, res, n
     }
 
     const { categoryName, tagNames, ...articleData } = built.data;
+    const requestedChapterOrder = articleData.chapterOrder ?? existingArticle.chapterOrder;
     const relations = await buildArticleRelations({
       categoryName,
       tagNames
@@ -810,13 +940,21 @@ router.patch("/admin/:id", requireAuth, requireRole("ADMIN"), async (req, res, n
 
     await replaceArticleTags(articleId, relations.tagIds);
 
-    const article = await prisma.article.update({
+    await prisma.article.update({
       where: {
         id: articleId
       },
       data: {
         ...articleData,
         categoryId: relations.categoryId
+      },
+      include: articleInclude()
+    });
+    await moveArticleToChapterOrder(articleId, requestedChapterOrder);
+
+    const article = await prisma.article.findUnique({
+      where: {
+        id: articleId
       },
       include: articleInclude()
     });
@@ -862,9 +1000,11 @@ router.post("/admin/:id/publish", requireAuth, requireRole("ADMIN"), async (req,
       },
       include: articleInclude()
     });
+    await setPublishedAtIfMissing(articleId);
+    const [articleWithPublishTime] = await withArticlePublishTimes([article]);
 
     return res.json({
-      article: formatArticle(article)
+      article: formatArticle(articleWithPublishTime)
     });
   } catch (error) {
     return next(error);

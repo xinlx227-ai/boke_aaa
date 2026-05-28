@@ -146,6 +146,47 @@ test("admin article publishing flow stores markdown, sanitizes HTML, uploads ima
 
   const articleId = createResult.body.article.id;
 
+  const articleCountBeforeAutoOrder = await prisma.article.count();
+  const autoOrderResult = await apiRequest("/articles/admin", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      title: "Auto Ordered Article",
+      slug: `auto-ordered-${suffix}`,
+      contentMarkdown: "# Auto Ordered Article"
+    })
+  });
+
+  assert.equal(autoOrderResult.status, 201);
+  assert.equal(autoOrderResult.body.article.chapterOrder, articleCountBeforeAutoOrder + 1);
+
+  const manualReorderResult = await apiRequest(`/articles/admin/${autoOrderResult.body.article.id}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      title: "Auto Ordered Article",
+      slug: `auto-ordered-${suffix}`,
+      chapterOrder: 1,
+      contentMarkdown: "# Auto Ordered Article"
+    })
+  });
+
+  assert.equal(manualReorderResult.status, 200);
+  assert.equal(manualReorderResult.body.article.chapterOrder, 1);
+
+  const shiftedArticle = await prisma.article.findUnique({
+    where: {
+      id: articleId
+    }
+  });
+  assert.equal(shiftedArticle.chapterOrder, 2);
+
   const updateResult = await apiRequest(`/articles/admin/${articleId}`, {
     method: "PATCH",
     headers: {
