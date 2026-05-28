@@ -14,6 +14,7 @@
 | 分支 / 标签 | 状态 | 说明 |
 | --- | --- | --- |
 | `main` | 已合并并推送 | 基础功能已经实现，并已合并新 UI 与明暗色调改造 |
+| `codex/ui-layout` | 本地已提交，领先 `main` 1 个提交 | 完成首页布局微调、最新发布限制、文章序号排序与发布时间迁移 |
 | `dev/new-ui` | 已合并并删除本地分支 | 用于实现新 UI 界面，提交历史已包含在 `main` |
 | `codex/login-ui-dark-mode` | 已合并并删除本地分支 | 用于修复部分新旧 UI 不匹配问题，并实现明暗色调转换功能 |
 | `version-1` | 历史标签 | 原始旧 UI |
@@ -31,12 +32,15 @@
 | 模板改造 | `App.vue` 替换为新 UI 布局，业务逻辑保留 |
 | 代理修复 | Vite 代理补充 `/uploads` 路径 |
 | 明暗色调 | 右上角主题按钮已接入亮色/暗色切换，主题偏好保存到本地 |
+| 首页布局 | 最新发布限制 4 篇；文章列表定高滚动；最受欢迎卡片定高约容纳 6-7 条 |
+| 文章排序 | `chapterOrder` 作为文章序号，新建自动总数 + 1，管理员可手动重排 |
+| 发布时间 | 新增 `published_at`，首次发布写入，用于最新发布排序 |
 
 ## 视图状态
 
 | Hash | 视图 | 当前样式 | 说明 |
 | --- | --- | --- | --- |
-| `#` | 公开首页 | 新 UI | Hero、文章卡片 Grid、标签云、阅读趋势、热门排行、页脚 |
+| `#` | 公开首页 | 新 UI | Hero、最新发布 4 篇、文章序号列表、标签云、阅读趋势、热门排行、页脚 |
 | `#article/<slug>` | 文章详情 | 旧 UI | 已通过 `.legacy-ui` 隔离，待后续改造 |
 | `#login` / `#register` | 登录/注册 | 新 UI | 回到首页，并切换左侧登录/注册卡片 |
 | `#dashboard` | 用户面板 | 旧 UI | 已通过 `.legacy-ui` 隔离，待后续改造 |
@@ -51,7 +55,7 @@
 | 用户面板 | 旧 UI | 使用新 UI 风格重新设计 |
 | 暗色模式 | 已接入 | 继续完善旧 UI 细节适配 |
 | ECharts 阅读趋势 | 静态假数据 | 对接后端统计 API |
-| 热门排行 | 静态假数据 | 对接后端统计 API |
+| 热门排行 | 静态假数据 | 对接后端统计 API；当前卡片定高约容纳 6-7 条 |
 
 ## 启动方式
 
@@ -107,6 +111,10 @@ The project currently includes two working milestones:
 - public article search by title or Markdown content
 - public article filtering by category or tag
 - article detail responses include a Markdown-generated table of contents
+- article `chapterOrder` behaves as a manual article sequence number
+- new articles default to total article count + 1 when no sequence is provided
+- manual sequence edits reorder surrounding articles to avoid duplicate sequence numbers
+- `published_at` stores first publish time for latest-published ordering
 
 ### Taxonomy
 
@@ -560,12 +568,17 @@ Implemented:
 - article comment list, posting, and admin deletion
 - mobile top menu and 375px responsive layout
 - public article list and detail rendering
+- homepage latest-published section limited to 4 articles
+- fixed-height homepage article list with internal scrolling
+- fixed-height popular ranking card sized for about 6-7 items
+- article sequence ordering with automatic new-article numbering and admin reordering
+- first-publish timestamp migration and latest-published sorting
 - backend integration tests for auth and articles
 
 Last local validation on 2026-05-28:
 - `npm run build` passed
 - `npm test --workspace server` passed, 4/4 tests
-- `git push origin main` passed; local `main` is synced with `origin/main`
+- `git commit a3edf0c` passed on local `codex/ui-layout`
 
 Next suggested milestone:
 - pagination, comment moderation, richer public blog navigation, and nested reply UI
