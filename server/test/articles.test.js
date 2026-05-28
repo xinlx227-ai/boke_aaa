@@ -410,7 +410,7 @@ test("admin can import markdown articles from a zip and receive detailed import 
   assert.doesNotMatch(importResult.body.imported[1].article.contentMarkdown, /\/uploads\/articles\/\d+\//);
   assert.equal(importResult.body.missingImages[0].path, "images/missing.jpg");
   assert.equal(importResult.body.formatErrors[0].file, "notes.txt");
-  assert.match(importResult.body.failed[0].reason, /slug already exists/i);
+  assert.match(importResult.body.failed[0].reason, /Slug 的文章已存在/);
 
   const importedIds = importResult.body.imported.map((item) => item.article.id);
 

@@ -5,10 +5,26 @@
 body {
   font-family: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   background-color: #faf7f2;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dark body {
+  background-color: #0f172a;
+  color: #dbe4f0;
 }
 
 #app {
   min-height: 100vh;
+  user-select: none;
+}
+
+input,
+textarea,
+select,
+button,
+.legacy-ui .article-html,
+.legacy-ui .comment-main p {
+  user-select: auto;
 }
 
 /* ======== 新 UI 自定义样式 ======== */
@@ -33,6 +49,11 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
+.dark .glass-effect {
+  background: rgba(15, 23, 42, 0.86);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
 .card-hover {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -44,6 +65,88 @@ body {
 .active-tab {
   color: #f97316;
   border-bottom: 2px solid #f97316;
+}
+
+.dark .active-tab {
+  color: #fb923c;
+  border-bottom-color: #fb923c;
+}
+
+.dark .bg-white {
+  background-color: #172033 !important;
+}
+
+.dark .bg-slate-50,
+.dark .bg-slate-100 {
+  background-color: #223047 !important;
+}
+
+.dark .bg-slate-900 {
+  background-color: #f97316 !important;
+}
+
+.dark .hover\:bg-slate-800:hover {
+  background-color: #ea580c !important;
+}
+
+.dark .bg-orange-50,
+.dark .bg-orange-100,
+.dark .bg-amber-50 {
+  background-color: rgba(251, 146, 60, 0.16) !important;
+}
+
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-slate-700,
+.dark .text-slate-600 {
+  color: #e5edf7 !important;
+}
+
+.dark .text-slate-500,
+.dark .text-slate-400 {
+  color: #9fb0c6 !important;
+}
+
+.dark .text-blue-500,
+.dark .text-blue-600 {
+  color: #93c5fd !important;
+}
+
+.dark .border-slate-50,
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-orange-100\/50 {
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #e5edf7 !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #74839a !important;
+}
+
+.dark kbd {
+  background-color: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #9fb0c6 !important;
+}
+
+.dark .shadow-sm,
+.dark .shadow-xl {
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.32) !important;
+}
+
+.dark .toast-message {
+  background: rgba(30, 41, 59, 0.96);
+  border-color: rgba(147, 197, 253, 0.18);
+  color: #bfdbfe;
 }
 
 /* ======== Toast 消息 ======== */
@@ -89,9 +192,18 @@ body {
   line-height: 1.5;
 }
 
+.dark .legacy-ui {
+  color: #dbe4f0;
+}
+
 /* ---- 文章 HTML 内容（markdown 渲染） ---- */
 .legacy-ui .article-html {
   color: #1f2937;
+}
+
+.dark .legacy-ui .article-html,
+.dark .legacy-ui .comment-main p {
+  color: #dbe4f0;
 }
 .legacy-ui .article-html :first-child {
   margin-top: 0;
@@ -112,6 +224,12 @@ body {
   margin: 0 0 1em;
   color: #334155;
   line-height: 1.85;
+}
+
+.dark .legacy-ui .article-html p,
+.dark .legacy-ui .article-html li,
+.dark .legacy-ui .article-html blockquote {
+  color: #b6c4d8;
 }
 .legacy-ui .article-html img {
   max-width: 100%;
@@ -171,6 +289,27 @@ body {
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 18px;
   background: #f8fafc;
+}
+
+.dark .legacy-ui .toc-panel,
+.dark .legacy-ui .comment-form,
+.dark .legacy-ui .workspace-card,
+.dark .legacy-ui .import-log {
+  background: #172033;
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+.dark .legacy-ui .toc-panel a,
+.dark .legacy-ui .muted,
+.dark .legacy-ui .comment-header span,
+.dark .legacy-ui .manager-item p,
+.dark .legacy-ui .manager-item small {
+  color: #9fb0c6;
+}
+
+.dark .legacy-ui .upload-panel {
+  background: #142033;
+  border-color: rgba(14, 165, 233, 0.18);
 }
 .legacy-ui .toc-toggle {
   width: 100%;
@@ -263,7 +402,7 @@ body {
   background: #fff;
   border: 1px solid rgba(148, 163, 184, 0.22);
 }
-.legacy-ui .comment-form label {
+.legacy-ui .comment-form .form-field {
   display: grid;
   gap: 8px;
 }
@@ -315,13 +454,14 @@ body {
   display: grid;
   gap: 16px;
 }
-.legacy-ui .stack-form label,
-.legacy-ui .inline-fields label {
+.legacy-ui .stack-form .form-field,
+.legacy-ui .inline-fields .form-field {
   display: grid;
   gap: 8px;
 }
 .legacy-ui .stack-form span,
-.legacy-ui .inline-fields span {
+.legacy-ui .inline-fields span,
+.legacy-ui .comment-form span {
   font-size: 0.85rem;
   font-weight: 700;
   color: #64748b;

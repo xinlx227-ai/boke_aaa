@@ -153,25 +153,25 @@ function buildArticleData(input) {
 
   if (!title) {
     return {
-      error: "Title is required."
+      error: "请输入文章标题。"
     };
   }
 
   if (!slug) {
     return {
-      error: "A valid slug could not be generated from the title."
+      error: "无法根据标题生成有效的 Slug。"
     };
   }
 
   if (title.length > 200) {
     return {
-      error: "Title must be 200 characters or fewer."
+      error: "文章标题不能超过 200 个字符。"
     };
   }
 
   if (slug.length > 220) {
     return {
-      error: "Slug must be 220 characters or fewer."
+      error: "Slug 不能超过 220 个字符。"
     };
   }
 
@@ -355,7 +355,7 @@ const upload = multer({
   }),
   fileFilter(_req, file, callback) {
     if (!file.mimetype.startsWith("image/")) {
-      callback(new Error("Only image uploads are supported."));
+      callback(new Error("只支持上传图片文件。"));
       return;
     }
 
@@ -375,7 +375,7 @@ const importUpload = multer({
       /\.zip$/i.test(file.originalname);
 
     if (!isZip) {
-      callback(new Error("Only zip uploads are supported."));
+      callback(new Error("只支持上传 zip 压缩包。"));
       return;
     }
 
@@ -401,7 +401,7 @@ function collectZipEntries(zip) {
     if (!entryName || entryName.includes("../")) {
       formatErrors.push({
         file: entry.entryName,
-        reason: "Invalid zip path."
+        reason: "压缩包路径无效。"
       });
       continue;
     }
@@ -424,7 +424,7 @@ function collectZipEntries(zip) {
 
     formatErrors.push({
       file: entryName,
-      reason: "Unsupported file type. Only .md and common image files are imported."
+      reason: "文件类型不支持，只能导入 .md 文件和常见图片文件。"
     });
   }
 
@@ -588,7 +588,7 @@ router.get("/:slug", async (req, res, next) => {
 
     if (!article) {
       return res.status(404).json({
-        message: "Article not found."
+        message: "文章不存在。"
       });
     }
 
@@ -612,7 +612,7 @@ router.post(
     try {
       if (!req.file) {
         return res.status(400).json({
-          message: "Zip file is required."
+          message: "请选择要导入的 zip 文件。"
         });
       }
 
@@ -622,7 +622,7 @@ router.post(
         zip = new AdmZip(req.file.buffer);
       } catch (_error) {
         return res.status(400).json({
-          message: "Uploaded file is not a valid zip archive."
+          message: "上传的文件不是有效的 zip 压缩包。"
         });
       }
 
@@ -642,7 +642,7 @@ router.post(
           if (!title) {
             failed.push({
               file: markdownEntry.entryName,
-              reason: "A title could not be generated from the Markdown file."
+              reason: "无法从 Markdown 文件生成标题。"
             });
             continue;
           }
@@ -699,8 +699,8 @@ router.post(
 
           const reason =
             error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
-              ? "An article with that slug already exists."
-              : error.message || "Article import failed.";
+              ? "该 Slug 的文章已存在。"
+              : error.message || "文章导入失败。";
 
           failed.push({
             file: markdownEntry.entryName,
@@ -768,7 +768,7 @@ router.post("/admin", requireAuth, requireRole("ADMIN"), async (req, res, next) 
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return res.status(409).json({
-        message: "An article with that slug already exists."
+        message: "该 Slug 的文章已存在。"
       });
     }
 
@@ -782,7 +782,7 @@ router.patch("/admin/:id", requireAuth, requireRole("ADMIN"), async (req, res, n
 
     if (!articleId) {
       return res.status(400).json({
-        message: "Invalid article id."
+        message: "文章 ID 无效。"
       });
     }
 
@@ -790,7 +790,7 @@ router.patch("/admin/:id", requireAuth, requireRole("ADMIN"), async (req, res, n
 
     if (!existingArticle) {
       return res.status(404).json({
-        message: "Article not found."
+        message: "文章不存在。"
       });
     }
 
@@ -827,7 +827,7 @@ router.patch("/admin/:id", requireAuth, requireRole("ADMIN"), async (req, res, n
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return res.status(409).json({
-        message: "An article with that slug already exists."
+        message: "该 Slug 的文章已存在。"
       });
     }
 
@@ -841,7 +841,7 @@ router.post("/admin/:id/publish", requireAuth, requireRole("ADMIN"), async (req,
 
     if (!articleId) {
       return res.status(400).json({
-        message: "Invalid article id."
+        message: "文章 ID 无效。"
       });
     }
 
@@ -849,7 +849,7 @@ router.post("/admin/:id/publish", requireAuth, requireRole("ADMIN"), async (req,
 
     if (!existingArticle) {
       return res.status(404).json({
-        message: "Article not found."
+        message: "文章不存在。"
       });
     }
 
@@ -877,7 +877,7 @@ router.delete("/admin/:id", requireAuth, requireRole("ADMIN"), async (req, res, 
 
     if (!articleId) {
       return res.status(400).json({
-        message: "Invalid article id."
+        message: "文章 ID 无效。"
       });
     }
 
@@ -885,7 +885,7 @@ router.delete("/admin/:id", requireAuth, requireRole("ADMIN"), async (req, res, 
 
     if (!existingArticle) {
       return res.status(404).json({
-        message: "Article not found."
+        message: "文章不存在。"
       });
     }
 
@@ -920,7 +920,7 @@ router.post(
 
       if (!articleId) {
         return res.status(400).json({
-          message: "Invalid article id."
+          message: "文章 ID 无效。"
         });
       }
 
@@ -932,13 +932,13 @@ router.post(
         }
 
         return res.status(404).json({
-          message: "Article not found."
+          message: "文章不存在。"
         });
       }
 
       if (!req.file) {
         return res.status(400).json({
-          message: "Image file is required."
+          message: "请选择要上传的图片文件。"
         });
       }
 

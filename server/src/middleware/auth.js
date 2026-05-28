@@ -1,7 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 import { hashTokenId, sanitizeUser, verifyAccessToken } from "../lib/auth.js";
 
-function sendUnauthorized(res, message = "Authentication required.") {
+function sendUnauthorized(res, message = "请先登录。") {
   return res.status(401).json({ message });
 }
 
@@ -22,7 +22,7 @@ export async function requireAuth(req, res, next) {
     const tokenId = payload.jti;
 
     if (!userId || !sessionId || !deviceId || !tokenId) {
-      return sendUnauthorized(res, "Invalid session token.");
+      return sendUnauthorized(res, "登录凭证无效。");
     }
 
     const session = await prisma.userSession.findUnique({
@@ -41,7 +41,7 @@ export async function requireAuth(req, res, next) {
       session.deviceId !== deviceId ||
       session.tokenHash !== hashTokenId(tokenId)
     ) {
-      return sendUnauthorized(res, "Session has expired or is no longer valid.");
+      return sendUnauthorized(res, "登录状态已过期或失效，请重新登录。");
     }
 
     const touchResult = await prisma.userSession.updateMany({
@@ -56,7 +56,7 @@ export async function requireAuth(req, res, next) {
     });
 
     if (touchResult.count === 0) {
-      return sendUnauthorized(res, "Session has expired or is no longer valid.");
+      return sendUnauthorized(res, "登录状态已过期或失效，请重新登录。");
     }
 
     req.auth = {
@@ -69,6 +69,6 @@ export async function requireAuth(req, res, next) {
 
     return next();
   } catch (_error) {
-    return sendUnauthorized(res, "Invalid or expired token.");
+    return sendUnauthorized(res, "登录凭证无效或已过期。");
   }
 }

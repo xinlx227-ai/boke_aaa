@@ -42,7 +42,7 @@ router.get("/articles/:slug", async (req, res, next) => {
 
     if (!article) {
       return res.status(404).json({
-        message: "Article not found."
+        message: "文章不存在。"
       });
     }
 
@@ -73,7 +73,7 @@ router.post("/articles/:slug", requireAuth, async (req, res, next) => {
 
     if (!article) {
       return res.status(404).json({
-        message: "Article not found."
+        message: "文章不存在。"
       });
     }
 
@@ -82,13 +82,13 @@ router.post("/articles/:slug", requireAuth, async (req, res, next) => {
 
     if (!content) {
       return res.status(400).json({
-        message: "Comment content is required."
+        message: "请输入评论内容。"
       });
     }
 
     if (content.length > 2000) {
       return res.status(400).json({
-        message: "Comment content must be 2000 characters or fewer."
+        message: "评论内容不能超过 2000 个字符。"
       });
     }
 
@@ -103,7 +103,7 @@ router.post("/articles/:slug", requireAuth, async (req, res, next) => {
 
       if (!parentComment) {
         return res.status(400).json({
-          message: "Parent comment is invalid."
+          message: "回复的评论无效。"
         });
       }
     }
@@ -135,7 +135,7 @@ router.delete("/:id", requireAuth, requireRole("ADMIN"), async (req, res, next) 
 
     if (!commentId) {
       return res.status(400).json({
-        message: "Invalid comment id."
+        message: "评论 ID 无效。"
       });
     }
 
@@ -147,7 +147,7 @@ router.delete("/:id", requireAuth, requireRole("ADMIN"), async (req, res, next) 
 
     if (!comment) {
       return res.status(404).json({
-        message: "Comment not found."
+        message: "评论不存在。"
       });
     }
 

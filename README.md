@@ -1,4 +1,74 @@
-# Private Blog System
+# Private Blog System - 私有博客系统
+
+## 项目概述
+
+| 项目 | 说明 |
+| --- | --- |
+| 项目名称 | `private-blog`（私有博客系统） |
+| 前端 | Vue 3 + Vite 5 + Tailwind CSS |
+| 后端 | Express + MySQL + Prisma ORM |
+| 认证 | JWT |
+
+## Git 分支与版本状态
+
+| 分支 / 标签 | 状态 | 说明 |
+| --- | --- | --- |
+| `main` | 已提交 | 基础功能已经实现，并已提交到 Git 仓库 |
+| `dev/new-ui` | 本地未提交 | 用于实现新 UI 界面 |
+| `login-ui-darkmode` | 本地未提交 | 用于修复部分新旧 UI 不匹配问题，并实现明暗色调转换功能 |
+| `version-1` | 历史标签 | 原始旧 UI |
+| `version-2` | 阶段标签 | 新 UI 改造阶段 |
+
+## 版本 2 改造内容（2026-05-26）
+
+| 项目 | 说明 |
+| --- | --- |
+| 新 UI 来源 | 墨刀 AI 生成（`D:\mszb\private-blog.html`） |
+| 改造分支 | `dev/new-ui`、`login-ui-darkmode` |
+| 样式方案 | Tailwind CSS（npm 方式，非 CDN） |
+| 外部资源 | Google Fonts（Inter + Noto Sans SC）、Iconify、ECharts |
+| 样式隔离 | 旧版样式隔离在 `.legacy-ui` 类下 |
+| 模板改造 | `App.vue` 替换为新 UI 布局，业务逻辑保留 |
+| 代理修复 | Vite 代理补充 `/uploads` 路径 |
+| 明暗色调 | 右上角主题按钮已接入亮色/暗色切换，主题偏好保存到本地 |
+
+## 视图状态
+
+| Hash | 视图 | 当前样式 | 说明 |
+| --- | --- | --- | --- |
+| `#` | 公开首页 | 新 UI | Hero、文章卡片 Grid、标签云、阅读趋势、热门排行、页脚 |
+| `#article/<slug>` | 文章详情 | 旧 UI | 已通过 `.legacy-ui` 隔离，待后续改造 |
+| `#login` / `#register` | 登录/注册 | 新 UI | 回到首页，并切换左侧登录/注册卡片 |
+| `#dashboard` | 用户面板 | 旧 UI | 已通过 `.legacy-ui` 隔离，待后续改造 |
+| `#admin` | 管理后台 | 旧 UI | 已通过 `.legacy-ui` 隔离，待后续改造 |
+
+## 待改造模块
+
+| 模块 | 当前状态 | 后续工作 |
+| --- | --- | --- |
+| 文章详情页 | 旧 UI | 使用新 UI 风格重新设计 |
+| 管理后台 | 旧 UI | 使用新 UI 风格重新设计 |
+| 用户面板 | 旧 UI | 使用新 UI 风格重新设计 |
+| 暗色模式 | 已接入 | 继续完善旧 UI 细节适配 |
+| ECharts 阅读趋势 | 静态假数据 | 对接后端统计 API |
+| 热门排行 | 静态假数据 | 对接后端统计 API |
+
+## 启动方式
+
+```bash
+npm run dev
+```
+
+默认地址：
+
+| 服务 | 地址 |
+| --- | --- |
+| 前端 | `http://localhost:5173` |
+| 后端 | `http://localhost:3000` |
+
+---
+
+## Original Documentation (English)
 
 This repository contains a staged full-stack private blog project built with Vue 3, Express, MySQL, and Prisma.
 

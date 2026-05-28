@@ -4,8 +4,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 const API_BASE_URL = "/api";
 const ASSET_BASE_URL = "";
 const TOKEN_STORAGE_KEY = "private-blog-token";
+const THEME_STORAGE_KEY = "private-blog-theme";
 
 const view = ref("public");
+const authMode = ref("login");
+const themeMode = ref(localStorage.getItem(THEME_STORAGE_KEY) || "light");
 const token = ref(localStorage.getItem(TOKEN_STORAGE_KEY) || "");
 const loading = ref(false);
 const submitLoading = ref(false);
@@ -73,6 +76,7 @@ const commentForm = reactive({
 
 const isAuthenticated = computed(() => Boolean(token.value && currentUser.value));
 const isAdmin = computed(() => currentUser.value?.role === "ADMIN");
+const isDarkMode = computed(() => themeMode.value === "dark");
 const roleLabel = computed(() => (isAdmin.value ? "管理员" : "普通用户"));
 const selectedArticleHtml = computed(() => mapAssetUrls(selectedArticle.value?.contentHtml || ""));
 const selectedToc = computed(() => selectedArticle.value?.toc || []);
@@ -89,6 +93,16 @@ function tagTextToArray(value) {
     .filter(Boolean);
 }
 
+function applyThemeMode() {
+  document.documentElement.classList.toggle("dark", isDarkMode.value);
+}
+
+function toggleThemeMode() {
+  themeMode.value = isDarkMode.value ? "light" : "dark";
+  localStorage.setItem(THEME_STORAGE_KEY, themeMode.value);
+  applyThemeMode();
+}
+
 function parseHash() {
   const hash = window.location.hash.replace(/^#/, "");
 
@@ -99,7 +113,15 @@ function parseHash() {
     };
   }
 
-  if (["login", "register", "dashboard", "admin"].includes(hash)) {
+  if (["login", "register"].includes(hash)) {
+    return {
+      viewName: "public",
+      slug: null,
+      authMode: hash
+    };
+  }
+
+  if (["dashboard", "admin"].includes(hash)) {
     return {
       viewName: hash,
       slug: null
@@ -122,6 +144,16 @@ function parseHash() {
 function setHash(nextHash) {
   window.location.hash = nextHash ? `#${nextHash}` : "";
   mobileMenuOpen.value = false;
+}
+
+function showLoginForm() {
+  authMode.value = "login";
+  setHash("");
+}
+
+function showRegisterForm() {
+  authMode.value = "register";
+  setHash("");
 }
 
 function clearArticleForm() {
@@ -151,14 +183,15 @@ function setMessage(nextMessage) {
   }
 }
 
-function clearAuthState(nextMessage = "登录状态已失效，请重新登录。") {
+function clearAuthState(nextMessage = "登录状态已失效，请重新登录。", nextHash = "") {
   token.value = "";
   currentUser.value = null;
   currentSession.value = null;
   adminArticles.value = [];
   localStorage.removeItem(TOKEN_STORAGE_KEY);
+  authMode.value = "login";
   setMessage(nextMessage);
-  setHash("login");
+  setHash(nextHash);
 }
 
 async function apiFetch(path, options = {}) {
@@ -268,15 +301,19 @@ async function loadArticleDetail(slug) {
 }
 
 function syncViewToHash() {
-  const { viewName, slug } = parseHash();
+  const { viewName, slug, authMode: nextAuthMode } = parseHash();
+
+  if (nextAuthMode && !isAuthenticated.value) {
+    authMode.value = nextAuthMode;
+  }
 
   if (viewName === "admin" && !isAdmin.value) {
-    view.value = isAuthenticated.value ? "dashboard" : "login";
+    view.value = isAuthenticated.value ? "public" : "login";
     return;
   }
 
   if (viewName === "dashboard" && !isAuthenticated.value) {
-    view.value = "login";
+    view.value = "public";
     return;
   }
 
@@ -397,7 +434,7 @@ async function submitRegister() {
     registerForm.username = "";
     registerForm.email = "";
     registerForm.password = "";
-    setHash("login");
+    showLoginForm();
   } catch (error) {
     setMessage(error.message);
   } finally {
@@ -427,7 +464,7 @@ async function submitLogin() {
     loginForm.password = "";
     setMessage(`欢迎回来，${payload.user.username}。`);
     await loadProfile();
-    setHash(payload.user.role === "ADMIN" ? "admin" : "dashboard");
+    setHash("");
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -453,7 +490,7 @@ async function logout() {
     }
   } finally {
     submitLoading.value = false;
-    clearAuthState("已退出登录。");
+    clearAuthState("已退出登录。", "");
   }
 }
 
@@ -750,6 +787,7 @@ watch(view, (newVal) => {
 });
 
 onMounted(async () => {
+  applyThemeMode();
   window.addEventListener("hashchange", handleHashChange);
   await Promise.all([loadPublishedArticles(), loadArticleFilters()]);
   if (token.value) {
@@ -795,10 +833,15 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="flex items-center gap-4">
-        <button class="p-2 text-slate-500 hover:text-orange-500 transition-colors" title="主题切换">
-          <iconify-icon icon="mdi:theme-light-dark" width="22"></iconify-icon>
+        <button
+          class="p-2 text-slate-500 hover:text-orange-500 dark:text-slate-300 dark:hover:text-orange-300 transition-colors"
+          :title="isDarkMode ? '切换到亮色模式' : '切换到暗色模式'"
+          type="button"
+          @click="toggleThemeMode"
+        >
+          <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
         </button>
-        <button v-if="isAuthenticated" class="p-2 text-slate-500 hover:text-orange-500 transition-colors relative" title="通知">
+        <button v-if="isAuthenticated" class="p-2 text-slate-500 hover:text-orange-500 transition-colors relative" title="通知" type="button">
           <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
           <span class="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white"></span>
         </button>
@@ -806,17 +849,21 @@ onBeforeUnmount(() => {
 
         <!-- 未登录：显示登录/注册按钮 -->
         <template v-if="!isAuthenticated">
-          <button class="text-sm font-medium text-slate-600 hover:text-orange-500 transition-colors" @click="setHash('login')">登录</button>
-          <button class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold rounded-xl transition-all active:scale-[0.98]" @click="setHash('register')">注册</button>
+          <button class="w-10 h-10 rounded-full bg-slate-100 hover:bg-orange-50 text-slate-500 hover:text-orange-500 flex items-center justify-center transition-all" title="账户" type="button" @click="showLoginForm">
+            <iconify-icon icon="mdi:account-outline" width="24"></iconify-icon>
+          </button>
         </template>
 
         <!-- 已登录：显示用户头像 -->
         <template v-else>
-          <div class="flex items-center gap-2 cursor-pointer group relative" @click="isAdmin ? openAdminDashboard() : openUserDashboard()">
-            <div class="w-9 h-9 rounded-full bg-orange-100 border-2 border-white overflow-hidden flex items-center justify-center text-orange-600 text-sm font-bold">
+          <div class="flex items-center gap-3 px-2 py-1.5 rounded-full bg-white border border-slate-100 shadow-sm cursor-pointer group relative hover:border-orange-200 hover:shadow-md transition-all" @click="isAdmin ? openAdminDashboard() : openUserDashboard()">
+            <div class="w-9 h-9 rounded-full bg-orange-100 overflow-hidden flex items-center justify-center text-orange-600 text-sm font-bold">
               {{ (currentUser?.username || '?')[0].toUpperCase() }}
             </div>
-            <span class="text-sm font-medium group-hover:text-orange-500 transition-colors hidden sm:inline">{{ currentUser?.username || '用户' }}</span>
+            <div class="hidden sm:block pr-2 leading-tight">
+              <p class="text-sm font-bold text-slate-800 group-hover:text-orange-500 transition-colors">{{ currentUser?.username || '用户' }}</p>
+              <p class="text-[10px] text-slate-400">{{ roleLabel }}</p>
+            </div>
           </div>
         </template>
       </div>
@@ -824,61 +871,63 @@ onBeforeUnmount(() => {
   </header>
 
   <!-- ===== 主内容区 ===== -->
-  <main class="max-w-[1440px] mx-auto px-6 py-8 flex flex-col lg:flex-row gap-8">
+  <main class="max-w-[1440px] mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-8 items-start">
     <!-- ===== 左侧操作区 (Sidebar) ===== -->
-    <aside class="w-full lg:w-[320px] flex flex-col gap-6 flex-shrink-0">
+    <aside class="w-full flex flex-col gap-6 lg:self-stretch">
       <!-- 登录/注册卡片 -->
       <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 card-hover">
         <template v-if="!isAuthenticated">
           <div class="flex gap-2 mb-6">
             <button
+              type="button"
               class="flex-1 py-2 text-sm font-bold transition-all"
-              :class="view === 'login' || (view !== 'register' && view !== 'login') ? 'active-tab' : 'text-slate-400 hover:text-slate-600'"
-              @click="setHash('login')"
+              :class="authMode === 'login' ? 'active-tab' : 'text-slate-400 hover:text-slate-600'"
+              @click="showLoginForm"
             >登录</button>
             <button
+              type="button"
               class="flex-1 py-2 text-sm font-bold transition-all"
-              :class="view === 'register' ? 'active-tab' : 'text-slate-400 hover:text-slate-600'"
-              @click="setHash('register')"
+              :class="authMode === 'register' ? 'active-tab' : 'text-slate-400 hover:text-slate-600'"
+              @click="showRegisterForm"
             >注册</button>
           </div>
           <div class="space-y-4">
             <!-- 注册表单 -->
-            <template v-if="view === 'register'">
-              <div class="space-y-4">
+            <template v-if="authMode === 'register'">
+              <form class="space-y-4" @submit.prevent="submitRegister">
                 <div>
-                  <input v-model.trim="registerForm.email" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all" placeholder="电子邮箱" type="email" />
+                  <input v-model.trim="registerForm.email" autocomplete="email" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all" placeholder="电子邮箱" type="email" />
                 </div>
                 <div>
-                  <input v-model.trim="registerForm.username" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all" placeholder="设置用户名" type="text" />
+                  <input v-model.trim="registerForm.username" autocomplete="username" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all" placeholder="设置用户名" type="text" />
                 </div>
                 <div>
-                  <input v-model="registerForm.password" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all" placeholder="设置密码" type="password" />
+                  <input v-model="registerForm.password" autocomplete="new-password" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all" placeholder="设置密码" type="password" />
                 </div>
-              </div>
-              <button class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-all active:scale-[0.98]" :disabled="submitLoading" @click="submitRegister">
-                {{ submitLoading ? "注册中..." : "确认注册" }}
-              </button>
+                <button class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-all active:scale-[0.98]" :disabled="submitLoading" type="submit">
+                  {{ submitLoading ? "注册中..." : "确认注册" }}
+                </button>
+              </form>
             </template>
             <!-- 登录表单 -->
             <template v-else>
-              <div class="space-y-4">
+              <form class="space-y-4" @submit.prevent="submitLogin">
                 <div>
-                  <input v-model.trim="loginForm.account" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all" placeholder="用户名或邮箱" type="text" />
+                  <input v-model.trim="loginForm.account" autocomplete="username" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all" placeholder="用户名或邮箱" type="text" />
                 </div>
                 <div>
-                  <input v-model="loginForm.password" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all" placeholder="密码" type="password" />
+                  <input v-model="loginForm.password" autocomplete="current-password" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all" placeholder="密码" type="password" />
                 </div>
-              </div>
-              <div class="flex items-center justify-between">
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input class="w-4 h-4 accent-orange-500" type="checkbox" />
-                  <span class="text-xs text-slate-500">记住我</span>
-                </label>
-              </div>
-              <button class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-all active:scale-[0.98]" :disabled="submitLoading || loading" @click="submitLogin">
-                {{ submitLoading ? "登录中..." : "确认提交" }}
-              </button>
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <input aria-label="记住我" class="w-4 h-4 accent-orange-500" type="checkbox" />
+                    <span class="text-xs text-slate-500">记住我</span>
+                  </div>
+                </div>
+                <button class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-all active:scale-[0.98]" :disabled="submitLoading || loading" type="submit">
+                  {{ submitLoading ? "登录中..." : "确认提交" }}
+                </button>
+              </form>
             </template>
           </div>
         </template>
@@ -894,9 +943,9 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div class="flex gap-2">
-            <button class="flex-1 py-2 text-sm font-semibold text-slate-600 bg-slate-50 rounded-xl hover:bg-slate-100 transition-all" @click="openUserDashboard">用户面板</button>
-            <button v-if="isAdmin" class="flex-1 py-2 text-sm font-semibold text-white bg-orange-500 rounded-xl hover:bg-orange-600 transition-all" @click="openAdminDashboard">管理后台</button>
-            <button class="px-3 py-2 text-sm font-semibold text-red-500 bg-red-50 rounded-xl hover:bg-red-100 transition-all" @click="logout" :disabled="submitLoading">退出</button>
+            <button class="flex-1 py-2 text-sm font-semibold text-slate-600 bg-slate-50 rounded-xl hover:bg-slate-100 transition-all" type="button" @click="openUserDashboard">用户面板</button>
+            <button v-if="isAdmin" class="flex-1 py-2 text-sm font-semibold text-white bg-orange-500 rounded-xl hover:bg-orange-600 transition-all" type="button" @click="openAdminDashboard">管理后台</button>
+            <button class="px-3 py-2 text-sm font-semibold text-red-500 bg-red-50 rounded-xl hover:bg-red-100 transition-all" type="button" @click="logout" :disabled="submitLoading">退出</button>
           </div>
         </template>
       </section>
@@ -908,22 +957,22 @@ onBeforeUnmount(() => {
             <iconify-icon class="text-orange-500" icon="mdi:filter-variant"></iconify-icon>
             筛选文章
           </h3>
-          <button class="text-xs text-blue-500 hover:underline" @click="clearFilters">清空</button>
+          <button class="text-xs text-blue-500 hover:underline" type="button" @click="clearFilters">清空</button>
         </div>
         <form class="space-y-4" @submit.prevent="applyFilters">
           <div>
-            <label class="text-xs font-semibold text-slate-400 mb-1.5 block">关键词搜索</label>
+            <span class="text-xs font-semibold text-slate-400 mb-1.5 block">关键词搜索</span>
             <input v-model.trim="filters.q" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all" placeholder="标题或正文关键词" type="text" />
           </div>
           <div>
-            <label class="text-xs font-semibold text-slate-400 mb-1.5 block">全部分类</label>
+            <span class="text-xs font-semibold text-slate-400 mb-1.5 block">全部分类</span>
             <select v-model="filters.category" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all appearance-none">
               <option value="">全部分类</option>
               <option v-for="category in categories" :key="category.id" :value="category.slug">{{ category.name }}</option>
             </select>
           </div>
           <div>
-            <label class="text-xs font-semibold text-slate-400 mb-1.5 block">全部标签</label>
+            <span class="text-xs font-semibold text-slate-400 mb-1.5 block">全部标签</span>
             <select v-model="filters.tag" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all appearance-none">
               <option value="">全部标签</option>
               <option v-for="tag in tags" :key="tag.id" :value="tag.slug">{{ tag.name }}</option>
@@ -936,15 +985,15 @@ onBeforeUnmount(() => {
       </section>
 
       <!-- 文章列表卡片 -->
-      <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex-1 flex flex-col card-hover">
+      <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex min-h-[620px] flex-col lg:flex-1 card-hover">
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-bold text-slate-800 flex items-center gap-2">
             <iconify-icon class="text-orange-500" icon="mdi:format-list-bulleted"></iconify-icon>
             文章列表
           </h3>
-          <button class="text-xs px-2 py-1 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors" @click="openPublicHome">首页</button>
+          <button class="text-xs px-2 py-1 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors" type="button" @click="openPublicHome">首页</button>
         </div>
-        <div class="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1 max-h-[500px]">
+        <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-3 pr-1">
           <p v-if="articleLoading" class="text-sm text-slate-400 text-center py-8">正在加载文章...</p>
           <template v-else-if="publishedArticles.length === 0">
             <div class="flex flex-col items-center justify-center py-10 opacity-40">
@@ -993,7 +1042,7 @@ onBeforeUnmount(() => {
             <p class="text-slate-300 text-sm md:text-base line-clamp-2 mb-6 opacity-90">
               {{ publishedArticles[0].category?.name || '未分类' }} · 作者 {{ publishedArticles[0].author?.username || '未知' }}
             </p>
-            <button class="flex items-center gap-2 text-white font-bold group/btn">
+            <button class="flex items-center gap-2 text-white font-bold group/btn" type="button">
               继续阅读 <iconify-icon class="group-hover/btn:translate-x-2 transition-transform" icon="mdi:arrow-right"></iconify-icon>
             </button>
           </div>
@@ -1101,49 +1150,6 @@ onBeforeUnmount(() => {
             </section>
           </aside>
         </div>
-
-        <!-- 页脚 -->
-        <footer class="bg-white border-t border-slate-100 rounded-2xl py-12 px-6 mt-4">
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-12">
-            <div class="col-span-1">
-              <div class="flex items-center gap-2 mb-6">
-                <div class="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center text-white">
-                  <iconify-icon icon="mdi:feather" width="20"></iconify-icon>
-                </div>
-                <span class="text-xl font-bold tracking-tight text-slate-900">MyBlog</span>
-              </div>
-              <p class="text-sm text-slate-500 leading-relaxed mb-6">这是一个专注于分享技术、设计与生活思考的私人空间。我们相信文字的力量，也相信记录的意义。</p>
-              <div class="flex gap-4">
-                <a class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-orange-500 hover:text-white transition-all" href="#"><iconify-icon icon="mdi:github"></iconify-icon></a>
-                <a class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-orange-500 hover:text-white transition-all" href="#"><iconify-icon icon="mdi:twitter"></iconify-icon></a>
-              </div>
-            </div>
-            <div>
-              <h4 class="font-bold text-slate-900 mb-6">快速链接</h4>
-              <ul class="space-y-4 text-sm text-slate-500">
-                <li><a class="hover:text-orange-500 transition-colors cursor-pointer" @click.prevent="openPublicHome">首页</a></li>
-                <li><a class="hover:text-orange-500 transition-colors cursor-pointer">文章归档</a></li>
-                <li><a class="hover:text-orange-500 transition-colors cursor-pointer">友情链接</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 class="font-bold text-slate-900 mb-6">分类目录</h4>
-              <ul class="space-y-4 text-sm text-slate-500">
-                <li v-for="cat in categories" :key="cat.id">
-                  <a class="hover:text-orange-500 transition-colors cursor-pointer" @click="filters.category = cat.slug; applyFilters()">{{ cat.name }}</a>
-                </li>
-                <li v-if="categories.length === 0"><span class="text-slate-300">暂无分类</span></li>
-              </ul>
-            </div>
-            <div>
-              <h4 class="font-bold text-slate-900 mb-6">关于</h4>
-              <p class="text-sm text-slate-500 leading-relaxed">基于 Vue 3 + Tailwind CSS 构建的私人博客系统。</p>
-            </div>
-          </div>
-          <div class="mt-12 pt-8 border-t border-slate-50 text-center text-xs text-slate-400">
-            &copy; 2024 MyBlog Pro. Built with Vue 3 &amp; Tailwind CSS.
-          </div>
-        </footer>
       </template>
 
       <!-- ========== LEGACY 视图 (旧 UI, 样式隔离) ========== -->
@@ -1176,27 +1182,27 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div class="stack-form editor-form">
-                <label><span>标题</span><input v-model.trim="articleForm.title" placeholder="文章标题" /></label>
+                <div class="form-field"><span>标题</span><input v-model.trim="articleForm.title" placeholder="文章标题" /></div>
                 <div class="inline-fields">
-                  <label><span>Slug</span><input v-model.trim="articleForm.slug" placeholder="custom-slug" /></label>
-                  <label><span>排序</span><input v-model.number="articleForm.chapterOrder" type="number" /></label>
+                  <div class="form-field"><span>Slug</span><input v-model.trim="articleForm.slug" placeholder="例如：my-article" /></div>
+                  <div class="form-field"><span>排序</span><input v-model.number="articleForm.chapterOrder" type="number" /></div>
                 </div>
                 <div class="inline-fields">
-                  <label><span>分类</span><input v-model.trim="articleForm.categoryName" placeholder="例如：随笔" /></label>
-                  <label><span>标签</span><input v-model.trim="articleForm.tagNamesText" placeholder="逗号分隔，例如 Vue, Markdown" /></label>
+                  <div class="form-field"><span>分类</span><input v-model.trim="articleForm.categoryName" placeholder="例如：随笔" /></div>
+                  <div class="form-field"><span>标签</span><input v-model.trim="articleForm.tagNamesText" placeholder="逗号分隔，例如 Vue, Markdown" /></div>
                 </div>
-                <label><span>Markdown</span><textarea v-model="articleForm.contentMarkdown" class="markdown-editor" placeholder="# 文章正文" /></label>
+                <div class="form-field"><span>Markdown</span><textarea v-model="articleForm.contentMarkdown" class="markdown-editor" placeholder="# 文章正文" /></div>
               </div>
               <div class="upload-panel">
                 <div><h3>插入图片</h3><p class="muted">上传后会生成 Markdown 图片链接并追加到正文。</p></div>
                 <div class="inline-fields">
-                  <label><span>图片说明</span><input v-model.trim="imageForm.altText" placeholder="图片说明" /></label>
-                  <label class="file-field"><span>选择图片</span><input :disabled="uploadingImage" accept="image/*" type="file" @change="uploadImage" /></label>
+                  <div class="form-field"><span>图片说明</span><input v-model.trim="imageForm.altText" placeholder="图片说明" /></div>
+                  <div class="form-field file-field"><span>选择图片</span><input :disabled="uploadingImage" accept="image/*" type="file" @change="uploadImage" /></div>
                 </div>
               </div>
               <div class="upload-panel">
                 <div><h3>批量导入文章</h3><p class="muted">上传 zip。系统会按 `.md` 文件名排序导入，并转换 `images/...` 图片引用。</p></div>
-                <label class="file-field"><span>选择 zip 文件</span><input :disabled="importingArticles" accept=".zip,application/zip" type="file" @change="importArticles" /></label>
+                <div class="form-field file-field"><span>选择 zip 文件</span><input :disabled="importingArticles" accept=".zip,application/zip" type="file" @change="importArticles" /></div>
                 <div v-if="importResult" class="import-log">
                   <h4>导入日志</h4>
                   <p>成功 {{ importResult.summary.imported }} 篇，失败 {{ importResult.summary.failed }} 篇，缺失图片 {{ importResult.summary.missingImages }} 个，格式错误 {{ importResult.summary.formatErrors }} 个。</p>
@@ -1261,7 +1267,7 @@ onBeforeUnmount(() => {
                       </li>
                     </ul>
                     <form v-if="isAuthenticated" class="comment-form" @submit.prevent="submitComment">
-                      <label><span>发表评论</span><textarea v-model.trim="commentForm.content" :disabled="postingComment" maxlength="2000" placeholder="写下你的想法..." required /></label>
+                      <div class="form-field"><span>发表评论</span><textarea v-model.trim="commentForm.content" :disabled="postingComment" maxlength="2000" placeholder="写下你的想法..." required /></div>
                       <button class="primary-button" :disabled="postingComment || !commentForm.content" type="submit">{{ postingComment ? "发布中..." : "发布评论" }}</button>
                     </form>
                     <p v-else class="muted comment-login-hint">登录后可以发表评论。</p>
@@ -1285,5 +1291,48 @@ onBeforeUnmount(() => {
       </template>
 
     </div>
+
+    <!-- 页脚 -->
+    <footer v-if="view === 'public'" class="bg-white border-t border-slate-100 rounded-2xl py-12 px-6 lg:col-span-2">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-12">
+        <div class="col-span-1">
+          <div class="flex items-center gap-2 mb-6">
+            <div class="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center text-white">
+              <iconify-icon icon="mdi:feather" width="20"></iconify-icon>
+            </div>
+            <span class="text-xl font-bold tracking-tight text-slate-900">MyBlog</span>
+          </div>
+          <p class="text-sm text-slate-500 leading-relaxed mb-6">这是一个专注于分享技术、设计与生活思考的私人空间。我们相信文字的力量，也相信记录的意义。</p>
+          <div class="flex gap-4">
+            <a class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-orange-500 hover:text-white transition-all" href="#"><iconify-icon icon="mdi:github"></iconify-icon></a>
+            <a class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-orange-500 hover:text-white transition-all" href="#"><iconify-icon icon="mdi:twitter"></iconify-icon></a>
+          </div>
+        </div>
+        <div>
+          <h4 class="font-bold text-slate-900 mb-6">快速链接</h4>
+          <ul class="space-y-4 text-sm text-slate-500">
+            <li><a class="hover:text-orange-500 transition-colors cursor-pointer" @click.prevent="openPublicHome">首页</a></li>
+            <li><a class="hover:text-orange-500 transition-colors cursor-pointer">文章归档</a></li>
+            <li><a class="hover:text-orange-500 transition-colors cursor-pointer">友情链接</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="font-bold text-slate-900 mb-6">分类目录</h4>
+          <ul class="space-y-4 text-sm text-slate-500">
+            <li v-for="cat in categories" :key="cat.id">
+              <a class="hover:text-orange-500 transition-colors cursor-pointer" @click="filters.category = cat.slug; applyFilters()">{{ cat.name }}</a>
+            </li>
+            <li v-if="categories.length === 0"><span class="text-slate-300">暂无分类</span></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="font-bold text-slate-900 mb-6">关于</h4>
+          <p class="text-sm text-slate-500 leading-relaxed">基于 Vue 3 + Tailwind CSS 构建的私人博客系统。</p>
+        </div>
+      </div>
+      <div class="mt-12 pt-8 border-t border-slate-50 text-center text-xs text-slate-400">
+        &copy; 2024 MyBlog Pro. Built with Vue 3 &amp; Tailwind CSS.
+      </div>
+    </footer>
   </main>
 </template>

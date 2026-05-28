@@ -32,19 +32,19 @@ function normalizeAccount(account) {
 
 function validateRegistrationInput({ username, email, password }) {
   if (username.length < 3 || username.length > 50) {
-    return "Username must be between 3 and 50 characters.";
+    return "用户名长度必须在 3 到 50 个字符之间。";
   }
 
   if (!/^[\w-]+$/u.test(username)) {
-    return "Username can only contain letters, numbers, underscores, and hyphens.";
+    return "用户名只能包含字母、数字、下划线和连字符。";
   }
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) {
-    return "Please provide a valid email address.";
+    return "请输入有效的电子邮箱地址。";
   }
 
   if (password.length < 8 || password.length > 72) {
-    return "Password must be between 8 and 72 characters.";
+    return "密码长度必须在 8 到 72 个字符之间。";
   }
 
   return null;
@@ -71,13 +71,13 @@ router.post("/register", async (req, res, next) => {
     });
 
     return res.status(201).json({
-      message: "Registration successful.",
+      message: "注册成功。",
       user: sanitizeUser(user)
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return res.status(409).json({
-        message: "Username or email already exists."
+        message: "用户名或邮箱已存在。"
       });
     }
 
@@ -90,9 +90,21 @@ router.post("/login", async (req, res, next) => {
     const account = normalizeAccount(req.body?.account);
     const password = String(req.body?.password || "");
 
-    if (!account || !password) {
+    if (!account && !password) {
       return res.status(400).json({
-        message: "Account and password are required."
+        message: "请输入用户名或邮箱和密码。"
+      });
+    }
+
+    if (!account) {
+      return res.status(400).json({
+        message: "请输入用户名或邮箱。"
+      });
+    }
+
+    if (!password) {
+      return res.status(400).json({
+        message: "请输入密码。"
       });
     }
 
@@ -111,7 +123,7 @@ router.post("/login", async (req, res, next) => {
 
     if (!user) {
       return res.status(401).json({
-        message: "Invalid account or password."
+        message: "用户名/邮箱或密码错误。"
       });
     }
 
@@ -119,7 +131,7 @@ router.post("/login", async (req, res, next) => {
 
     if (!passwordIsValid) {
       return res.status(401).json({
-        message: "Invalid account or password."
+        message: "用户名/邮箱或密码错误。"
       });
     }
 

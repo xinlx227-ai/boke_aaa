@@ -22,7 +22,7 @@ app.use("/uploads", express.static(path.resolve(__dirname, "../uploads")));
 
 app.get("/", (_req, res) => {
   res.json({
-    message: "Private blog API is running."
+    message: "私有博客 API 正在运行。"
   });
 });
 
@@ -32,7 +32,7 @@ app.use((err, _req, res, _next) => {
   console.error(err);
 
   res.status(err.statusCode || 500).json({
-    message: err.statusCode ? err.message : "Internal server error."
+    message: err.statusCode ? err.message : "服务器内部错误。"
   });
 });
 
