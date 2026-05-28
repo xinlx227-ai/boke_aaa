@@ -3,10 +3,10 @@
 ## 项目与分支状态
 
 - 仓库路径：`D:\project\codex-project-boke`
-- `main` 分支：基础功能已经实现，并且已经提交到 Git 仓库。
-- `dev/new-ui` 分支：用于实现新 UI 界面；相关改动仍在本地，尚未提交。
-- `login-ui-darkmode` 分支：用于修复部分新旧 UI 不匹配问题，并实现明暗色调转换功能；相关改动仍在本地，尚未提交。
-- 当前工作区存在多处未提交改动，继续工作前应先查看 `git status --short` 和相关 diff。
+- `main` 分支：基础功能已经实现，并且已经快进合并 `dev/new-ui` 新 UI 改造。
+- `dev/new-ui` 分支：用于实现新 UI 界面；相关改动已提交并合并到 `main`。
+- `codex/login-ui-dark-mode` 分支：用于修复部分新旧 UI 不匹配问题，并实现明暗色调转换功能；相关改动已提交。
+- `main` 当前领先 `origin/main`，尚未推送远端；继续工作前先查看 `git status --short`、当前分支和相关 diff，避免覆盖用户已有改动。
 
 ## 用户约束与偏好
 
@@ -49,8 +49,8 @@
 
 ## 最近验证
 
-- `npm run build` 通过。
-- `npm test --workspace server` 通过，4/4 tests passed。
+- 2026-05-28：`npm run build` 通过。
+- 2026-05-28：`npm test --workspace server` 通过，4/4 tests passed。
 - 注意：后续如果需要浏览器视觉验收，使用非 3000 的端口启动前端或后端服务。
 
 ## 建议下个 Agent 使用的技能
