@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-用户要求更新仓库内的 `handoff.md` 和 `README.md`，并提交。本文件用于让下一位 Agent 在当前 `main` 状态上继续工作。
+用户要求合并 `codex/index-layout`，更新仓库内的 `handoff.md` 和 `README.md`，并推送远端。本文件用于让下一位 Agent 在当前 `main` 状态上继续工作。
 
 ## 建议下个 Agent 使用的技能
 
@@ -15,10 +15,11 @@
 - 仓库路径：`D:\project\codex-project-boke`
 - 当前主分支：`main`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
-- 当前最新主线提交：`46586b8 Revert "Add homepage latest articles pagination"`
-- `main` 与 `origin/main` 在撤销推送后已一致。
+- 当前最新功能合并：`d461d5b Merge index layout updates into main`
+- `codex/index-layout` 已合并到 `main`，功能提交为 `b328f4e Add stable homepage latest pagination`。
+- 本次文档更新提交并推送后，应以 `git log --oneline --decorate -5` 和 `git status --short --branch` 确认 `main` 与 `origin/main` 状态。
 - `codex/article-detail-ui` 已合并到 `main`、推送到 Gitee，并删除本地分支。
-- `codex/ui-layout` 已合并到 `main` 并推送到 Gitee；本地分支指针可能仍存在，但内容已进入主线。
+- `codex/ui-layout` 已合并到 `main` 并推送到 Gitee；本地分支此前已删除。
 - 不要提交、回滚或覆盖用户自己的未提交改动；继续工作前先检查工作区。
 
 继续工作前建议先执行：
@@ -47,7 +48,9 @@ git diff -- README.md handoff.md
 
 - 首页是当前新 UI 的主视觉标准。
 - 公开首页、登录/注册侧边栏、明暗色调切换已是新 UI。
-- 首页“最新发布”按 `publishedAt` / `createdAt` 倒序取前 4 篇展示；分页实验提交 `22c919d` 已被 `46586b8` 撤销，除非用户重新要求，不要恢复分页。
+- 首页“最新发布”按 `publishedAt` / `createdAt` 倒序分页展示，每页 4 篇。
+- 最新发布分页不是旧提交 `22c919d` 的简单恢复；当前实现来自 `codex/index-layout`，桌面端固定为两行两列四卡位，最后一页不足 4 篇时保留空位，分页位置不随文章数量上移。
+- 最新发布文章卡片桌面端定高，标题和摘要通过固定行数截断，避免不同内容长度撑高卡片；移动端保持自然高度。
 - 首页左侧文章列表按 `chapterOrder` 升序显示。
 - 首页右侧保留热门标签、阅读趋势、最受欢迎。
 - 文章详情页只保留左侧栏 + 中间正文两栏；右侧栏已移除，详情页不显示热门标签和相关推荐。
@@ -73,6 +76,8 @@ git diff -- README.md handoff.md
 - `cc9206d Merge ui layout updates into main`：合并首页布局、文章排序、`published_at` 迁移、后端逻辑和测试。
 - `22c919d Add homepage latest articles pagination`：曾加入首页最新发布分页。
 - `46586b8 Revert "Add homepage latest articles pagination"`：按用户要求撤销 `22c919d` 并推送 Gitee。
+- `b328f4e Add stable homepage latest pagination`：在 `codex/index-layout` 中重新实现稳定的首页最新发布分页、四卡位占位和文章卡片定高。
+- `d461d5b Merge index layout updates into main`：将 `codex/index-layout` 合并进 `main`。
 
 ## 最近验证
 
@@ -83,6 +88,10 @@ git diff -- README.md handoff.md
 - 撤销首页分页提交后确认过：
   - `git status --short --branch` 显示 `main` 与 `origin/main` 一致
   - `git log --oneline --decorate -4` 显示 `46586b8` 同时位于 `HEAD` 和 `origin/main`
+- 合并 `codex/index-layout` 前后执行过：
+  - `git diff --check` 通过
+  - `npm run build` 通过
+  - 为对比 `main` 原首页曾创建过 `D:\project\codex-project-boke-main` 预览 worktree，后续已删除；`5180` 预览服务已停止。
 
 ## 本地 MySQL 备注
 
@@ -99,7 +108,8 @@ sc.exe config MySQL start= demand
 
 ## 后续建议
 
-- 若用户继续调整首页空白区域，先确认是否真的要重新引入分页；当前分页已被用户要求撤销。
+- 若用户继续调整首页空白区域或分页位置，以 `main` 旧首页视觉比例为基准；不要把文章卡片拉得过高。
+- 最新发布分页已重新实现，后续若改动，应保持桌面端四卡位和分页位置稳定。
 - 可继续改造用户面板和管理后台旧 UI。
 - 可将阅读量、点赞量、收藏状态、作者粉丝、阅读趋势、热门排行等静态或本地展示逐步接入真实后端统计 API。
 - 可补充分页、评论审核、嵌套回复 UI，但应先确认用户要改的是首页还是文章详情页。
