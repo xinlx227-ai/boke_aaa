@@ -7,15 +7,22 @@ import prismaPkg from "@prisma/client";
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { renderMarkdownToSafeHtml, renderMarkdownToSafeHtmlWithToc } from "../lib/markdown.js";
-import { requireAuth } from "../middleware/auth.js";
+import { attachOptionalAuth, requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/role.js";
 
-const { Prisma, ArticleStatus } = prismaPkg;
+const { Prisma, ArticleStatus, CommentStatus } = prismaPkg;
 const router = Router();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsRoot = path.resolve(__dirname, "../../uploads/articles");
+const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
+const HOT_SCORE_WEIGHTS = {
+  views: 1,
+  likes: 5,
+  favorites: 8,
+  comments: 3
+};
 
 function slugify(value) {
   return String(value || "")
@@ -153,7 +160,23 @@ function sanitizeFilename(name) {
     .replace(/^-+|-+$/g, "") || "image";
 }
 
+function emptyArticleStats() {
+  return {
+    viewCount: 0,
+    likeCount: 0,
+    favoriteCount: 0,
+    commentCount: 0,
+    likedByMe: false,
+    favoritedByMe: false
+  };
+}
+
 function formatArticle(article) {
+  const stats = {
+    ...emptyArticleStats(),
+    ...(article.stats || {})
+  };
+
   return {
     id: article.id,
     title: article.title,
@@ -197,7 +220,8 @@ function formatArticle(article) {
           createdAt: image.createdAt,
           updatedAt: image.updatedAt
         }))
-      : []
+      : [],
+    stats
   };
 }
 
@@ -216,6 +240,307 @@ function sortByPublishedTime(articles) {
 
     return (secondArticle.id || 0) - (firstArticle.id || 0);
   });
+}
+
+function getShanghaiDayWindow(now = new Date()) {
+  const timestamp = now.getTime();
+  const shanghaiDate = new Date(timestamp + SHANGHAI_OFFSET_MS);
+  const year = shanghaiDate.getUTCFullYear();
+  const month = shanghaiDate.getUTCMonth();
+  const date = shanghaiDate.getUTCDate();
+  const start = new Date(Date.UTC(year, month, date) - SHANGHAI_OFFSET_MS);
+  const end = new Date(Date.UTC(year, month, date + 1) - SHANGHAI_OFFSET_MS);
+
+  return {
+    start,
+    end
+  };
+}
+
+function normalizeVisitorId(value) {
+  const visitorId = String(value || "").trim();
+
+  if (!visitorId) {
+    return null;
+  }
+
+  return visitorId.slice(0, 100);
+}
+
+function requestVisitorId(req) {
+  return normalizeVisitorId(req.body?.visitorId || req.query?.visitorId || req.headers["x-visitor-id"]);
+}
+
+function actorWhere({ userId, visitorId }) {
+  if (userId) {
+    return {
+      userId
+    };
+  }
+
+  return {
+    visitorId: visitorId || null
+  };
+}
+
+function articleStatsFromRecord(stats) {
+  return {
+    viewCount: stats?.viewCount || 0,
+    likeCount: stats?.likeCount || 0,
+    favoriteCount: stats?.favoriteCount || 0
+  };
+}
+
+function hotScoreFromStats(stats) {
+  return (
+    (stats?.viewCount || 0) * HOT_SCORE_WEIGHTS.views +
+    (stats?.likeCount || 0) * HOT_SCORE_WEIGHTS.likes +
+    (stats?.favoriteCount || 0) * HOT_SCORE_WEIGHTS.favorites +
+    (stats?.commentCount || 0) * HOT_SCORE_WEIGHTS.comments
+  );
+}
+
+async function findPublishedArticleBySlug(slug, options = {}) {
+  return prisma.article.findFirst({
+    where: {
+      slug,
+      status: ArticleStatus.PUBLISHED
+    },
+    ...options
+  });
+}
+
+async function ensureArticleStats(articleId, tx = prisma) {
+  await tx.$executeRaw`
+    INSERT INTO article_stats (article_id, view_count, like_count, favorite_count, created_at, updated_at)
+    VALUES (${articleId}, 0, 0, 0, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+    ON DUPLICATE KEY UPDATE article_id = article_id
+  `;
+}
+
+async function buildStatsByArticleId(articleIds, userId = null) {
+  const uniqueArticleIds = Array.from(new Set(articleIds.filter(Boolean)));
+  const statsByArticleId = new Map();
+
+  if (uniqueArticleIds.length === 0) {
+    return statsByArticleId;
+  }
+
+  const [statsRows, commentCounts, likedRows, favoritedRows] = await Promise.all([
+    prisma.$queryRaw`
+      SELECT
+        article_id AS articleId,
+        view_count AS viewCount,
+        like_count AS likeCount,
+        favorite_count AS favoriteCount
+      FROM article_stats
+      WHERE article_id IN (${Prisma.join(uniqueArticleIds)})
+    `,
+    prisma.comment.groupBy({
+      by: ["articleId"],
+      where: {
+        articleId: {
+          in: uniqueArticleIds
+        },
+        status: CommentStatus.APPROVED
+      },
+      _count: {
+        _all: true
+      }
+    }),
+    userId
+      ? prisma.$queryRaw`
+          SELECT article_id AS articleId
+          FROM article_likes
+          WHERE user_id = ${userId}
+            AND article_id IN (${Prisma.join(uniqueArticleIds)})
+        `
+      : [],
+    userId
+      ? prisma.$queryRaw`
+          SELECT article_id AS articleId
+          FROM article_favorites
+          WHERE user_id = ${userId}
+            AND article_id IN (${Prisma.join(uniqueArticleIds)})
+        `
+      : []
+  ]);
+
+  const rawStatsByArticleId = new Map(statsRows.map((stats) => [Number(stats.articleId), stats]));
+  const commentCountByArticleId = new Map(commentCounts.map((item) => [item.articleId, item._count._all]));
+  const likedArticleIds = new Set(likedRows.map((item) => Number(item.articleId)));
+  const favoritedArticleIds = new Set(favoritedRows.map((item) => Number(item.articleId)));
+
+  for (const articleId of uniqueArticleIds) {
+    statsByArticleId.set(articleId, {
+      ...emptyArticleStats(),
+      ...articleStatsFromRecord(rawStatsByArticleId.get(articleId)),
+      commentCount: commentCountByArticleId.get(articleId) || 0,
+      likedByMe: likedArticleIds.has(articleId),
+      favoritedByMe: favoritedArticleIds.has(articleId)
+    });
+  }
+
+  return statsByArticleId;
+}
+
+async function withArticleStats(articles, userId = null) {
+  const statsByArticleId = await buildStatsByArticleId(
+    articles.map((article) => article.id),
+    userId
+  );
+
+  return articles.map((article) => ({
+    ...article,
+    stats: statsByArticleId.get(article.id) || emptyArticleStats()
+  }));
+}
+
+async function formatArticleWithStats(article, userId = null) {
+  const [articleWithStats] = await withArticleStats([article], userId);
+  return formatArticle(articleWithStats);
+}
+
+async function recordSiteVisit({ pageType, articleId = null, userId = null, visitorId, now = new Date() }) {
+  const normalizedVisitorId = normalizeVisitorId(visitorId);
+
+  if (!userId && !normalizedVisitorId) {
+    return false;
+  }
+
+  const dayWindow = getShanghaiDayWindow(now);
+  const where = {
+    pageType,
+    articleId,
+    visitedAt: {
+      gte: dayWindow.start,
+      lt: dayWindow.end
+    },
+    ...actorWhere({
+      userId,
+      visitorId: normalizedVisitorId
+    })
+  };
+  const existingVisit = await prisma.$queryRaw`
+    SELECT id
+    FROM site_visits
+    WHERE page_type = ${where.pageType}
+      AND (${where.articleId} IS NULL AND article_id IS NULL OR article_id = ${where.articleId})
+      AND visited_at >= ${where.visitedAt.gte}
+      AND visited_at < ${where.visitedAt.lt}
+      AND (${userId ? Prisma.sql`user_id = ${userId}` : Prisma.sql`visitor_id = ${normalizedVisitorId}`})
+    LIMIT 1
+  `;
+
+  if (existingVisit.length > 0) {
+    return false;
+  }
+
+  await prisma.$executeRaw`
+    INSERT INTO site_visits (page_type, article_id, user_id, visitor_id, visited_at, created_at)
+    VALUES (${pageType}, ${articleId}, ${userId}, ${userId ? null : normalizedVisitorId}, ${now}, CURRENT_TIMESTAMP(3))
+  `;
+
+  return true;
+}
+
+async function recordArticleView({ articleId, userId = null, visitorId, now = new Date() }) {
+  const normalizedVisitorId = normalizeVisitorId(visitorId);
+
+  if (!userId && !normalizedVisitorId) {
+    return false;
+  }
+
+  const dayWindow = getShanghaiDayWindow(now);
+  const viewWhere = {
+    articleId,
+    viewedAt: {
+      gte: dayWindow.start,
+      lt: dayWindow.end
+    },
+    ...actorWhere({
+      userId,
+      visitorId: normalizedVisitorId
+    })
+  };
+  const existingView = await prisma.$queryRaw`
+    SELECT id
+    FROM article_views
+    WHERE article_id = ${viewWhere.articleId}
+      AND viewed_at >= ${viewWhere.viewedAt.gte}
+      AND viewed_at < ${viewWhere.viewedAt.lt}
+      AND (${userId ? Prisma.sql`user_id = ${userId}` : Prisma.sql`visitor_id = ${normalizedVisitorId}`})
+    LIMIT 1
+  `;
+
+  if (existingView.length > 0) {
+    await recordSiteVisit({
+      pageType: "article",
+      articleId,
+      userId,
+      visitorId: normalizedVisitorId,
+      now
+    });
+    return false;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      INSERT INTO article_views (article_id, user_id, visitor_id, viewed_at, created_at)
+      VALUES (${articleId}, ${userId}, ${userId ? null : normalizedVisitorId}, ${now}, CURRENT_TIMESTAMP(3))
+    `;
+    await tx.$executeRaw`
+      INSERT INTO article_stats (article_id, view_count, like_count, favorite_count, created_at, updated_at)
+      VALUES (${articleId}, 1, 0, 0, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+      ON DUPLICATE KEY UPDATE view_count = view_count + 1, updated_at = CURRENT_TIMESTAMP(3)
+    `;
+  });
+
+  await recordSiteVisit({
+    pageType: "article",
+    articleId,
+    userId,
+    visitorId: normalizedVisitorId,
+    now
+  });
+
+  return true;
+}
+
+async function getPublishedArticleStatsSummary() {
+  const articles = await prisma.article.findMany({
+    where: {
+      status: ArticleStatus.PUBLISHED
+    },
+    select: {
+      id: true
+    }
+  });
+  const articleIds = articles.map((article) => article.id);
+
+  if (articleIds.length === 0) {
+    return {
+      totalLikes: 0,
+      totalViews: 0,
+      totalFavorites: 0
+    };
+  }
+
+  const summaryRows = await prisma.$queryRaw`
+    SELECT
+      COALESCE(SUM(view_count), 0) AS totalViews,
+      COALESCE(SUM(like_count), 0) AS totalLikes,
+      COALESCE(SUM(favorite_count), 0) AS totalFavorites
+    FROM article_stats
+    WHERE article_id IN (${Prisma.join(articleIds)})
+  `;
+  const summary = summaryRows[0] || {};
+
+  return {
+    totalLikes: Number(summary.totalLikes || 0),
+    totalViews: Number(summary.totalViews || 0),
+    totalFavorites: Number(summary.totalFavorites || 0)
+  };
 }
 
 function isMissingPublishedAtColumnError(error) {
@@ -624,7 +949,7 @@ async function importArticleImages({ articleId, contentMarkdown, imageEntries, m
   return rewrittenMarkdown;
 }
 
-router.get("/", async (req, res, next) => {
+router.get("/", attachOptionalAuth, async (req, res, next) => {
   try {
     const articles = await prisma.article.findMany({
       where: buildPublicArticleWhere(req.query),
@@ -639,9 +964,125 @@ router.get("/", async (req, res, next) => {
       include: articleInclude()
     });
     const articlesWithPublishTimes = await withArticlePublishTimes(articles);
+    const articlesWithStats = await withArticleStats(articlesWithPublishTimes, req.auth?.userId);
 
     return res.json({
-      articles: sortByPublishedTime(articlesWithPublishTimes).map(formatArticle)
+      articles: sortByPublishedTime(articlesWithStats).map(formatArticle)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/site-visits", attachOptionalAuth, async (req, res, next) => {
+  try {
+    const pageType = String(req.body?.pageType || "").trim();
+    const visitorId = requestVisitorId(req);
+
+    if (pageType !== "home") {
+      return res.status(400).json({
+        message: "访问页面类型无效。"
+      });
+    }
+
+    if (!req.auth?.userId && !visitorId) {
+      return res.status(400).json({
+        message: "缺少访问者标识。"
+      });
+    }
+
+    const counted = await recordSiteVisit({
+      pageType,
+      userId: req.auth?.userId || null,
+      visitorId
+    });
+
+    return res.json({
+      counted
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/stats/summary", async (_req, res, next) => {
+  try {
+    const dayWindow = getShanghaiDayWindow();
+    const [todayVisitRows, articleSummary] = await Promise.all([
+      prisma.$queryRaw`
+        SELECT COUNT(*) AS count
+        FROM site_visits sv
+        LEFT JOIN articles a ON a.id = sv.article_id
+        WHERE sv.visited_at >= ${dayWindow.start}
+          AND sv.visited_at < ${dayWindow.end}
+          AND (
+            sv.page_type = 'home'
+            OR (sv.page_type = 'article' AND a.status = ${ArticleStatus.PUBLISHED})
+          )
+      `,
+      getPublishedArticleStatsSummary()
+    ]);
+    const todayVisits = Number(todayVisitRows[0]?.count || 0);
+
+    return res.json({
+      summary: {
+        todayVisits,
+        totalLikes: articleSummary.totalLikes,
+        totalViews: articleSummary.totalViews,
+        totalFavorites: articleSummary.totalFavorites
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/popular", attachOptionalAuth, async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query?.limit) || 3, 1), 10);
+    const articles = await prisma.article.findMany({
+      where: {
+        status: ArticleStatus.PUBLISHED
+      },
+      orderBy: [
+        {
+          publishedAt: "desc"
+        },
+        {
+          createdAt: "desc"
+        },
+        {
+          id: "desc"
+        }
+      ],
+      include: articleInclude()
+    });
+    const articlesWithPublishTimes = await withArticlePublishTimes(articles);
+    const articlesWithStats = await withArticleStats(articlesWithPublishTimes, req.auth?.userId);
+    const popularArticles = [...articlesWithStats]
+      .sort((firstArticle, secondArticle) => {
+        const scoreDiff = hotScoreFromStats(secondArticle.stats) - hotScoreFromStats(firstArticle.stats);
+
+        if (scoreDiff !== 0) {
+          return scoreDiff;
+        }
+
+        const timeDiff = articleTimelineValue(secondArticle) - articleTimelineValue(firstArticle);
+
+        if (timeDiff !== 0) {
+          return timeDiff;
+        }
+
+        return (secondArticle.id || 0) - (firstArticle.id || 0);
+      })
+      .slice(0, limit)
+      .map((article) => ({
+        ...formatArticle(article),
+        hotScore: hotScoreFromStats(article.stats)
+      }));
+
+    return res.json({
+      articles: popularArticles
     });
   } catch (error) {
     return next(error);
@@ -702,13 +1143,9 @@ router.get("/admin/list", requireAuth, requireRole("ADMIN"), async (_req, res, n
   }
 });
 
-router.get("/:slug", async (req, res, next) => {
+router.get("/:slug", attachOptionalAuth, async (req, res, next) => {
   try {
-    const article = await prisma.article.findFirst({
-      where: {
-        slug: req.params.slug,
-        status: ArticleStatus.PUBLISHED
-      },
+    const article = await findPublishedArticleBySlug(req.params.slug, {
       include: articleInclude()
     });
 
@@ -719,10 +1156,210 @@ router.get("/:slug", async (req, res, next) => {
     }
 
     return res.json({
-      article: formatArticle({
+      article: await formatArticleWithStats({
         ...article,
         toc: renderMarkdownToSafeHtmlWithToc(article.contentMarkdown).toc
-      })
+      }, req.auth?.userId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/:slug/views", attachOptionalAuth, async (req, res, next) => {
+  try {
+    const article = await findPublishedArticleBySlug(req.params.slug, {
+      include: articleInclude()
+    });
+
+    if (!article) {
+      return res.status(404).json({
+        message: "文章不存在。"
+      });
+    }
+
+    const visitorId = requestVisitorId(req);
+
+    if (!req.auth?.userId && !visitorId) {
+      return res.status(400).json({
+        message: "缺少访问者标识。"
+      });
+    }
+
+    const counted = await recordArticleView({
+      articleId: article.id,
+      userId: req.auth?.userId || null,
+      visitorId
+    });
+
+    return res.json({
+      counted,
+      article: await formatArticleWithStats({
+        ...article,
+        toc: renderMarkdownToSafeHtmlWithToc(article.contentMarkdown).toc
+      }, req.auth?.userId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/:slug/likes", requireAuth, async (req, res, next) => {
+  try {
+    const article = await findPublishedArticleBySlug(req.params.slug, {
+      include: articleInclude()
+    });
+
+    if (!article) {
+      return res.status(404).json({
+        message: "文章不存在。"
+      });
+    }
+
+    let changed = false;
+
+    await prisma.$transaction(async (tx) => {
+      await ensureArticleStats(article.id, tx);
+      const inserted = await tx.$executeRaw`
+        INSERT IGNORE INTO article_likes (article_id, user_id, created_at)
+        VALUES (${article.id}, ${req.auth.userId}, CURRENT_TIMESTAMP(3))
+      `;
+
+      if (Number(inserted) > 0) {
+        await tx.$executeRaw`
+          UPDATE article_stats
+          SET like_count = like_count + 1, updated_at = CURRENT_TIMESTAMP(3)
+          WHERE article_id = ${article.id}
+        `;
+        changed = true;
+      }
+    });
+
+    return res.json({
+      changed,
+      article: await formatArticleWithStats(article, req.auth.userId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete("/:slug/likes", requireAuth, async (req, res, next) => {
+  try {
+    const article = await findPublishedArticleBySlug(req.params.slug, {
+      include: articleInclude()
+    });
+
+    if (!article) {
+      return res.status(404).json({
+        message: "文章不存在。"
+      });
+    }
+
+    let changed = false;
+
+    await prisma.$transaction(async (tx) => {
+      const deleted = await tx.$executeRaw`
+        DELETE FROM article_likes
+        WHERE article_id = ${article.id}
+          AND user_id = ${req.auth.userId}
+      `;
+
+      if (Number(deleted) > 0) {
+        await ensureArticleStats(article.id, tx);
+        await tx.$executeRaw`
+          UPDATE article_stats
+          SET like_count = GREATEST(like_count - 1, 0), updated_at = CURRENT_TIMESTAMP(3)
+          WHERE article_id = ${article.id}
+        `;
+        changed = true;
+      }
+    });
+
+    return res.json({
+      changed,
+      article: await formatArticleWithStats(article, req.auth.userId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/:slug/favorites", requireAuth, async (req, res, next) => {
+  try {
+    const article = await findPublishedArticleBySlug(req.params.slug, {
+      include: articleInclude()
+    });
+
+    if (!article) {
+      return res.status(404).json({
+        message: "文章不存在。"
+      });
+    }
+
+    let changed = false;
+
+    await prisma.$transaction(async (tx) => {
+      await ensureArticleStats(article.id, tx);
+      const inserted = await tx.$executeRaw`
+        INSERT IGNORE INTO article_favorites (article_id, user_id, created_at)
+        VALUES (${article.id}, ${req.auth.userId}, CURRENT_TIMESTAMP(3))
+      `;
+
+      if (Number(inserted) > 0) {
+        await tx.$executeRaw`
+          UPDATE article_stats
+          SET favorite_count = favorite_count + 1, updated_at = CURRENT_TIMESTAMP(3)
+          WHERE article_id = ${article.id}
+        `;
+        changed = true;
+      }
+    });
+
+    return res.json({
+      changed,
+      article: await formatArticleWithStats(article, req.auth.userId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete("/:slug/favorites", requireAuth, async (req, res, next) => {
+  try {
+    const article = await findPublishedArticleBySlug(req.params.slug, {
+      include: articleInclude()
+    });
+
+    if (!article) {
+      return res.status(404).json({
+        message: "文章不存在。"
+      });
+    }
+
+    let changed = false;
+
+    await prisma.$transaction(async (tx) => {
+      const deleted = await tx.$executeRaw`
+        DELETE FROM article_favorites
+        WHERE article_id = ${article.id}
+          AND user_id = ${req.auth.userId}
+      `;
+
+      if (Number(deleted) > 0) {
+        await ensureArticleStats(article.id, tx);
+        await tx.$executeRaw`
+          UPDATE article_stats
+          SET favorite_count = GREATEST(favorite_count - 1, 0), updated_at = CURRENT_TIMESTAMP(3)
+          WHERE article_id = ${article.id}
+        `;
+        changed = true;
+      }
+    });
+
+    return res.json({
+      changed,
+      article: await formatArticleWithStats(article, req.auth.userId)
     });
   } catch (error) {
     return next(error);

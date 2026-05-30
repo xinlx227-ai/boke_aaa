@@ -1,19 +1,19 @@
 # Private Blog System - 私有博客系统
 
-一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序和文章详情页新 UI 等基础能力。
+一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
 
 ## 当前状态
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前分支 | `main` |
-| 最新合并 | `codex/article-detail-ui`、`codex/ui-layout`、`codex/index-layout` 均已合并到 `main` |
-| 最新提交 | 合并 `codex/index-layout` 后更新文档并推送远端 |
-| 最新 UI 工作 | 首页最新发布分页已重新实现，桌面端固定四卡位和文章卡片高度；文章详情页已向首页统一 |
+| 当前工作分支 | `codex/article-apiset` |
+| 最新已合并 UI 工作 | `codex/article-detail-ui`、`codex/ui-layout`、`codex/index-layout` 均已合并到 `main` |
+| 最新功能工作 | 阅读量、点赞、收藏、今日阅读、热门排行等已接入真实后端统计 API |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
-| 最近验证 | 2026-05-30：合并 `codex/index-layout` 时 `git diff --check`、`npm run build` 通过；此前合并 `codex/ui-layout` 时 `npm test --workspace server` 通过 |
+| 统计数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits` |
+| 最近验证 | 2026-05-30：`npm test --workspace server`、`npm run build`、`git diff --check` 均通过 |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
@@ -25,9 +25,12 @@
 - 最新发布文章卡片桌面端定高，长标题和长摘要会按固定行数截断；移动端保持自然高度。
 - 登录态下公开首页左侧“文章列表”卡片高度为 `lg:h-[760px]`，用于和右侧“最受欢迎”区域底部对齐；未登录态保持 `lg:h-[620px]`。
 - 首页右侧保留热门标签、阅读趋势和最受欢迎区域。
+- 阅读趋势图形第一版仍是视觉占位；下方“今日阅读”和“总点赞”已接入真实统计。
+- “最受欢迎”已从静态占位改为真实热门排行。
 - 文章详情页已按首页风格重排为两栏：左侧为作者卡、目录、筛选文章和文章列表；中间为文章阅读主体。
 - 详情页顶部保留 `MyBlog Pro`、返回、搜索框视觉预留、点赞/收藏/分享、暗色切换、通知和用户胶囊。
-- 详情页点赞/收藏目前是前端本地状态，顶部与底部互动条同步；刷新后不会持久化。
+- 详情页阅读、点赞、评论指标条已接入真实统计。
+- 详情页点赞/收藏为后端持久化状态，顶部与底部互动条同步；未登录点击会提示登录。
 - 详情页目录只在当前文章存在 TOC 时显示，并位于作者卡和筛选文章之间。
 - 详情页右侧栏已移除，热门标签和相关推荐不在详情页显示，主内容区域向右扩展。
 - 移动端优先展示文章内容，左侧信息折叠为抽屉；抽屉内保留作者卡、目录、筛选和文章列表。
@@ -49,7 +52,26 @@
 - Markdown 生成目录 TOC
 - 评论列表
 - 移动端响应式布局
-- 首页最新发布分页已稳定实现，桌面端分页位置按四卡位区域固定。
+- 首页最新发布分页已稳定实现，桌面端分页位置按四卡位区域固定
+
+### 真实统计能力
+
+- 文章阅读量真实计数
+- 公开首页和文章详情访问计入“今日阅读”
+- 阅读和站点访问按 `Asia/Shanghai` 自然日去重
+- 匿名访客通过前端 `private-blog-visitor-id` 去重
+- 登录用户通过用户身份去重
+- 点赞必须登录，同一用户同一文章只能点赞一次，可取消
+- 收藏必须登录，同一用户同一文章只能收藏一次，可取消
+- 文章详情返回 `likedByMe` / `favoritedByMe`
+- 文章详情指标显示真实阅读、点赞、评论
+- 热门排行按综合热度分排序，仅包含已发布文章
+
+热门排行分数：
+
+```text
+hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
+```
 
 ### 认证与会话
 
@@ -80,6 +102,7 @@
 - 登录用户可发布评论
 - 评论支持 `parent_id` 字段，为后续回复 UI 预留
 - 管理员可删除评论
+- 已通过统计 API 真实计入文章评论数和热门分
 
 ## 技术栈
 
@@ -180,7 +203,13 @@ npm run prisma:deploy
 npm run prisma:migrate -- --name your_migration_name
 ```
 
-本项目当前包含 `published_at` 相关迁移，以及取消 `chapterOrder` 唯一索引的迁移。其他环境同步代码后需要执行迁移部署。
+本项目当前包含 `published_at` 相关迁移、取消 `chapterOrder` 唯一索引的迁移，以及文章统计相关迁移。其他环境同步代码后需要执行迁移部署。
+
+本次统计 API 新增迁移：
+
+```text
+server/prisma/migrations/20260530120000_article_stats/migration.sql
+```
 
 ## 本地开发
 
@@ -206,6 +235,8 @@ npm run prisma:generate
 ```
 
 该命令只生成本地 Prisma Client，不会修改数据库数据。
+
+注意：本次统计 API 开发时曾遇到 Windows 上 Prisma Client DLL 被占用导致 `npm run prisma:generate` 失败。当前统计实现使用 raw SQL 访问新增表，不依赖生成后的新 Prisma Client 模型；等没有 Node/Prisma 进程占用时可再运行生成。
 
 ## 常用脚本
 
@@ -233,7 +264,18 @@ npm test --workspace server
 
 - `GET /api/articles`
 - `GET /api/articles/filters`
+- `GET /api/articles/popular?limit=3`
+- `GET /api/articles/stats/summary`
 - `GET /api/articles/:slug`
+- `POST /api/articles/:slug/views`
+- `POST /api/articles/site-visits`
+
+登录用户互动接口：
+
+- `POST /api/articles/:slug/likes`
+- `DELETE /api/articles/:slug/likes`
+- `POST /api/articles/:slug/favorites`
+- `DELETE /api/articles/:slug/favorites`
 
 管理员接口：
 
@@ -244,6 +286,21 @@ npm test --workspace server
 - `DELETE /api/articles/admin/:id`
 - `POST /api/articles/admin/:id/images`
 - `POST /api/articles/admin/import`
+
+文章接口返回的统计字段：
+
+```json
+{
+  "stats": {
+    "viewCount": 0,
+    "likeCount": 0,
+    "favoriteCount": 0,
+    "commentCount": 0,
+    "likedByMe": false,
+    "favoritedByMe": false
+  }
+}
+```
 
 创建或更新文章示例：
 
@@ -278,7 +335,15 @@ npm test --workspace server
 npm run build
 ```
 
-当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、文章序号和首次发布时间等流程。
+当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、文章序号、首次发布时间、阅读去重、点赞/收藏登录限制、热门排行和全站 summary 等流程。
+
+本次统计 API 工作已验证：
+
+```bash
+npm test --workspace server
+npm run build
+git diff --check
+```
 
 ## 管理员账号说明
 
@@ -292,8 +357,8 @@ WHERE email = 'your-admin@example.com';
 
 ## 后续建议
 
-- 若继续处理首页空白区域或分页位置，以当前 `main` 首页视觉比例为准，保持四卡位和分页位置稳定。
-- 登录态首页左侧文章列表目前用 `lg:h-[760px]` 对齐右侧“最受欢迎”；如继续微调，优先只改这个登录态高度。
+- 基于 `site_visits` 做真实阅读趋势折线图；当前第一版只把趋势卡下方数字接真。
 - 继续改造用户面板和管理后台旧 UI。
-- 将热门排行、阅读趋势、阅读量、点赞/收藏、作者粉丝等静态或本地展示对接真实统计 API。
+- 增加“我的收藏列表”，本次只实现收藏状态和计数。
 - 补充分页、评论审核、嵌套回复 UI。
+- 将粉丝数、作者关注等静态展示接入真实后端模型。

@@ -71,6 +71,51 @@ async function apiRequest(pathname, options = {}) {
   };
 }
 
+async function createRegisteredUser({ username, email, password = "Passw0rd!", role = "USER" }) {
+  const registerResult = await apiRequest("/auth/register", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username,
+      email,
+      password
+    })
+  });
+
+  assert.equal(registerResult.status, 201);
+
+  if (role !== "USER") {
+    await prisma.user.update({
+      where: {
+        email
+      },
+      data: {
+        role
+      }
+    });
+  }
+
+  const loginResult = await apiRequest("/auth/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      account: email,
+      password
+    })
+  });
+
+  assert.equal(loginResult.status, 200);
+
+  return {
+    user: loginResult.body.user,
+    token: loginResult.body.token
+  };
+}
+
 test("admin article publishing flow stores markdown, sanitizes HTML, uploads images, and exposes published detail", async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
   const username = `editor_${suffix}`;
@@ -632,6 +677,250 @@ test("article comments can be viewed publicly, created by users, and deleted by 
   await prisma.article.delete({
     where: {
       id: article.id
+    }
+  });
+  await prisma.user.delete({
+    where: {
+      email: userEmail
+    }
+  });
+  await prisma.user.delete({
+    where: {
+      email: adminEmail
+    }
+  });
+});
+
+test("article stats APIs count real reads, reactions, favorites, comments, and popular ranking", async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const adminEmail = `stats_admin_${suffix}@example.com`;
+  const userEmail = `stats_user_${suffix}@example.com`;
+  const visitorId = `visitor-${suffix}`;
+  const otherVisitorId = `visitor-other-${suffix}`;
+  const firstSlug = `stats-first-${suffix}`;
+  const secondSlug = `stats-second-${suffix}`;
+
+  const admin = await createRegisteredUser({
+    username: `stats_admin_${suffix}`,
+    email: adminEmail,
+    role: "ADMIN"
+  });
+  const user = await createRegisteredUser({
+    username: `stats_user_${suffix}`,
+    email: userEmail
+  });
+
+  const firstArticle = await prisma.article.create({
+    data: {
+      authorId: admin.user.id,
+      title: "Stats First Article",
+      slug: firstSlug,
+      contentMarkdown: "# Stats First Article",
+      contentHtml: "<h1>Stats First Article</h1>",
+      chapterOrder: 1,
+      status: "PUBLISHED"
+    }
+  });
+  const secondArticle = await prisma.article.create({
+    data: {
+      authorId: admin.user.id,
+      title: "Stats Second Article",
+      slug: secondSlug,
+      contentMarkdown: "# Stats Second Article",
+      contentHtml: "<h1>Stats Second Article</h1>",
+      chapterOrder: 2,
+      status: "PUBLISHED"
+    }
+  });
+
+  const missingVisitorView = await apiRequest(`/articles/${firstSlug}/views`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({})
+  });
+  assert.equal(missingVisitorView.status, 400);
+
+  const firstView = await apiRequest(`/articles/${firstSlug}/views`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Visitor-Id": visitorId
+    },
+    body: JSON.stringify({
+      visitorId
+    })
+  });
+  assert.equal(firstView.status, 200);
+  assert.equal(firstView.body.counted, true);
+  assert.equal(firstView.body.article.stats.viewCount, 1);
+
+  const duplicateView = await apiRequest(`/articles/${firstSlug}/views`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Visitor-Id": visitorId
+    },
+    body: JSON.stringify({
+      visitorId
+    })
+  });
+  assert.equal(duplicateView.status, 200);
+  assert.equal(duplicateView.body.counted, false);
+  assert.equal(duplicateView.body.article.stats.viewCount, 1);
+
+  const otherVisitorView = await apiRequest(`/articles/${firstSlug}/views`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Visitor-Id": otherVisitorId
+    },
+    body: JSON.stringify({
+      visitorId: otherVisitorId
+    })
+  });
+  assert.equal(otherVisitorView.status, 200);
+  assert.equal(otherVisitorView.body.counted, true);
+  assert.equal(otherVisitorView.body.article.stats.viewCount, 2);
+
+  const anonymousLike = await apiRequest(`/articles/${firstSlug}/likes`, {
+    method: "POST"
+  });
+  assert.equal(anonymousLike.status, 401);
+
+  const like = await apiRequest(`/articles/${firstSlug}/likes`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${user.token}`
+    }
+  });
+  assert.equal(like.status, 200);
+  assert.equal(like.body.changed, true);
+  assert.equal(like.body.article.stats.likeCount, 1);
+  assert.equal(like.body.article.stats.likedByMe, true);
+
+  const duplicateLike = await apiRequest(`/articles/${firstSlug}/likes`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${user.token}`
+    }
+  });
+  assert.equal(duplicateLike.status, 200);
+  assert.equal(duplicateLike.body.changed, false);
+  assert.equal(duplicateLike.body.article.stats.likeCount, 1);
+
+  const favorite = await apiRequest(`/articles/${firstSlug}/favorites`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${user.token}`
+    }
+  });
+  assert.equal(favorite.status, 200);
+  assert.equal(favorite.body.changed, true);
+  assert.equal(favorite.body.article.stats.favoriteCount, 1);
+  assert.equal(favorite.body.article.stats.favoritedByMe, true);
+
+  const comment = await apiRequest(`/comments/articles/${firstSlug}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${user.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      content: "Stats comment"
+    })
+  });
+  assert.equal(comment.status, 201);
+
+  await prisma.$executeRaw`
+    INSERT INTO article_stats (article_id, view_count, like_count, favorite_count, created_at, updated_at)
+    VALUES (${secondArticle.id}, 0, 4, 0, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+    ON DUPLICATE KEY UPDATE like_count = 4
+  `;
+
+  const detail = await apiRequest(`/articles/${firstSlug}`, {
+    headers: {
+      Authorization: `Bearer ${user.token}`
+    }
+  });
+  assert.equal(detail.status, 200);
+  assert.equal(detail.body.article.stats.viewCount, 2);
+  assert.equal(detail.body.article.stats.likeCount, 1);
+  assert.equal(detail.body.article.stats.favoriteCount, 1);
+  assert.equal(detail.body.article.stats.commentCount, 1);
+  assert.equal(detail.body.article.stats.likedByMe, true);
+  assert.equal(detail.body.article.stats.favoritedByMe, true);
+
+  const homeVisit = await apiRequest("/articles/site-visits", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Visitor-Id": visitorId
+    },
+    body: JSON.stringify({
+      pageType: "home",
+      visitorId
+    })
+  });
+  assert.equal(homeVisit.status, 200);
+  assert.equal(homeVisit.body.counted, true);
+
+  const duplicateHomeVisit = await apiRequest("/articles/site-visits", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Visitor-Id": visitorId
+    },
+    body: JSON.stringify({
+      pageType: "home",
+      visitorId
+    })
+  });
+  assert.equal(duplicateHomeVisit.status, 200);
+  assert.equal(duplicateHomeVisit.body.counted, false);
+
+  const summary = await apiRequest("/articles/stats/summary");
+  assert.equal(summary.status, 200);
+  assert.ok(summary.body.summary.todayVisits >= 3);
+  assert.ok(summary.body.summary.totalLikes >= 5);
+
+  const popular = await apiRequest("/articles/popular?limit=2");
+  assert.equal(popular.status, 200);
+  assert.equal(popular.body.articles.length, 2);
+  assert.equal(popular.body.articles[0].slug, secondSlug);
+  assert.equal(popular.body.articles[1].slug, firstSlug);
+
+  const unlike = await apiRequest(`/articles/${firstSlug}/likes`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${user.token}`
+    }
+  });
+  assert.equal(unlike.status, 200);
+  assert.equal(unlike.body.changed, true);
+  assert.equal(unlike.body.article.stats.likeCount, 0);
+  assert.equal(unlike.body.article.stats.likedByMe, false);
+
+  const unfavorite = await apiRequest(`/articles/${firstSlug}/favorites`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${user.token}`
+    }
+  });
+  assert.equal(unfavorite.status, 200);
+  assert.equal(unfavorite.body.changed, true);
+  assert.equal(unfavorite.body.article.stats.favoriteCount, 0);
+  assert.equal(unfavorite.body.article.stats.favoritedByMe, false);
+
+  await prisma.article.delete({
+    where: {
+      id: firstArticle.id
+    }
+  });
+  await prisma.article.delete({
+    where: {
+      id: secondArticle.id
     }
   });
   await prisma.user.delete({

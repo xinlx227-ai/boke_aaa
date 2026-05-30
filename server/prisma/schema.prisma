@@ -33,9 +33,13 @@ model User {
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
   articles        Article[]
+  articleFavorites ArticleFavorite[]
+  articleLikes    ArticleLike[]
+  articleViews    ArticleView[]
   comments        Comment[]
   editedVersions  ArticleVersion[] @relation("ArticleVersionEditor")
   sessions        UserSession[]
+  siteVisits      SiteVisit[]
 
   @@map("users")
 }
@@ -56,14 +60,89 @@ model Article {
   author           User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
   category         Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   comments         Comment[]
+  favorites        ArticleFavorite[]
   images           ArticleImage[]
+  likes            ArticleLike[]
+  siteVisits       SiteVisit[]
+  stats            ArticleStats?
   tags             ArticleTag[]
   versions         ArticleVersion[]
+  views            ArticleView[]
 
   @@index([authorId])
   @@index([categoryId])
   @@index([status, publishedAt])
   @@map("articles")
+}
+
+model ArticleStats {
+  articleId     Int      @id @map("article_id")
+  viewCount     Int      @default(0) @map("view_count")
+  likeCount     Int      @default(0) @map("like_count")
+  favoriteCount Int      @default(0) @map("favorite_count")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  article       Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@map("article_stats")
+}
+
+model ArticleView {
+  id        Int      @id @default(autoincrement())
+  articleId Int      @map("article_id")
+  userId    Int?     @map("user_id")
+  visitorId String?  @map("visitor_id") @db.VarChar(100)
+  viewedAt  DateTime @default(now()) @map("viewed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([articleId, viewedAt])
+  @@index([articleId, userId, viewedAt])
+  @@index([articleId, visitorId, viewedAt])
+  @@map("article_views")
+}
+
+model ArticleLike {
+  articleId Int      @map("article_id")
+  userId    Int      @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, userId])
+  @@index([userId])
+  @@map("article_likes")
+}
+
+model ArticleFavorite {
+  articleId Int      @map("article_id")
+  userId    Int      @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, userId])
+  @@index([userId])
+  @@map("article_favorites")
+}
+
+model SiteVisit {
+  id        Int      @id @default(autoincrement())
+  pageType  String   @map("page_type") @db.VarChar(20)
+  articleId Int?     @map("article_id")
+  userId    Int?     @map("user_id")
+  visitorId String?  @map("visitor_id") @db.VarChar(100)
+  visitedAt DateTime @default(now()) @map("visited_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  article   Article? @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([visitedAt])
+  @@index([pageType, visitedAt])
+  @@index([pageType, articleId, userId, visitedAt])
+  @@index([pageType, articleId, visitorId, visitedAt])
+  @@map("site_visits")
 }
 
 model Category {

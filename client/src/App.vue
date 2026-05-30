@@ -5,6 +5,7 @@ const API_BASE_URL = "/api";
 const ASSET_BASE_URL = "";
 const TOKEN_STORAGE_KEY = "private-blog-token";
 const THEME_STORAGE_KEY = "private-blog-theme";
+const VISITOR_STORAGE_KEY = "private-blog-visitor-id";
 
 const view = ref("public");
 const authMode = ref("login");
@@ -24,23 +25,24 @@ const showBackToTop = ref(false);
 const latestPage = ref(1);
 const message = ref("");
 const trafficChartRef = ref(null);
-const popularPostsPlaceholder = [
-  { title: "如何建立高效的个人知识库系统", views: "3.2k 阅读" },
-  { title: "2024 前端开发者必备技能树", views: "2.8k 阅读" },
-  { title: "Figma 插件推荐：提升 200% 效率", views: "2.5k 阅读" }
-];
 let messageTimer = null;
 const currentUser = ref(null);
 const currentSession = ref(null);
 const publishedArticles = ref([]);
 const adminArticles = ref([]);
+const popularArticles = ref([]);
 const selectedArticle = ref(null);
 const comments = ref([]);
 const categories = ref([]);
 const tags = ref([]);
 const importResult = ref(null);
-const likedArticleSlugs = ref(new Set());
-const favoritedArticleSlugs = ref(new Set());
+const siteSummary = ref({
+  todayVisits: 0,
+  totalLikes: 0,
+  totalViews: 0,
+  totalFavorites: 0
+});
+const returnArticleSlugAfterLogin = ref("");
 
 const filters = reactive({
   q: "",
@@ -93,17 +95,21 @@ const selectedArticleReadTime = computed(() => {
   return `${estimatedMinutes} 分钟阅读`;
 });
 const selectedArticleSlug = computed(() => selectedArticle.value?.slug || "");
-const isSelectedArticleLiked = computed(() => Boolean(selectedArticleSlug.value && likedArticleSlugs.value.has(selectedArticleSlug.value)));
-const isSelectedArticleFavorited = computed(() => Boolean(selectedArticleSlug.value && favoritedArticleSlugs.value.has(selectedArticleSlug.value)));
+const isSelectedArticleLiked = computed(() => Boolean(selectedArticle.value?.stats?.likedByMe));
+const isSelectedArticleFavorited = computed(() => Boolean(selectedArticle.value?.stats?.favoritedByMe));
 const selectedArticleStats = computed(() => ({
-  views: "3,284",
-  likes: 168 + (isSelectedArticleLiked.value ? 1 : 0),
-  comments: comments.value.length
+  views: formatCompactNumber(selectedArticle.value?.stats?.viewCount || 0),
+  likes: formatCompactNumber(selectedArticle.value?.stats?.likeCount || 0),
+  comments: formatCompactNumber(selectedArticle.value?.stats?.commentCount ?? comments.value.length)
 }));
 const authorStats = computed(() => ({
-  articles: Math.max(publishedArticles.value.length, 42),
+  articles: publishedArticles.value.length,
   followers: "1.2k",
-  likes: "8.5k"
+  likes: formatCompactNumber(
+    publishedArticles.value
+      .filter((article) => article.author?.id && article.author.id === selectedArticle.value?.author?.id)
+      .reduce((total, article) => total + Number(article.stats?.likeCount || 0), 0)
+  )
 }));
 
 function articleSortTime(article) {
@@ -172,6 +178,83 @@ function tagTextToArray(value) {
     .filter(Boolean);
 }
 
+function getVisitorId() {
+  let visitorId = localStorage.getItem(VISITOR_STORAGE_KEY);
+
+  if (!visitorId) {
+    visitorId = crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    localStorage.setItem(VISITOR_STORAGE_KEY, visitorId);
+  }
+
+  return visitorId;
+}
+
+function formatCompactNumber(value) {
+  const number = Number(value) || 0;
+
+  if (number >= 10000) {
+    return `${(number / 10000).toFixed(number >= 100000 ? 0 : 1).replace(/\.0$/, "")}w`;
+  }
+
+  if (number >= 1000) {
+    return `${(number / 1000).toFixed(number >= 10000 ? 0 : 1).replace(/\.0$/, "")}k`;
+  }
+
+  return new Intl.NumberFormat("zh-CN").format(number);
+}
+
+function rawStatNumber(value) {
+  return Number(value) || 0;
+}
+
+function mergeArticleStats(targetArticle, sourceArticle) {
+  if (!targetArticle || !sourceArticle?.stats) {
+    return targetArticle;
+  }
+
+  return {
+    ...targetArticle,
+    stats: {
+      ...(targetArticle.stats || {}),
+      ...sourceArticle.stats
+    }
+  };
+}
+
+function replaceArticleInList(article) {
+  if (!article?.id) {
+    return;
+  }
+
+  publishedArticles.value = publishedArticles.value.map((item) =>
+    item.id === article.id ? mergeArticleStats(item, article) : item
+  );
+  popularArticles.value = popularArticles.value.map((item) =>
+    item.id === article.id ? mergeArticleStats(item, article) : item
+  );
+
+  if (selectedArticle.value?.id === article.id) {
+    selectedArticle.value = mergeArticleStats(selectedArticle.value, article);
+  }
+}
+
+function optimisticSelectedArticleStats(patch) {
+  if (!selectedArticle.value) {
+    return null;
+  }
+
+  const previousArticle = selectedArticle.value;
+  selectedArticle.value = {
+    ...selectedArticle.value,
+    stats: {
+      ...(selectedArticle.value.stats || {}),
+      ...patch
+    }
+  };
+  replaceArticleInList(selectedArticle.value);
+  return previousArticle;
+}
+
 function applyThemeMode() {
   document.documentElement.classList.toggle("dark", isDarkMode.value);
 }
@@ -194,40 +277,84 @@ function goToNextLatestPage() {
   setLatestPage(latestPage.value + 1);
 }
 
-function likeArticle() {
-  if (!selectedArticleSlug.value) {
-    return;
+function requireLoginForArticleAction() {
+  if (isAuthenticated.value) {
+    return true;
   }
 
-  const nextLikedArticleSlugs = new Set(likedArticleSlugs.value);
-
-  if (nextLikedArticleSlugs.has(selectedArticleSlug.value)) {
-    nextLikedArticleSlugs.delete(selectedArticleSlug.value);
-    setMessage("已取消点赞。");
-  } else {
-    nextLikedArticleSlugs.add(selectedArticleSlug.value);
-    setMessage("已收到你的点赞。");
-  }
-
-  likedArticleSlugs.value = nextLikedArticleSlugs;
+  returnArticleSlugAfterLogin.value = selectedArticleSlug.value;
+  setMessage("请先登录后再操作。");
+  authMode.value = "login";
+  setHash("login");
+  return false;
 }
 
-function favoriteArticle() {
+async function likeArticle() {
   if (!selectedArticleSlug.value) {
     return;
   }
 
-  const nextFavoritedArticleSlugs = new Set(favoritedArticleSlugs.value);
-
-  if (nextFavoritedArticleSlugs.has(selectedArticleSlug.value)) {
-    nextFavoritedArticleSlugs.delete(selectedArticleSlug.value);
-    setMessage("已取消收藏。");
-  } else {
-    nextFavoritedArticleSlugs.add(selectedArticleSlug.value);
-    setMessage("文章已加入收藏。");
+  if (!requireLoginForArticleAction()) {
+    return;
   }
 
-  favoritedArticleSlugs.value = nextFavoritedArticleSlugs;
+  const wasLiked = isSelectedArticleLiked.value;
+  const currentLikeCount = rawStatNumber(selectedArticle.value?.stats?.likeCount);
+  const previousArticle = optimisticSelectedArticleStats({
+    likedByMe: !wasLiked,
+    likeCount: Math.max(0, currentLikeCount + (wasLiked ? -1 : 1))
+  });
+
+  try {
+    const payload = await apiFetch(`/articles/${encodeURIComponent(selectedArticleSlug.value)}/likes`, {
+      method: wasLiked ? "DELETE" : "POST"
+    });
+    replaceArticleInList(payload.article);
+    setMessage(wasLiked ? "已取消点赞。" : "已收到你的点赞。");
+    await Promise.all([loadSiteSummary(), loadPopularArticles()]);
+  } catch (error) {
+    if (previousArticle) {
+      selectedArticle.value = previousArticle;
+      replaceArticleInList(previousArticle);
+    }
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  }
+}
+
+async function favoriteArticle() {
+  if (!selectedArticleSlug.value) {
+    return;
+  }
+
+  if (!requireLoginForArticleAction()) {
+    return;
+  }
+
+  const wasFavorited = isSelectedArticleFavorited.value;
+  const currentFavoriteCount = rawStatNumber(selectedArticle.value?.stats?.favoriteCount);
+  const previousArticle = optimisticSelectedArticleStats({
+    favoritedByMe: !wasFavorited,
+    favoriteCount: Math.max(0, currentFavoriteCount + (wasFavorited ? -1 : 1))
+  });
+
+  try {
+    const payload = await apiFetch(`/articles/${encodeURIComponent(selectedArticleSlug.value)}/favorites`, {
+      method: wasFavorited ? "DELETE" : "POST"
+    });
+    replaceArticleInList(payload.article);
+    setMessage(wasFavorited ? "已取消收藏。" : "文章已加入收藏。");
+    await loadPopularArticles();
+  } catch (error) {
+    if (previousArticle) {
+      selectedArticle.value = previousArticle;
+      replaceArticleInList(previousArticle);
+    }
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  }
 }
 
 async function shareArticle() {
@@ -364,6 +491,74 @@ async function apiFetch(path, options = {}) {
   return payload;
 }
 
+async function loadSiteSummary() {
+  try {
+    const payload = await apiFetch("/articles/stats/summary");
+    siteSummary.value = payload.summary;
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  }
+}
+
+async function loadPopularArticles() {
+  try {
+    const payload = await apiFetch("/articles/popular?limit=3");
+    popularArticles.value = payload.articles;
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  }
+}
+
+async function recordHomeVisit() {
+  try {
+    await apiFetch("/articles/site-visits", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Visitor-Id": getVisitorId()
+      },
+      body: JSON.stringify({
+        pageType: "home",
+        visitorId: getVisitorId()
+      })
+    });
+    await loadSiteSummary();
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  }
+}
+
+async function recordArticleView(slug) {
+  if (!slug) {
+    return;
+  }
+
+  try {
+    const payload = await apiFetch(`/articles/${encodeURIComponent(slug)}/views`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Visitor-Id": getVisitorId()
+      },
+      body: JSON.stringify({
+        visitorId: getVisitorId()
+      })
+    });
+    replaceArticleInList(payload.article);
+    await loadSiteSummary();
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  }
+}
+
 function articleQueryString() {
   const params = new URLSearchParams();
 
@@ -426,6 +621,7 @@ async function loadArticleDetail(slug) {
     selectedArticle.value = payload.article;
     tocOpen.value = false;
     await loadComments(payload.article.slug);
+    await recordArticleView(payload.article.slug);
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -497,6 +693,10 @@ async function loadPublishedArticles() {
   } finally {
     articleLoading.value = false;
   }
+}
+
+async function refreshPublicStats() {
+  await Promise.all([loadSiteSummary(), loadPopularArticles()]);
 }
 
 async function loadAdminArticles() {
@@ -598,9 +798,16 @@ async function submitLogin() {
       deviceId: payload.deviceId
     };
     loginForm.password = "";
+    const returnSlug = returnArticleSlugAfterLogin.value;
     setMessage(`欢迎回来，${payload.user.username}。`);
     await loadProfile();
-    setHash("");
+    await Promise.all([loadPublishedArticles(), loadPopularArticles()]);
+    if (returnSlug) {
+      returnArticleSlugAfterLogin.value = "";
+      setHash(`article/${encodeURIComponent(returnSlug)}`);
+    } else {
+      setHash("");
+    }
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -871,6 +1078,8 @@ async function submitComment() {
     commentForm.parentId = null;
     setMessage("评论已发布。");
     await loadComments(selectedArticle.value.slug);
+    await loadArticleDetail(selectedArticle.value.slug);
+    await loadPopularArticles();
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -891,6 +1100,10 @@ async function deleteComment(comment) {
     });
     setMessage("评论已删除。");
     await loadComments(selectedArticle.value?.slug);
+    if (selectedArticle.value?.slug) {
+      await loadArticleDetail(selectedArticle.value.slug);
+      await loadPopularArticles();
+    }
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -917,6 +1130,11 @@ function articleDisplayDate(article) {
 
 function handleHashChange() {
   syncViewToHash();
+}
+
+function shouldRecordHomeVisit() {
+  const { viewName, authMode: nextAuthMode } = parseHash();
+  return viewName === "public" && !nextAuthMode;
 }
 
 function initTrafficChart() {
@@ -953,6 +1171,9 @@ function initTrafficChart() {
 watch(view, (newVal) => {
   if (newVal === "public") {
     initTrafficChart();
+    if (shouldRecordHomeVisit()) {
+      recordHomeVisit();
+    }
   }
 });
 
@@ -960,7 +1181,7 @@ onMounted(async () => {
   applyThemeMode();
   window.addEventListener("hashchange", handleHashChange);
   window.addEventListener("scroll", handleScroll, { passive: true });
-  await Promise.all([loadPublishedArticles(), loadArticleFilters()]);
+  await Promise.all([loadPublishedArticles(), loadArticleFilters(), refreshPublicStats()]);
   if (token.value) {
     await loadProfile();
   }
@@ -968,6 +1189,9 @@ onMounted(async () => {
     articleForm.chapterOrder = nextArticleOrder.value;
   }
   syncViewToHash();
+  if (view.value === "public" && shouldRecordHomeVisit()) {
+    await recordHomeVisit();
+  }
   initTrafficChart();
   handleScroll();
 });
@@ -1468,27 +1692,33 @@ onBeforeUnmount(() => {
               <div class="mt-4 grid grid-cols-2 gap-4">
                 <div class="text-center">
                   <p class="text-[10px] text-slate-400 uppercase font-bold">今日阅读</p>
-                  <p class="text-lg font-bold text-slate-900">1,284</p>
+                  <p class="text-lg font-bold text-slate-900">{{ formatCompactNumber(siteSummary.todayVisits) }}</p>
                 </div>
                 <div class="text-center">
                   <p class="text-[10px] text-slate-400 uppercase font-bold">总点赞</p>
-                  <p class="text-lg font-bold text-slate-900">8.5k</p>
+                  <p class="text-lg font-bold text-slate-900">{{ formatCompactNumber(siteSummary.totalLikes) }}</p>
                 </div>
               </div>
             </section>
 
-            <!-- 热门排行 (静态占位) -->
+            <!-- 热门排行 -->
             <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-[400px] lg:h-[440px] flex flex-col overflow-hidden">
               <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <iconify-icon class="text-orange-500" icon="mdi:fire"></iconify-icon>
                 最受欢迎
               </h3>
-              <div class="space-y-4">
-                <div v-for="(item, idx) in popularPostsPlaceholder" :key="idx" class="flex gap-3 group cursor-pointer">
+              <p v-if="popularArticles.length === 0" class="text-xs text-slate-400 text-center py-8">暂无热门文章</p>
+              <div v-else class="space-y-4">
+                <div
+                  v-for="(item, idx) in popularArticles"
+                  :key="item.id"
+                  class="flex gap-3 group cursor-pointer"
+                  @click="openArticle(item.slug)"
+                >
                   <span class="text-xl font-black text-slate-100 group-hover:text-orange-100 transition-colors">{{ String(idx + 1).padStart(2, '0') }}</span>
                   <div>
                     <h4 class="text-xs font-bold text-slate-700 line-clamp-2 group-hover:text-orange-500 transition-all">{{ item.title }}</h4>
-                    <p class="text-[10px] text-slate-400 mt-1">{{ item.views }}</p>
+                    <p class="text-[10px] text-slate-400 mt-1">{{ formatCompactNumber(item.stats?.viewCount || 0) }} 阅读</p>
                   </div>
                 </div>
               </div>

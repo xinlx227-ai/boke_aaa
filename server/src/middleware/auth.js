@@ -5,67 +5,95 @@ function sendUnauthorized(res, message = "请先登录。") {
   return res.status(401).json({ message });
 }
 
-export async function requireAuth(req, res, next) {
+async function resolveAuth(req) {
   const authorizationHeader = req.headers.authorization;
 
   if (!authorizationHeader || !authorizationHeader.startsWith("Bearer ")) {
-    return sendUnauthorized(res);
+    return null;
   }
 
   const token = authorizationHeader.slice("Bearer ".length).trim();
 
-  try {
-    const payload = verifyAccessToken(token);
-    const userId = Number(payload.sub);
-    const sessionId = Number(payload.sessionId);
-    const deviceId = payload.deviceId;
-    const tokenId = payload.jti;
+  const payload = verifyAccessToken(token);
+  const userId = Number(payload.sub);
+  const sessionId = Number(payload.sessionId);
+  const deviceId = payload.deviceId;
+  const tokenId = payload.jti;
 
-    if (!userId || !sessionId || !deviceId || !tokenId) {
-      return sendUnauthorized(res, "登录凭证无效。");
+  if (!userId || !sessionId || !deviceId || !tokenId) {
+    return null;
+  }
+
+  const session = await prisma.userSession.findUnique({
+    where: {
+      id: sessionId
+    },
+    include: {
+      user: true
     }
+  });
 
-    const session = await prisma.userSession.findUnique({
-      where: {
-        id: sessionId
-      },
-      include: {
-        user: true
-      }
-    });
+  if (
+    !session ||
+    !session.isActive ||
+    session.userId !== userId ||
+    session.deviceId !== deviceId ||
+    session.tokenHash !== hashTokenId(tokenId)
+  ) {
+    return null;
+  }
 
-    if (
-      !session ||
-      !session.isActive ||
-      session.userId !== userId ||
-      session.deviceId !== deviceId ||
-      session.tokenHash !== hashTokenId(tokenId)
-    ) {
-      return sendUnauthorized(res, "登录状态已过期或失效，请重新登录。");
+  const touchResult = await prisma.userSession.updateMany({
+    where: {
+      id: sessionId,
+      userId,
+      isActive: true
+    },
+    data: {
+      lastActiveAt: new Date()
     }
+  });
 
-    const touchResult = await prisma.userSession.updateMany({
-      where: {
-        id: sessionId,
-        userId,
-        isActive: true
-      },
-      data: {
-        lastActiveAt: new Date()
-      }
-    });
+  if (touchResult.count === 0) {
+    return null;
+  }
 
-    if (touchResult.count === 0) {
-      return sendUnauthorized(res, "登录状态已过期或失效，请重新登录。");
-    }
-
-    req.auth = {
+  return {
+    auth: {
       userId,
       sessionId,
       deviceId,
       role: payload.role
-    };
-    req.user = sanitizeUser(session.user);
+    },
+    user: sanitizeUser(session.user)
+  };
+}
+
+export async function attachOptionalAuth(req, _res, next) {
+  try {
+    const resolved = await resolveAuth(req);
+
+    if (resolved) {
+      req.auth = resolved.auth;
+      req.user = resolved.user;
+    }
+
+    return next();
+  } catch (_error) {
+    return next();
+  }
+}
+
+export async function requireAuth(req, res, next) {
+  try {
+    const resolved = await resolveAuth(req);
+
+    if (!resolved) {
+      return sendUnauthorized(res);
+    }
+
+    req.auth = resolved.auth;
+    req.user = resolved.user;
 
     return next();
   } catch (_error) {

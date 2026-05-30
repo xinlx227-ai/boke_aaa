@@ -2,24 +2,20 @@
 
 ## 本次交接用途
 
-用户要求更新仓库内的 `handoff.md` 和 `README.md`，提交并推送远端。本文件用于让下一位 Agent 在当前 `main` 状态上继续工作。
+用户要求将阅读量、点赞、收藏、热门排行等静态或本地展示接入真实后端统计 API，随后更新本地 `handoff.md` 和 `README.md` 并提交。本文件用于让下一位 Agent 在当前分支继续工作。
 
 ## 建议下个 Agent 使用的技能
 
 - `handoff`：上下文再次接近上限时继续更新本文件。
-- `browser:browser`：如用户要求打开、点击或验收本地页面时使用；本机此前的 in-app browser / node_repl 偶发 Windows sandbox 错误，必要时可退回构建和命令行检查。
+- `browser:browser`：如用户要求打开、点击或验收本地页面时使用；此前 in-app browser / node_repl 在 Windows 上偶发 sandbox 错误，必要时可退回构建、HTTP 检查和命令行验证。
 - `$grill-me`：用户继续要求追问设计方案或用该技能名时使用；遵循“一次只问一个问题，并给推荐答案”。
 
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前主分支：`main`
+- 当前分支：`codex/article-apiset`
+- `main` 与 `origin/main` 在本次统计 API 开始前均指向 `b251ad6 Update homepage sidebar handoff notes`。
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
-- 当前最新功能合并：`d461d5b Merge index layout updates into main`
-- `codex/index-layout` 已合并到 `main`，功能提交为 `b328f4e Add stable homepage latest pagination`。
-- 本次文档更新提交并推送后，应以 `git log --oneline --decorate -5` 和 `git status --short --branch` 确认 `main` 与 `origin/main` 状态。
-- `codex/article-detail-ui` 已合并到 `main`、推送到 Gitee，并删除本地分支。
-- `codex/ui-layout` 已合并到 `main` 并推送到 Gitee；本地分支此前已删除。
 - 不要提交、回滚或覆盖用户自己的未提交改动；继续工作前先检查工作区。
 
 继续工作前建议先执行：
@@ -27,7 +23,7 @@
 ```bash
 git status --short --branch
 git log --oneline --decorate -5
-git diff -- client/src/App.vue client/src/style.css
+git diff -- client/src/App.vue server/src/routes/articles.js server/prisma/schema.prisma
 git diff -- README.md handoff.md
 ```
 
@@ -42,61 +38,144 @@ git diff -- README.md handoff.md
 
 ## 项目概况
 
-这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序和文章详情页新 UI 等能力。
+这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
+
+## 本次已完成：真实统计 API
+
+### 数据库与迁移
+
+新增迁移：
+
+- `server/prisma/migrations/20260530120000_article_stats/migration.sql`
+
+新增统计相关模型和表：
+
+- `article_stats`：文章统计汇总，包含 `view_count`、`like_count`、`favorite_count`。
+- `article_views`：文章阅读明细，用于自然日去重。
+- `article_likes`：用户点赞明细，同一用户同一文章唯一。
+- `article_favorites`：用户收藏明细，同一用户同一文章唯一。
+- `site_visits`：公开首页和文章详情访问明细，用于“今日阅读”。
+
+迁移已应用到本地开发库 `private_blog` 和测试库 `private_blog_test`。
+
+### 统计规则
+
+- 阅读量：打开文章详情页时写入，按 `Asia/Shanghai` 自然日去重。
+- 匿名阅读：前端生成 `private-blog-visitor-id` 并通过 `visitorId` / `X-Visitor-Id` 传给后端。
+- 登录阅读：按用户身份计数。
+- 今日阅读：统计公开首页和文章详情访问，不统计登录/注册、用户面板、管理后台。
+- 点赞和收藏：必须登录；同一用户同一文章只能点赞/收藏一次，可取消。
+- 未登录点击点赞/收藏：提示先登录，进入登录视图，登录后回到原文章，不自动补执行操作。
+- 热门排行：只包含 `PUBLISHED` 文章，按综合热度分排序：
+
+```text
+hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
+```
+
+- 详情页指标条只显示阅读、点赞、评论，不显示收藏数。
+- 收藏列表本次未做。
+- 旧静态假数据未迁移，真实统计从 0 开始；评论数来自真实 `APPROVED` 评论。
+
+### 后端 API
+
+新增或增强：
+
+- `GET /api/articles`：文章列表返回 `stats`。
+- `GET /api/articles/:slug`：文章详情返回 `stats` 和个人状态。
+- `POST /api/articles/:slug/views`：记录文章阅读。
+- `POST /api/articles/:slug/likes`：点赞，需登录。
+- `DELETE /api/articles/:slug/likes`：取消点赞，需登录。
+- `POST /api/articles/:slug/favorites`：收藏，需登录。
+- `DELETE /api/articles/:slug/favorites`：取消收藏，需登录。
+- `POST /api/articles/site-visits`：记录公开首页访问。
+- `GET /api/articles/stats/summary`：返回今日阅读、全站总点赞等。
+- `GET /api/articles/popular?limit=3`：返回热门文章排行。
+
+`stats` 形状：
+
+```json
+{
+  "viewCount": 0,
+  "likeCount": 0,
+  "favoriteCount": 0,
+  "commentCount": 0,
+  "likedByMe": false,
+  "favoritedByMe": false
+}
+```
+
+实现备注：本次后端统计逻辑使用 Prisma raw SQL 访问新增统计表，避免本机 Prisma Client 生成时被 Windows DLL 锁占用影响开发；`schema.prisma` 和迁移仍已完整更新。
+
+### 前端接入
+
+- 移除详情页阅读数、点赞数、收藏状态、热门排行、阅读趋势下方数字的静态/本地展示。
+- 详情页阅读/点赞/评论指标条改为真实数据。
+- 顶部与底部点赞/收藏按钮同步后端 `likedByMe` / `favoritedByMe`。
+- 点赞/收藏使用乐观更新，失败时回滚并提示。
+- 右侧“阅读趋势”图形仍为第一版视觉占位；下方“今日阅读”和“总点赞”改为真实 summary 数据。
+- 右侧“最受欢迎”改为真实热门排行，点击可进入文章详情。
+- 作者卡“获赞”改为当前作者已发布文章真实点赞数；粉丝仍是静态展示。
 
 ## 当前 UI 与功能状态
 
 - 首页是当前新 UI 的主视觉标准。
 - 公开首页、登录/注册侧边栏、明暗色调切换已是新 UI。
 - 首页“最新发布”按 `publishedAt` / `createdAt` 倒序分页展示，每页 4 篇。
-- 最新发布分页不是旧提交 `22c919d` 的简单恢复；当前实现来自 `codex/index-layout`，桌面端固定为两行两列四卡位，最后一页不足 4 篇时保留空位，分页位置不随文章数量上移。
-- 最新发布文章卡片桌面端定高，标题和摘要通过固定行数截断，避免不同内容长度撑高卡片；移动端保持自然高度。
+- 最新发布分页来自 `codex/index-layout`，桌面端固定两行两列四卡位，最后一页不足 4 篇时保留空位，分页位置不随文章数量上移。
+- 最新发布文章卡片桌面端定高，标题和摘要通过固定行数截断；移动端保持自然高度。
 - 首页左侧文章列表按 `chapterOrder` 升序显示。
-- 登录态下公开首页左侧“文章列表”卡片使用 `lg:h-[760px]`，用于让白色卡片底部与右侧“最受欢迎”区域底部对齐；未登录态仍保持 `lg:h-[620px]`。
-- 首页右侧保留热门标签、阅读趋势、最受欢迎。
-- 文章详情页只保留左侧栏 + 中间正文两栏；右侧栏已移除，详情页不显示热门标签和相关推荐。
-- 详情页左侧栏为紧凑作者卡、条件显示的目录、筛选文章、文章列表。目录放在筛选文章上方，当前文章无目录时不显示。
-- 详情页左侧滚动条已隐藏，但保留鼠标滚轮滚动。
-- 详情页评论区已按参考图调整，评论头像为圆形首字头像。
-- 详情页点赞/收藏是前端本地状态，顶部与底部互动条同步，刷新后不持久化。
+- 登录态下公开首页左侧“文章列表”卡片使用 `lg:h-[760px]`，未登录态保持 `lg:h-[620px]`。
+- 首页右侧保留热门标签、阅读趋势、最受欢迎，其中统计数据已接入真实 API。
+- 文章详情页只保留左侧栏 + 中间正文两栏；右侧栏已移除。
+- 详情页左侧栏为紧凑作者卡、条件显示的目录、筛选文章、文章列表。
+- 详情页点赞/收藏已由前端本地状态改为后端持久化状态。
 - 移动端详情页优先正文，左侧内容折叠为抽屉。
 - 用户面板和管理后台仍为旧 UI，通过 `.legacy-ui` 隔离。
 
 ## 后端与数据状态
 
-- 已新增并合入 `published_at` / `publishedAt` 字段，用于保存首次发布时间。
-- 已新增迁移：
+- `published_at` / `publishedAt` 字段已合入，用于保存首次发布时间。
+- 已有迁移：
   - `server/prisma/migrations/20260528162000_add_article_published_at/migration.sql`
   - `server/prisma/migrations/20260528163500_drop_article_chapter_order_index/migration.sql`
+  - `server/prisma/migrations/20260530120000_article_stats/migration.sql`
 - 后端发布接口首次发布时写入 `published_at`，再次发布不覆盖原首次发布时间。
 - `chapterOrder` 作为文章序号，新建默认当前文章总数 + 1；手动重排时会顺延其他文章。
 
 ## 最近重要提交
 
-- `c07cac4 Update article detail UI`：文章详情页 UI 调整、作者卡/目录/评论区/左栏滚动条等。
-- `cc9206d Merge ui layout updates into main`：合并首页布局、文章排序、`published_at` 迁移、后端逻辑和测试。
-- `22c919d Add homepage latest articles pagination`：曾加入首页最新发布分页。
-- `46586b8 Revert "Add homepage latest articles pagination"`：按用户要求撤销 `22c919d` 并推送 Gitee。
-- `b328f4e Add stable homepage latest pagination`：在 `codex/index-layout` 中重新实现稳定的首页最新发布分页、四卡位占位和文章卡片定高。
+- `b251ad6 Update homepage sidebar handoff notes`：本次统计 API 开始前的 `HEAD` / `main` / `origin/main`。
+- `60074c7 Update handoff after index layout merge`：首页侧栏交接更新。
 - `d461d5b Merge index layout updates into main`：将 `codex/index-layout` 合并进 `main`。
-- 最近一次小调整：登录态下公开首页左侧“文章列表”卡片高度改为 `lg:h-[760px]`，只影响公开首页登录态，不影响未登录态和文章详情页。
+- `b328f4e Add stable homepage latest pagination`：稳定首页最新发布分页、四卡位占位和文章卡片定高。
+- `c07cac4 Update article detail UI`：文章详情页 UI 调整。
+
+本次提交预计为统计 API 与文档更新提交。
 
 ## 最近验证
 
-- 合并 `codex/ui-layout` 时执行过：
-  - `npm run build` 通过
-  - `npm test --workspace server` 通过，4/4 passed
-  - `git diff --check` 通过
-- 撤销首页分页提交后确认过：
-  - `git status --short --branch` 显示 `main` 与 `origin/main` 一致
-  - `git log --oneline --decorate -4` 显示 `46586b8` 同时位于 `HEAD` 和 `origin/main`
-- 合并 `codex/index-layout` 前后执行过：
-  - `git diff --check` 通过
-  - `npm run build` 通过
-  - 为对比 `main` 原首页曾创建过 `D:\project\codex-project-boke-main` 预览 worktree，后续已删除；`5180` 预览服务已停止。
-- 调整登录态文章列表高度后执行过：
-  - `git diff --check` 通过
-  - `npm run build` 通过；若普通沙箱出现 Vite 绝对路径错误，可在真实工作区重跑构建。
+本次统计 API 工作已执行：
+
+```bash
+npm test --workspace server
+npm run build
+git diff --check
+```
+
+结果均通过。
+
+还执行过本地前端临时预览：
+
+- 尝试使用 `5174`，因端口占用自动切到 `http://127.0.0.1:5175/`。
+- `Invoke-WebRequest http://127.0.0.1:5175/` 返回 200。
+- 临时 Vite 进程已停止，未占用用户的 `3000` 后端端口。
+
+已执行数据库迁移：
+
+```bash
+npm run prisma:deploy
+node --env-file=.env.test ..\node_modules\prisma\build\index.js migrate deploy --schema prisma\schema.prisma
+```
 
 ## 本地 MySQL 备注
 
@@ -115,12 +194,12 @@ sc.exe config MySQL start= demand
 
 - 若网页显示“请求失败”且 Vite 日志出现 `ECONNREFUSED`，先检查后端 `3000` 是否正在监听。
 - 近期曾遇到后端因 Prisma Client 生成文件缺失而崩溃，错误为 `Cannot find module '.prisma/client/default'`；恢复方式是执行 `npm run prisma:generate`，这不会修改数据库数据。
-- 当时只读验证过 `MySQL80` 正在运行，`/api/articles` 能返回现有文章，说明 `private_blog` 数据未丢失。
+- 本次曾尝试 `npm run prisma:generate`，在 Windows 上遇到 Prisma Client DLL rename 被占用：`query_engine-windows.dll.node.tmp... -> query_engine-windows.dll.node`。当前统计代码使用 raw SQL，不依赖生成后的新 Prisma Client 模型；等没有 Node/Prisma 进程占用时可再运行生成。
 
 ## 后续建议
 
-- 若用户继续调整首页空白区域或分页位置，以 `main` 旧首页视觉比例为基准；不要把文章卡片拉得过高。
-- 最新发布分页已重新实现，后续若改动，应保持桌面端四卡位和分页位置稳定。
 - 可继续改造用户面板和管理后台旧 UI。
-- 可将阅读量、点赞量、收藏状态、作者粉丝、阅读趋势、热门排行等静态或本地展示逐步接入真实后端统计 API。
-- 可补充分页、评论审核、嵌套回复 UI，但应先确认用户要改的是首页还是文章详情页。
+- 可基于 `article_stats` 和 `site_visits` 做真实阅读趋势折线图；第一版目前只把趋势卡下方数字接真。
+- 可做“我的收藏列表”，本次只实现收藏状态和计数。
+- 可补充分页、评论审核、嵌套回复 UI。
+- 可将粉丝数、作者关注等继续接入真实后端模型。
