@@ -1299,7 +1299,7 @@ onBeforeUnmount(() => {
       <!-- 文章列表卡片 -->
       <section
         class="article-sidebar-list-card bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col card-hover"
-        :class="view === 'article' ? '' : 'h-[520px] lg:h-[620px]'"
+        :class="view === 'article' ? '' : ['h-[520px]', isAuthenticated ? 'lg:h-[760px]' : 'lg:h-[620px]']"
       >
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-bold text-slate-800 flex items-center gap-2">

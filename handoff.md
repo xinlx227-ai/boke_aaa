@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-用户要求合并 `codex/index-layout`，更新仓库内的 `handoff.md` 和 `README.md`，并推送远端。本文件用于让下一位 Agent 在当前 `main` 状态上继续工作。
+用户要求更新仓库内的 `handoff.md` 和 `README.md`，提交并推送远端。本文件用于让下一位 Agent 在当前 `main` 状态上继续工作。
 
 ## 建议下个 Agent 使用的技能
 
@@ -52,6 +52,7 @@ git diff -- README.md handoff.md
 - 最新发布分页不是旧提交 `22c919d` 的简单恢复；当前实现来自 `codex/index-layout`，桌面端固定为两行两列四卡位，最后一页不足 4 篇时保留空位，分页位置不随文章数量上移。
 - 最新发布文章卡片桌面端定高，标题和摘要通过固定行数截断，避免不同内容长度撑高卡片；移动端保持自然高度。
 - 首页左侧文章列表按 `chapterOrder` 升序显示。
+- 登录态下公开首页左侧“文章列表”卡片使用 `lg:h-[760px]`，用于让白色卡片底部与右侧“最受欢迎”区域底部对齐；未登录态仍保持 `lg:h-[620px]`。
 - 首页右侧保留热门标签、阅读趋势、最受欢迎。
 - 文章详情页只保留左侧栏 + 中间正文两栏；右侧栏已移除，详情页不显示热门标签和相关推荐。
 - 详情页左侧栏为紧凑作者卡、条件显示的目录、筛选文章、文章列表。目录放在筛选文章上方，当前文章无目录时不显示。
@@ -78,6 +79,7 @@ git diff -- README.md handoff.md
 - `46586b8 Revert "Add homepage latest articles pagination"`：按用户要求撤销 `22c919d` 并推送 Gitee。
 - `b328f4e Add stable homepage latest pagination`：在 `codex/index-layout` 中重新实现稳定的首页最新发布分页、四卡位占位和文章卡片定高。
 - `d461d5b Merge index layout updates into main`：将 `codex/index-layout` 合并进 `main`。
+- 最近一次小调整：登录态下公开首页左侧“文章列表”卡片高度改为 `lg:h-[760px]`，只影响公开首页登录态，不影响未登录态和文章详情页。
 
 ## 最近验证
 
@@ -92,6 +94,9 @@ git diff -- README.md handoff.md
   - `git diff --check` 通过
   - `npm run build` 通过
   - 为对比 `main` 原首页曾创建过 `D:\project\codex-project-boke-main` 预览 worktree，后续已删除；`5180` 预览服务已停止。
+- 调整登录态文章列表高度后执行过：
+  - `git diff --check` 通过
+  - `npm run build` 通过；若普通沙箱出现 Vite 绝对路径错误，可在真实工作区重跑构建。
 
 ## 本地 MySQL 备注
 
@@ -105,6 +110,12 @@ sc.exe config MySQL start= demand
 ```
 
 不要在文档或回复中暴露真实数据库密码。
+
+## 后端启动注意
+
+- 若网页显示“请求失败”且 Vite 日志出现 `ECONNREFUSED`，先检查后端 `3000` 是否正在监听。
+- 近期曾遇到后端因 Prisma Client 生成文件缺失而崩溃，错误为 `Cannot find module '.prisma/client/default'`；恢复方式是执行 `npm run prisma:generate`，这不会修改数据库数据。
+- 当时只读验证过 `MySQL80` 正在运行，`/api/articles` 能返回现有文章，说明 `private_blog` 数据未丢失。
 
 ## 后续建议
 
