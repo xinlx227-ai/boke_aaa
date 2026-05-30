@@ -1,31 +1,30 @@
 # Private Blog System - 私有博客系统
 
-一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索/分类/标签/目录等基础能力；当前分支正在将文章详情页 UI 向首页风格统一。
+一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序和文章详情页新 UI 等基础能力。
 
 ## 当前状态
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前分支 | `codex/article-detail-ui` |
-| 主要未提交改动 | `client/src/App.vue`、`client/src/style.css`、`README.md`、`codex-project-boke-handoff.md` |
-| 最新 UI 工作 | 文章详情页已向首页统一，包含首页同款顶部导航骨架、左侧用户/筛选/文章列表、深色 hero、统计条、正文卡片、底部互动条、评论区、作者/目录/标签/推荐右栏和移动端抽屉 |
-| 最近验证 | 2026-05-29：`npm run build` 通过 |
-| 交接文档 | `codex-project-boke-handoff.md` |
-
-注意：本仓库当前仍保留未提交的前端 UI 改动。继续开发前请先查看：
-
-```bash
-git status --short
-git diff -- client/src/App.vue client/src/style.css
-```
+| 当前分支 | `main` |
+| 最新合并 | `codex/article-detail-ui` 已合并；正在合并 `codex/ui-layout` |
+| 最新 UI 工作 | 文章详情页已向首页统一，包含顶部导航、左侧作者/目录/筛选/文章列表、深色 hero、统计条、正文卡片、底部互动条、评论区和移动端抽屉 |
+| 首页布局 | 最新发布限制 4 篇；左侧文章列表按文章序号显示；热门排行卡片定高 |
+| 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
+| 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
+| 最近验证 | 2026-05-30：详情页 UI 合并前 `npm run build` 通过；`codex/ui-layout` 分支曾通过 `npm run build` 和 `npm test --workspace server` |
+| 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
 
 - 首页是当前新 UI 的主视觉标准。
-- 文章详情页已按首页风格重排为三栏：左侧复用首页用户信息、筛选文章和文章列表；中间为文章阅读主体；右侧为作者卡片、目录、热门标签和相关推荐。
+- 公开首页、登录/注册侧边栏、明暗色调切换已经是新 UI。
+- 文章详情页已按首页风格重排为两栏：左侧为作者卡、目录、筛选文章和文章列表；中间为文章阅读主体。
 - 详情页顶部保留 `MyBlog Pro`、返回、搜索框视觉预留、点赞/收藏/分享、暗色切换、通知和用户胶囊。
 - 详情页点赞/收藏目前是前端本地状态，顶部与底部互动条同步；刷新后不会持久化。
-- 移动端优先展示文章内容，左侧筛选折叠为抽屉，作者卡片/热门标签/目录卡隐藏，相关推荐放到评论区之后。
+- 详情页目录只在当前文章存在 TOC 时显示，并位于作者卡和筛选文章之间。
+- 详情页右侧栏已移除，热门标签和相关推荐不在详情页显示，主内容区域向右扩展。
+- 移动端优先展示文章内容，左侧信息折叠为抽屉；抽屉内保留作者卡、目录、筛选和文章列表。
 - 用户面板和管理后台仍是旧 UI，通过 `.legacy-ui` 隔离。
 
 ## 功能概览
@@ -33,6 +32,10 @@ git diff -- client/src/App.vue client/src/style.css
 ### 公开阅读体验
 
 - 公开文章列表
+- 首页精选文章
+- 最新发布 4 篇文章
+- 按 `publishedAt` 排序的最新发布
+- 按 `chapterOrder` 排序的文章序号列表
 - 文章搜索
 - 分类筛选
 - 标签筛选
@@ -61,6 +64,8 @@ git diff -- client/src/App.vue client/src/style.css
 - Markdown zip 批量导入
 - 导入时复制本地图片并重写图片路径
 - 导入结果包含成功、缺失图片、格式错误、失败文件日志
+- `chapterOrder` 自动编号和手动重排
+- 首次发布写入 `published_at`，再次发布不覆盖原首次发布时间
 
 ### 评论
 
@@ -111,7 +116,7 @@ git diff -- client/src/App.vue client/src/style.css
 |   `-- package.json
 |-- package.json
 |-- README.md
-`-- codex-project-boke-handoff.md
+`-- handoff.md
 ```
 
 ## 环境要求
@@ -167,6 +172,8 @@ npm run prisma:deploy
 ```bash
 npm run prisma:migrate -- --name your_migration_name
 ```
+
+本项目当前包含 `published_at` 相关迁移，以及取消 `chapterOrder` 唯一索引的迁移。其他环境同步代码后需要执行迁移部署。
 
 ## 本地开发
 
@@ -256,7 +263,7 @@ npm test --workspace server
 npm run build
 ```
 
-当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除等流程。
+当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、文章序号和首次发布时间等流程。
 
 ## 管理员账号说明
 
@@ -270,7 +277,7 @@ WHERE email = 'your-admin@example.com';
 
 ## 后续建议
 
-- 让用户自行查看文章详情页桌面和移动端视觉效果，并按反馈微调。
+- 推送前完成 `codex/ui-layout` 与 `main` 的合并验证。
 - 继续改造用户面板和管理后台旧 UI。
-- 将热门排行、阅读趋势、阅读量、点赞/收藏、作者粉丝、相关推荐等静态或本地展示对接真实统计 API。
+- 将热门排行、阅读趋势、阅读量、点赞/收藏、作者粉丝等静态或本地展示对接真实统计 API。
 - 补充分页、评论审核、嵌套回复 UI。

@@ -105,6 +105,49 @@ const authorStats = computed(() => ({
   likes: "8.5k"
 }));
 
+function articleSortTime(article) {
+  const time = new Date(article?.publishedAt || article?.createdAt || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function articleOrderValue(article) {
+  const order = Number(article?.chapterOrder);
+  return Number.isFinite(order) ? order : Number.MAX_SAFE_INTEGER;
+}
+
+const sortedPublishedArticles = computed(() =>
+  [...publishedArticles.value].sort((firstArticle, secondArticle) => {
+    const timeDiff = articleSortTime(secondArticle) - articleSortTime(firstArticle);
+
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
+
+    return (secondArticle.id || 0) - (firstArticle.id || 0);
+  })
+);
+const latestPublishedArticles = computed(() => sortedPublishedArticles.value.slice(0, 4));
+const featuredArticle = computed(() => sortedPublishedArticles.value[0] || null);
+const orderedPublishedArticles = computed(() =>
+  [...publishedArticles.value].sort((firstArticle, secondArticle) => {
+    const orderDiff = articleOrderValue(firstArticle) - articleOrderValue(secondArticle);
+
+    if (orderDiff !== 0) {
+      return orderDiff;
+    }
+
+    return (firstArticle.id || 0) - (secondArticle.id || 0);
+  })
+);
+const nextArticleOrder = computed(() => {
+  const knownArticleIds = new Set(
+    [...publishedArticles.value, ...adminArticles.value]
+      .map((article) => article.id)
+      .filter(Boolean)
+  );
+  return knownArticleIds.size + 1;
+});
+
 function mapAssetUrls(html) {
   return String(html || "").replace(/(src|href)="\/uploads\//g, `$1="${ASSET_BASE_URL}/uploads/`);
 }
@@ -228,7 +271,7 @@ function clearArticleForm() {
   articleForm.id = null;
   articleForm.title = "";
   articleForm.slug = "";
-  articleForm.chapterOrder = 0;
+  articleForm.chapterOrder = nextArticleOrder.value;
   articleForm.categoryName = "";
   articleForm.tagNamesText = "";
   articleForm.contentMarkdown = "";
@@ -392,8 +435,8 @@ function syncViewToHash() {
     return;
   }
 
-  if (viewName === "public" && !selectedArticle.value && publishedArticles.value.length > 0) {
-    selectedArticle.value = publishedArticles.value[0];
+  if (viewName === "public" && !selectedArticle.value && sortedPublishedArticles.value.length > 0) {
+    selectedArticle.value = sortedPublishedArticles.value[0];
   }
 }
 
@@ -417,7 +460,7 @@ async function loadPublishedArticles() {
     }
 
     if (payload.articles.length > 0) {
-      selectedArticle.value = payload.articles[0];
+      selectedArticle.value = sortedPublishedArticles.value[0];
     } else if (view.value === "public") {
       selectedArticle.value = null;
       comments.value = [];
@@ -829,10 +872,20 @@ async function deleteComment(comment) {
 }
 
 function formatDate(value) {
+  const date = new Date(value);
+
+  if (!Number.isFinite(date.getTime())) {
+    return "时间未知";
+  }
+
   return new Intl.DateTimeFormat("zh-CN", {
     dateStyle: "medium",
     timeStyle: "short"
-  }).format(new Date(value));
+  }).format(date);
+}
+
+function articleDisplayDate(article) {
+  return formatDate(article?.publishedAt || article?.createdAt);
 }
 
 function handleHashChange() {
@@ -883,6 +936,9 @@ onMounted(async () => {
   await Promise.all([loadPublishedArticles(), loadArticleFilters()]);
   if (token.value) {
     await loadProfile();
+  }
+  if (!articleForm.id && articleForm.chapterOrder === 0) {
+    articleForm.chapterOrder = nextArticleOrder.value;
   }
   syncViewToHash();
   initTrafficChart();
@@ -1214,7 +1270,10 @@ onBeforeUnmount(() => {
       </section>
 
       <!-- 文章列表卡片 -->
-      <section class="article-sidebar-list-card bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col card-hover">
+      <section
+        class="article-sidebar-list-card bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col card-hover"
+        :class="view === 'article' ? '' : 'h-[520px] lg:h-[620px]'"
+      >
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-bold text-slate-800 flex items-center gap-2">
             <iconify-icon class="text-orange-500" icon="mdi:format-list-bulleted"></iconify-icon>
@@ -1224,7 +1283,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar scrollbar-hidden space-y-3 pr-1">
           <p v-if="articleLoading" class="text-sm text-slate-400 text-center py-8">正在加载文章...</p>
-          <template v-else-if="publishedArticles.length === 0">
+          <template v-else-if="orderedPublishedArticles.length === 0">
             <div class="flex flex-col items-center justify-center py-10 text-center">
               <iconify-icon icon="mdi:folder-open-outline" width="48"></iconify-icon>
               <p class="text-sm font-bold mt-2 text-slate-500">暂无匹配文章</p>
@@ -1234,7 +1293,7 @@ onBeforeUnmount(() => {
           </template>
           <template v-else>
             <div
-              v-for="article in publishedArticles"
+              v-for="article in orderedPublishedArticles"
               :key="article.id"
               class="p-3 hover:bg-orange-50 rounded-xl cursor-pointer group transition-all border border-transparent hover:border-orange-100"
               :class="{ 'article-list-item-active': view === 'article' && article.slug === selectedArticleSlug }"
@@ -1243,7 +1302,7 @@ onBeforeUnmount(() => {
               <h4 class="text-sm font-semibold text-slate-700 group-hover:text-orange-600 transition-colors line-clamp-1">{{ article.title }}</h4>
               <p class="text-xs text-slate-400 mt-1 flex items-center gap-2">
                 <iconify-icon icon="mdi:clock-outline"></iconify-icon>
-                {{ article.category?.name || '未分类' }} · {{ formatDate(article.createdAt) }}
+                {{ article.category?.name || '未分类' }} · {{ articleDisplayDate(article) }}
               </p>
             </div>
           </template>
@@ -1257,7 +1316,7 @@ onBeforeUnmount(() => {
       <!-- ========== PUBLIC 视图 (新 UI) ========== -->
       <template v-if="view === 'public'">
         <!-- Hero 精选文章 -->
-        <section v-if="publishedArticles.length > 0" class="relative w-full h-[400px] rounded-3xl overflow-hidden group cursor-pointer shadow-xl" @click="openArticle(publishedArticles[0].slug)">
+        <section v-if="featuredArticle" class="relative w-full h-[400px] rounded-3xl overflow-hidden group cursor-pointer shadow-xl" @click="openArticle(featuredArticle.slug)">
           <div class="absolute inset-0 bg-gradient-to-br from-orange-500/20 via-slate-900/50 to-slate-900"></div>
           <div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent"></div>
           <div class="absolute bottom-0 left-0 p-8 md:p-12 w-full md:w-3/4">
@@ -1265,14 +1324,14 @@ onBeforeUnmount(() => {
               <span class="px-3 py-1 bg-orange-500 text-white text-xs font-bold rounded-full">精选推荐</span>
               <span class="text-slate-300 text-xs flex items-center gap-1">
                 <iconify-icon icon="mdi:calendar"></iconify-icon>
-                {{ formatDate(publishedArticles[0].createdAt) }}
+                {{ articleDisplayDate(featuredArticle) }}
               </span>
             </div>
             <h1 class="text-3xl md:text-4xl font-bold text-white mb-4 group-hover:text-orange-400 transition-colors leading-tight">
-              {{ publishedArticles[0].title }}
+              {{ featuredArticle.title }}
             </h1>
             <p class="text-slate-300 text-sm md:text-base line-clamp-2 mb-6 opacity-90">
-              {{ publishedArticles[0].category?.name || '未分类' }} · 作者 {{ publishedArticles[0].author?.username || '未知' }}
+              {{ featuredArticle.category?.name || '未分类' }} · 作者 {{ featuredArticle.author?.username || '未知' }}
             </p>
             <button class="flex items-center gap-2 text-white font-bold group/btn" type="button">
               继续阅读 <iconify-icon class="group-hover/btn:translate-x-2 transition-transform" icon="mdi:arrow-right"></iconify-icon>
@@ -1296,13 +1355,13 @@ onBeforeUnmount(() => {
             </div>
 
             <p v-if="articleLoading" class="text-center py-12 text-slate-400">正在加载文章...</p>
-            <div v-else-if="publishedArticles.length === 0" class="text-center py-12">
+            <div v-else-if="latestPublishedArticles.length === 0" class="text-center py-12">
               <iconify-icon icon="mdi:file-document-outline" width="48" class="text-slate-300"></iconify-icon>
               <p class="text-slate-400 mt-2">还没有已发布的文章。</p>
             </div>
             <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <article
-                v-for="article in publishedArticles"
+                v-for="article in latestPublishedArticles"
                 :key="article.id"
                 class="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm card-hover flex flex-col cursor-pointer"
                 @click="openArticle(article.slug)"
@@ -1319,7 +1378,7 @@ onBeforeUnmount(() => {
                       <div class="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 text-[10px] font-bold">{{ (article.author?.username || '?')[0]?.toUpperCase() }}</div>
                       <span class="text-xs text-slate-400">{{ article.author?.username || '未知' }}</span>
                     </div>
-                    <span class="text-[10px] text-slate-400">{{ formatDate(article.createdAt) }}</span>
+                    <span class="text-[10px] text-slate-400">{{ articleDisplayDate(article) }}</span>
                   </div>
                 </div>
               </article>
@@ -1365,7 +1424,7 @@ onBeforeUnmount(() => {
             </section>
 
             <!-- 热门排行 (静态占位) -->
-            <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-[400px] lg:h-[440px] flex flex-col overflow-hidden">
               <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <iconify-icon class="text-orange-500" icon="mdi:fire"></iconify-icon>
                 最受欢迎
@@ -1417,7 +1476,7 @@ onBeforeUnmount(() => {
                 <div class="form-field"><span>标题</span><input v-model.trim="articleForm.title" placeholder="文章标题" /></div>
                 <div class="inline-fields">
                   <div class="form-field"><span>Slug</span><input v-model.trim="articleForm.slug" placeholder="例如：my-article" /></div>
-                  <div class="form-field"><span>排序</span><input v-model.number="articleForm.chapterOrder" type="number" /></div>
+                  <div class="form-field"><span>排序</span><input v-model.number="articleForm.chapterOrder" min="1" step="1" type="number" /></div>
                 </div>
                 <div class="inline-fields">
                   <div class="form-field"><span>分类</span><input v-model.trim="articleForm.categoryName" placeholder="例如：随笔" /></div>
@@ -1452,7 +1511,7 @@ onBeforeUnmount(() => {
                   <div>
                     <strong>{{ article.title }}</strong>
                     <p>{{ article.slug }}</p>
-                    <small>{{ article.status }} - {{ article.category?.name || "未分类" }} - {{ article.tags.map((tag) => tag.name).join(", ") || "无标签" }}</small>
+                    <small>第 {{ article.chapterOrder }} 篇 - {{ article.status }} - {{ article.category?.name || "未分类" }} - {{ article.tags.map((tag) => tag.name).join(", ") || "无标签" }}</small>
                   </div>
                   <div class="button-row compact-row">
                     <button class="ghost-button" type="button" @click="editArticle(article)">编辑</button>

@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-用户要求继续把当前会话压缩到本仓库交接文档中，固定路径为 `D:\project\codex-project-boke\codex-project-boke-handoff.md`，并同步总结/更新 `README.md`。用户此前明确要求：先不提交。
+用户已将交接文档从 `codex-project-boke-handoff.md` 重命名为 `handoff.md`。后续如需继续压缩上下文，请更新本文件。
 
 ## 建议下个 Agent 使用的技能
 
@@ -13,12 +13,9 @@
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前分支：`codex/article-detail-ui`
-- 当前未提交改动：
-  - `client/src/App.vue`
-  - `client/src/style.css`
-  - `README.md`
-  - `codex-project-boke-handoff.md`
+- 当前分支：`main`
+- `codex/article-detail-ui` 已合并到 `main` 并已推送 Gitee，随后本地分支已删除。
+- 当前正在把 `codex/ui-layout` 合并到 `main`，该分支包含首页布局、文章排序和发布时间迁移相关改动。
 - 不要提交、回滚或覆盖用户已有改动，除非用户明确要求。
 
 继续工作前先执行：
@@ -26,7 +23,7 @@
 ```bash
 git status --short
 git diff -- client/src/App.vue client/src/style.css
-git diff -- README.md codex-project-boke-handoff.md
+git diff -- README.md handoff.md
 ```
 
 ## 用户约束与偏好
@@ -55,9 +52,26 @@ git diff -- README.md codex-project-boke-handoff.md
 ## 当前 UI 状态
 
 - 公开首页、登录/注册侧边栏已经是新 UI。
-- 文章详情页正在当前分支重构为新 UI，并已按“首页为主视觉标准，详情页向首页统一”的方向完成一轮实现。
+- 文章详情页已重构为新 UI，并按“首页为主视觉标准，详情页向首页统一”的方向完成实现。
+- 详情页左侧现在为紧凑作者卡、目录、筛选文章、文章列表；目录无 TOC 时隐藏。
+- 详情页右侧栏已移除，热门标签和相关推荐不在详情页显示，中间文章区域向右扩展。
+- 详情页左侧滚动条隐藏但保留滚轮滚动。
 - 用户面板、管理后台仍属于旧 UI，通过 `.legacy-ui` 隔离。
 - 已实现明暗色调切换，偏好保存到 `localStorage`。
+
+## codex/ui-layout 待合并内容
+
+`codex/ui-layout` 主要包含：
+
+- 首页“最新发布”限制为 4 篇，并按 `publishedAt` / `createdAt` 倒序。
+- 左侧文章列表按 `chapterOrder` 升序显示。
+- 文章列表定高滚动，热门排行卡片定高约容纳 6-7 条。
+- 新增 `published_at` / `publishedAt` 字段，用于保存首次发布时间。
+- 新增迁移：
+  - `server/prisma/migrations/20260528162000_add_article_published_at/migration.sql`
+  - `server/prisma/migrations/20260528163500_drop_article_chapter_order_index/migration.sql`
+- 后端发布接口首次发布时写入 `published_at`，再次发布不覆盖。
+- `chapterOrder` 作为“第几篇文章”的序号，新建默认当前总文章数 + 1，手动重排时其他文章顺延。
 
 ## 本轮用户确认过的设计决策
 

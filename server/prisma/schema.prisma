@@ -50,6 +50,7 @@ model Article {
   contentHtml      String           @map("content_html") @db.LongText
   chapterOrder     Int              @default(0) @map("chapter_order")
   status           ArticleStatus    @default(DRAFT)
+  publishedAt      DateTime?        @map("published_at")
   createdAt        DateTime         @default(now()) @map("created_at")
   updatedAt        DateTime         @updatedAt @map("updated_at")
   author           User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
@@ -61,7 +62,7 @@ model Article {
 
   @@index([authorId])
   @@index([categoryId])
-  @@index([status, chapterOrder])
+  @@index([status, publishedAt])
   @@map("articles")
 }
 
