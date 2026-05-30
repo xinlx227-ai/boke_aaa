@@ -241,6 +241,147 @@ iconify-icon:not(:defined) + .brand-feather-fallback {
   color: #bfdbfe;
 }
 
+/* ======== 首页最新发布分页 ======== */
+
+.latest-paged-list {
+  display: grid;
+  grid-template-rows: 754px 56px;
+  gap: 28px;
+}
+
+.latest-page-stage {
+  min-height: 0;
+}
+
+.latest-article-grid {
+  align-items: stretch;
+  grid-auto-rows: 365px;
+}
+
+.latest-article-card {
+  height: 365px;
+  min-height: 0;
+}
+
+.latest-article-card > div:first-child {
+  flex: 0 0 192px;
+}
+
+.latest-article-card > div:last-child {
+  min-height: 0;
+}
+
+.latest-article-title {
+  min-height: 3.5rem;
+}
+
+.latest-article-excerpt {
+  min-height: 3.75rem;
+  max-height: 3.75rem;
+}
+
+.latest-pagination {
+  display: flex;
+  min-height: 56px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  align-self: end;
+}
+
+.latest-pagination button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: #fff;
+  color: #64748b;
+  font-size: 0.86rem;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  transition: transform 0.18s ease, border-color 0.18s ease, color 0.18s ease, background-color 0.18s ease;
+}
+
+.latest-pagination button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #ea580c;
+}
+
+.latest-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.latest-page-numbers {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.latest-page-numbers button {
+  width: 38px;
+  padding-inline: 0;
+}
+
+.latest-page-numbers button.is-active {
+  border-color: #f97316;
+  background: #f97316;
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(249, 115, 22, 0.24);
+}
+
+.dark .latest-pagination button {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: #172033;
+  color: #b6c4d8;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
+}
+
+.dark .latest-pagination button:hover:not(:disabled) {
+  border-color: rgba(251, 146, 60, 0.48);
+  background: rgba(251, 146, 60, 0.14);
+  color: #fdba74;
+}
+
+.dark .latest-page-numbers button.is-active {
+  border-color: #f97316;
+  background: #f97316;
+  color: #fff;
+}
+
+@media (max-width: 767px) {
+  .latest-paged-list {
+    grid-template-rows: auto 56px;
+    gap: 24px;
+  }
+
+  .latest-article-grid {
+    grid-auto-rows: auto;
+  }
+
+  .latest-article-card {
+    height: auto;
+  }
+
+  .latest-article-card > div:first-child {
+    flex-basis: 192px;
+  }
+
+  .latest-article-title,
+  .latest-article-excerpt {
+    min-height: 0;
+  }
+}
+
 /* ======== 文章详情新 UI ======== */
 
 .article-icon-button {
