@@ -241,6 +241,120 @@ iconify-icon:not(:defined) + .brand-feather-fallback {
   color: #bfdbfe;
 }
 
+.latest-paged-list {
+  position: relative;
+  min-height: 760px;
+}
+
+.latest-page-stage {
+  min-height: 0;
+}
+
+.latest-article-card {
+  height: 422px;
+}
+
+.latest-pagination {
+  display: flex;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 86px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 0 2px;
+}
+
+.latest-pagination button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: #fff;
+  color: #64748b;
+  font-size: 0.86rem;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  transition: transform 0.18s ease, border-color 0.18s ease, color 0.18s ease, background-color 0.18s ease;
+}
+
+.latest-pagination button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #ea580c;
+}
+
+.latest-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.latest-page-numbers {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.latest-page-numbers button {
+  width: 38px;
+  padding-inline: 0;
+}
+
+.latest-page-numbers button.is-active {
+  border-color: #f97316;
+  background: #f97316;
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(249, 115, 22, 0.24);
+}
+
+.dark .latest-pagination button {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: #172033;
+  color: #b6c4d8;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
+}
+
+.dark .latest-pagination button:hover:not(:disabled) {
+  border-color: rgba(251, 146, 60, 0.48);
+  background: rgba(251, 146, 60, 0.14);
+  color: #fdba74;
+}
+
+.dark .latest-page-numbers button.is-active {
+  border-color: #f97316;
+  background: #f97316;
+  color: #fff;
+}
+
+@media (max-width: 767px) {
+  .latest-paged-list {
+    display: grid;
+    gap: 28px;
+    min-height: 0;
+  }
+
+  .latest-page-stage {
+    min-height: 0;
+  }
+
+  .latest-article-card {
+    height: auto;
+  }
+
+  .latest-pagination {
+    position: static;
+  }
+}
+
 /* ======== 文章详情新 UI ======== */
 
 .article-icon-button {
@@ -438,6 +552,12 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 .article-sidebar-list-card {
   flex: 0 0 auto;
   min-height: 260px;
+}
+
+@media (min-width: 1024px) {
+  .article-sidebar-list-card {
+    min-height: 620px;
+  }
 }
 
 .article-list-item-active {
