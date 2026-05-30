@@ -21,6 +21,7 @@ const postingComment = ref(false);
 const mobileMenuOpen = ref(false);
 const tocOpen = ref(false);
 const showBackToTop = ref(false);
+const latestPage = ref(1);
 const message = ref("");
 const trafficChartRef = ref(null);
 const popularPostsPlaceholder = [
@@ -126,7 +127,13 @@ const sortedPublishedArticles = computed(() =>
     return (secondArticle.id || 0) - (firstArticle.id || 0);
   })
 );
-const latestPublishedArticles = computed(() => sortedPublishedArticles.value.slice(0, 4));
+const latestPageSize = 4;
+const latestPageCount = computed(() => Math.max(1, Math.ceil(sortedPublishedArticles.value.length / latestPageSize)));
+const latestPageNumbers = computed(() => Array.from({ length: latestPageCount.value }, (_item, index) => index + 1));
+const latestPublishedArticles = computed(() => {
+  const startIndex = (latestPage.value - 1) * latestPageSize;
+  return sortedPublishedArticles.value.slice(startIndex, startIndex + latestPageSize);
+});
 const featuredArticle = computed(() => sortedPublishedArticles.value[0] || null);
 const orderedPublishedArticles = computed(() =>
   [...publishedArticles.value].sort((firstArticle, secondArticle) => {
@@ -148,6 +155,12 @@ const nextArticleOrder = computed(() => {
   return knownArticleIds.size + 1;
 });
 
+watch(latestPageCount, (pageCount) => {
+  if (latestPage.value > pageCount) {
+    latestPage.value = pageCount;
+  }
+});
+
 function mapAssetUrls(html) {
   return String(html || "").replace(/(src|href)="\/uploads\//g, `$1="${ASSET_BASE_URL}/uploads/`);
 }
@@ -167,6 +180,18 @@ function toggleThemeMode() {
   themeMode.value = isDarkMode.value ? "light" : "dark";
   localStorage.setItem(THEME_STORAGE_KEY, themeMode.value);
   applyThemeMode();
+}
+
+function setLatestPage(page) {
+  latestPage.value = Math.min(Math.max(1, page), latestPageCount.value);
+}
+
+function goToPreviousLatestPage() {
+  setLatestPage(latestPage.value - 1);
+}
+
+function goToNextLatestPage() {
+  setLatestPage(latestPage.value + 1);
 }
 
 function likeArticle() {
@@ -514,6 +539,7 @@ async function loadProfile() {
 }
 
 async function applyFilters() {
+  latestPage.value = 1;
   await loadPublishedArticles();
 }
 
@@ -521,6 +547,7 @@ async function clearFilters() {
   filters.q = "";
   filters.category = "";
   filters.tag = "";
+  latestPage.value = 1;
   await loadPublishedArticles();
 }
 
@@ -1359,29 +1386,56 @@ onBeforeUnmount(() => {
               <iconify-icon icon="mdi:file-document-outline" width="48" class="text-slate-300"></iconify-icon>
               <p class="text-slate-400 mt-2">还没有已发布的文章。</p>
             </div>
-            <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <article
-                v-for="article in latestPublishedArticles"
-                :key="article.id"
-                class="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm card-hover flex flex-col cursor-pointer"
-                @click="openArticle(article.slug)"
-              >
-                <div class="h-48 overflow-hidden relative bg-gradient-to-br from-orange-100 to-amber-50 flex items-center justify-center">
-                  <iconify-icon icon="mdi:file-document-edit-outline" width="48" class="text-orange-300"></iconify-icon>
-                  <span class="absolute top-4 left-4 px-2 py-1 bg-white/90 backdrop-blur text-[10px] font-bold rounded-md shadow-sm">{{ article.category?.name || '未分类' }}</span>
-                </div>
-                <div class="p-6 flex-1 flex flex-col">
-                  <h3 class="text-lg font-bold text-slate-900 mb-3 hover:text-orange-500 transition-colors line-clamp-2">{{ article.title }}</h3>
-                  <p class="text-sm text-slate-500 line-clamp-3 mb-4 flex-1">{{ article.contentMarkdown?.slice(0, 150) || '暂无摘要' }}...</p>
-                  <div class="flex items-center justify-between pt-4 border-t border-slate-50">
-                    <div class="flex items-center gap-2">
-                      <div class="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 text-[10px] font-bold">{{ (article.author?.username || '?')[0]?.toUpperCase() }}</div>
-                      <span class="text-xs text-slate-400">{{ article.author?.username || '未知' }}</span>
+            <div v-else class="latest-paged-list">
+              <div class="latest-page-stage">
+                <div class="latest-article-grid grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <article
+                    v-for="article in latestPublishedArticles"
+                    :key="article.id"
+                    class="latest-article-card bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm card-hover flex flex-col cursor-pointer"
+                    @click="openArticle(article.slug)"
+                  >
+                    <div class="h-48 overflow-hidden relative bg-gradient-to-br from-orange-100 to-amber-50 flex items-center justify-center">
+                      <iconify-icon icon="mdi:file-document-edit-outline" width="48" class="text-orange-300"></iconify-icon>
+                      <span class="absolute top-4 left-4 px-2 py-1 bg-white/90 backdrop-blur text-[10px] font-bold rounded-md shadow-sm">{{ article.category?.name || '未分类' }}</span>
                     </div>
-                    <span class="text-[10px] text-slate-400">{{ articleDisplayDate(article) }}</span>
-                  </div>
+                    <div class="p-6 flex-1 flex flex-col">
+                      <h3 class="latest-article-title text-lg font-bold text-slate-900 mb-3 hover:text-orange-500 transition-colors line-clamp-2">{{ article.title }}</h3>
+                      <p class="latest-article-excerpt text-sm text-slate-500 line-clamp-3 mb-4 flex-1">{{ article.contentMarkdown?.slice(0, 150) || '暂无摘要' }}...</p>
+                      <div class="flex items-center justify-between pt-4 border-t border-slate-50">
+                        <div class="flex items-center gap-2">
+                          <div class="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 text-[10px] font-bold">{{ (article.author?.username || '?')[0]?.toUpperCase() }}</div>
+                          <span class="text-xs text-slate-400">{{ article.author?.username || '未知' }}</span>
+                        </div>
+                        <span class="text-[10px] text-slate-400">{{ articleDisplayDate(article) }}</span>
+                      </div>
+                    </div>
+                  </article>
                 </div>
-              </article>
+              </div>
+
+              <nav class="latest-pagination" aria-label="最新发布分页">
+                <button type="button" :disabled="latestPage === 1" @click="goToPreviousLatestPage">
+                  <iconify-icon icon="mdi:chevron-left" width="20"></iconify-icon>
+                  上一页
+                </button>
+                <div class="latest-page-numbers">
+                  <button
+                    v-for="page in latestPageNumbers"
+                    :key="page"
+                    :aria-current="page === latestPage ? 'page' : undefined"
+                    :class="{ 'is-active': page === latestPage }"
+                    type="button"
+                    @click="setLatestPage(page)"
+                  >
+                    {{ page }}
+                  </button>
+                </div>
+                <button type="button" :disabled="latestPage === latestPageCount" @click="goToNextLatestPage">
+                  下一页
+                  <iconify-icon icon="mdi:chevron-right" width="20"></iconify-icon>
+                </button>
+              </nav>
             </div>
           </div>
 
