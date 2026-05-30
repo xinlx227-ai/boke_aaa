@@ -20,6 +20,7 @@ const importingArticles = ref(false);
 const postingComment = ref(false);
 const mobileMenuOpen = ref(false);
 const tocOpen = ref(false);
+const showBackToTop = ref(false);
 const message = ref("");
 const trafficChartRef = ref(null);
 const popularPostsPlaceholder = [
@@ -37,6 +38,8 @@ const comments = ref([]);
 const categories = ref([]);
 const tags = ref([]);
 const importResult = ref(null);
+const likedArticleSlugs = ref(new Set());
+const favoritedArticleSlugs = ref(new Set());
 
 const filters = reactive({
   q: "",
@@ -81,6 +84,26 @@ const roleLabel = computed(() => (isAdmin.value ? "管理员" : "普通用户"))
 const selectedArticleHtml = computed(() => mapAssetUrls(selectedArticle.value?.contentHtml || ""));
 const selectedToc = computed(() => selectedArticle.value?.toc || []);
 const editorHeading = computed(() => (articleForm.id ? `编辑：${articleForm.title || "未命名文章"}` : "新建文章"));
+const selectedArticleAuthorName = computed(() => selectedArticle.value?.author?.username || "未知作者");
+const selectedArticleAuthorInitial = computed(() => selectedArticleAuthorName.value[0]?.toUpperCase() || "?");
+const selectedArticleReadTime = computed(() => {
+  const plainText = String(selectedArticle.value?.contentMarkdown || "").replace(/[#>*_`[\]()!-]/g, "");
+  const estimatedMinutes = Math.max(1, Math.ceil(plainText.length / 450));
+  return `${estimatedMinutes} 分钟阅读`;
+});
+const selectedArticleSlug = computed(() => selectedArticle.value?.slug || "");
+const isSelectedArticleLiked = computed(() => Boolean(selectedArticleSlug.value && likedArticleSlugs.value.has(selectedArticleSlug.value)));
+const isSelectedArticleFavorited = computed(() => Boolean(selectedArticleSlug.value && favoritedArticleSlugs.value.has(selectedArticleSlug.value)));
+const selectedArticleStats = computed(() => ({
+  views: "3,284",
+  likes: 168 + (isSelectedArticleLiked.value ? 1 : 0),
+  comments: comments.value.length
+}));
+const authorStats = computed(() => ({
+  articles: Math.max(publishedArticles.value.length, 42),
+  followers: "1.2k",
+  likes: "8.5k"
+}));
 
 function mapAssetUrls(html) {
   return String(html || "").replace(/(src|href)="\/uploads\//g, `$1="${ASSET_BASE_URL}/uploads/`);
@@ -101,6 +124,51 @@ function toggleThemeMode() {
   themeMode.value = isDarkMode.value ? "light" : "dark";
   localStorage.setItem(THEME_STORAGE_KEY, themeMode.value);
   applyThemeMode();
+}
+
+function likeArticle() {
+  if (!selectedArticleSlug.value) {
+    return;
+  }
+
+  const nextLikedArticleSlugs = new Set(likedArticleSlugs.value);
+
+  if (nextLikedArticleSlugs.has(selectedArticleSlug.value)) {
+    nextLikedArticleSlugs.delete(selectedArticleSlug.value);
+    setMessage("已取消点赞。");
+  } else {
+    nextLikedArticleSlugs.add(selectedArticleSlug.value);
+    setMessage("已收到你的点赞。");
+  }
+
+  likedArticleSlugs.value = nextLikedArticleSlugs;
+}
+
+function favoriteArticle() {
+  if (!selectedArticleSlug.value) {
+    return;
+  }
+
+  const nextFavoritedArticleSlugs = new Set(favoritedArticleSlugs.value);
+
+  if (nextFavoritedArticleSlugs.has(selectedArticleSlug.value)) {
+    nextFavoritedArticleSlugs.delete(selectedArticleSlug.value);
+    setMessage("已取消收藏。");
+  } else {
+    nextFavoritedArticleSlugs.add(selectedArticleSlug.value);
+    setMessage("文章已加入收藏。");
+  }
+
+  favoritedArticleSlugs.value = nextFavoritedArticleSlugs;
+}
+
+async function shareArticle() {
+  try {
+    await navigator.clipboard.writeText(window.location.href);
+    setMessage("文章链接已复制。");
+  } catch (_error) {
+    setMessage("复制失败，请手动复制地址栏链接。");
+  }
 }
 
 function parseHash() {
@@ -404,7 +472,6 @@ async function loadProfile() {
 
 async function applyFilters() {
   await loadPublishedArticles();
-  setHash("");
 }
 
 async function clearFilters() {
@@ -412,7 +479,6 @@ async function clearFilters() {
   filters.category = "";
   filters.tag = "";
   await loadPublishedArticles();
-  setHash("");
 }
 
 async function submitRegister() {
@@ -500,6 +566,30 @@ function openArticle(slug) {
 
 function openPublicHome() {
   setHash("");
+}
+
+function toggleMobileMenu() {
+  mobileMenuOpen.value = !mobileMenuOpen.value;
+}
+
+function closeMobileMenu() {
+  mobileMenuOpen.value = false;
+}
+
+function handleArticleNavClick(slug) {
+  closeMobileMenu();
+  openArticle(slug);
+}
+
+function handleScroll() {
+  showBackToTop.value = window.scrollY > window.innerHeight * 0.6;
+}
+
+function scrollToTop() {
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
 }
 
 function openUserDashboard() {
@@ -789,16 +879,19 @@ watch(view, (newVal) => {
 onMounted(async () => {
   applyThemeMode();
   window.addEventListener("hashchange", handleHashChange);
+  window.addEventListener("scroll", handleScroll, { passive: true });
   await Promise.all([loadPublishedArticles(), loadArticleFilters()]);
   if (token.value) {
     await loadProfile();
   }
   syncViewToHash();
   initTrafficChart();
+  handleScroll();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("hashchange", handleHashChange);
+  window.removeEventListener("scroll", handleScroll);
   if (messageTimer) {
     clearTimeout(messageTimer);
   }
@@ -809,73 +902,169 @@ onBeforeUnmount(() => {
   <div v-if="message" class="toast-message" role="status" aria-live="polite">
     {{ message }}
   </div>
+  <button
+    v-if="view === 'article' && selectedArticle && mobileMenuOpen"
+    class="article-mobile-overlay"
+    type="button"
+    aria-label="关闭文章筛选"
+    @click="closeMobileMenu"
+  ></button>
 
   <!-- ===== 顶部导航栏 (新 UI) ===== -->
-  <header class="sticky top-0 z-50 w-full glass-effect border-b border-orange-100/50">
+  <header
+    class="sticky top-0 z-50 w-full border-b"
+    :class="view === 'article' ? 'article-detail-header bg-white/95 border-slate-200 backdrop-blur' : 'glass-effect border-orange-100/50'"
+  >
     <div class="max-w-[1440px] mx-auto px-6 h-16 flex items-center justify-between">
-      <div class="flex items-center gap-2 cursor-pointer" @click="openPublicHome">
-        <div class="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center text-white">
-          <iconify-icon icon="mdi:feather" width="20"></iconify-icon>
-        </div>
-        <span class="text-xl font-bold tracking-tight text-slate-900">MyBlog <span class="text-orange-500 text-sm font-medium">Pro</span></span>
-      </div>
-
-      <div class="hidden md:flex items-center bg-slate-100 rounded-full px-4 py-1.5 w-96 border border-transparent focus-within:border-orange-300 focus-within:bg-white transition-all">
-        <iconify-icon class="text-slate-400 mr-2 shrink-0" icon="mdi:magnify"></iconify-icon>
-        <input
-          v-model.trim="filters.q"
-          class="bg-transparent border-none outline-none text-sm w-full placeholder:text-slate-400"
-          placeholder="搜索文章、标签或关键词..."
-          type="text"
-          @keydown.enter="applyFilters"
-        />
-        <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 bg-white border border-slate-200 rounded ml-2">⌘K</kbd>
-      </div>
-
-      <div class="flex items-center gap-4">
-        <button
-          class="p-2 text-slate-500 hover:text-orange-500 dark:text-slate-300 dark:hover:text-orange-300 transition-colors"
-          :title="isDarkMode ? '切换到亮色模式' : '切换到暗色模式'"
-          type="button"
-          @click="toggleThemeMode"
-        >
-          <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
-        </button>
-        <button v-if="isAuthenticated" class="p-2 text-slate-500 hover:text-orange-500 transition-colors relative" title="通知" type="button">
-          <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
-          <span class="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white"></span>
-        </button>
-        <div class="h-8 w-[1px] bg-slate-200 mx-1"></div>
-
-        <!-- 未登录：显示登录/注册按钮 -->
-        <template v-if="!isAuthenticated">
-          <button class="w-10 h-10 rounded-full bg-slate-100 hover:bg-orange-50 text-slate-500 hover:text-orange-500 flex items-center justify-center transition-all" title="账户" type="button" @click="showLoginForm">
-            <iconify-icon icon="mdi:account-outline" width="24"></iconify-icon>
+      <template v-if="view === 'article'">
+        <div class="article-header-left">
+          <button class="flex items-center gap-2 cursor-pointer" type="button" @click="openPublicHome">
+            <span class="brand-logo-mark compact">
+              <iconify-icon icon="mdi:feather" width="24"></iconify-icon>
+              <span class="brand-feather-fallback" aria-hidden="true"></span>
+            </span>
+            <span class="brand-logo-text compact">MyBlog <span>Pro</span></span>
           </button>
-        </template>
+          <span class="article-header-divider"></span>
+          <button class="article-return-button" type="button" @click="openPublicHome">
+            <iconify-icon icon="mdi:arrow-left" width="20"></iconify-icon>
+            <span class="icon-fallback" aria-hidden="true">←</span>
+            <span>返回</span>
+          </button>
+        </div>
 
-        <!-- 已登录：显示用户头像 -->
-        <template v-else>
-          <div class="flex items-center gap-3 px-2 py-1.5 rounded-full bg-white border border-slate-100 shadow-sm cursor-pointer group relative hover:border-orange-200 hover:shadow-md transition-all" @click="isAdmin ? openAdminDashboard() : openUserDashboard()">
-            <div class="w-9 h-9 rounded-full bg-orange-100 overflow-hidden flex items-center justify-center text-orange-600 text-sm font-bold">
-              {{ (currentUser?.username || '?')[0].toUpperCase() }}
-            </div>
-            <div class="hidden sm:block pr-2 leading-tight">
-              <p class="text-sm font-bold text-slate-800 group-hover:text-orange-500 transition-colors">{{ currentUser?.username || '用户' }}</p>
-              <p class="text-[10px] text-slate-400">{{ roleLabel }}</p>
-            </div>
+        <div class="article-header-search hidden md:flex">
+          <iconify-icon class="text-slate-400 mr-2 shrink-0" icon="mdi:magnify"></iconify-icon>
+          <input
+            aria-label="搜索文章、标签或关键词"
+            class="bg-transparent border-none outline-none text-sm w-full placeholder:text-slate-400"
+            placeholder="搜索文章、标签或关键词..."
+            readonly
+            type="text"
+          />
+          <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 bg-white border border-slate-200 rounded ml-2">⌘K</kbd>
+        </div>
+
+        <div class="article-header-actions">
+          <div class="article-action-group">
+            <button class="article-icon-button" :class="{ 'is-active': isSelectedArticleLiked }" type="button" title="点赞" @click="likeArticle">
+              <iconify-icon :icon="isSelectedArticleLiked ? 'mdi:heart' : 'mdi:heart-outline'" width="24"></iconify-icon>
+              <span class="icon-fallback" aria-hidden="true">♡</span>
+            </button>
+            <button class="article-icon-button" :class="{ 'is-active': isSelectedArticleFavorited }" type="button" title="收藏" @click="favoriteArticle">
+              <iconify-icon :icon="isSelectedArticleFavorited ? 'mdi:bookmark' : 'mdi:bookmark-outline'" width="24"></iconify-icon>
+              <span class="bookmark-icon-fallback" aria-hidden="true"></span>
+            </button>
+            <button class="article-icon-button" type="button" title="分享" @click="shareArticle">
+              <iconify-icon icon="mdi:share-variant-outline" width="24"></iconify-icon>
+              <span class="icon-fallback" aria-hidden="true">⌯</span>
+            </button>
           </div>
-        </template>
-      </div>
+          <div class="h-8 w-[1px] bg-slate-200 mx-1"></div>
+          <button
+            class="p-2 text-slate-500 hover:text-orange-500 dark:text-slate-300 dark:hover:text-orange-300 transition-colors"
+            :title="isDarkMode ? '切换到亮色模式' : '切换到暗色模式'"
+            type="button"
+            @click="toggleThemeMode"
+          >
+            <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
+          </button>
+          <button v-if="isAuthenticated" class="p-2 text-slate-500 hover:text-orange-500 transition-colors relative" title="通知" type="button">
+            <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
+            <span class="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white"></span>
+          </button>
+
+          <template v-if="!isAuthenticated">
+            <button class="w-10 h-10 rounded-full bg-slate-100 hover:bg-orange-50 text-slate-500 hover:text-orange-500 flex items-center justify-center transition-all" title="账户" type="button" @click="showLoginForm">
+              <iconify-icon icon="mdi:account-outline" width="24"></iconify-icon>
+            </button>
+          </template>
+
+          <template v-else>
+            <div class="flex items-center gap-3 px-2 py-1.5 rounded-full bg-white border border-slate-100 shadow-sm cursor-pointer group relative hover:border-orange-200 hover:shadow-md transition-all" @click="isAdmin ? openAdminDashboard() : openUserDashboard()">
+              <div class="w-9 h-9 rounded-full bg-orange-100 overflow-hidden flex items-center justify-center text-orange-600 text-sm font-bold">
+                {{ (currentUser?.username || '?')[0].toUpperCase() }}
+              </div>
+              <div class="hidden sm:block pr-2 leading-tight">
+                <p class="text-sm font-bold text-slate-800 group-hover:text-orange-500 transition-colors">{{ currentUser?.username || '用户' }}</p>
+                <p class="text-[10px] text-slate-400">{{ roleLabel }}</p>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+      <template v-else>
+        <div class="flex items-center gap-2 cursor-pointer" @click="openPublicHome">
+          <div class="brand-logo-mark compact">
+            <iconify-icon icon="mdi:feather" width="24"></iconify-icon>
+            <span class="brand-feather-fallback" aria-hidden="true"></span>
+          </div>
+          <span class="brand-logo-text compact">MyBlog <span>Pro</span></span>
+        </div>
+
+        <div class="hidden md:flex items-center bg-slate-100 rounded-full px-4 py-1.5 w-96 border border-transparent focus-within:border-orange-300 focus-within:bg-white transition-all">
+          <iconify-icon class="text-slate-400 mr-2 shrink-0" icon="mdi:magnify"></iconify-icon>
+          <input
+            v-model.trim="filters.q"
+            class="bg-transparent border-none outline-none text-sm w-full placeholder:text-slate-400"
+            placeholder="搜索文章、标签或关键词..."
+            type="text"
+            @keydown.enter="applyFilters"
+          />
+          <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 bg-white border border-slate-200 rounded ml-2">⌘K</kbd>
+        </div>
+
+        <div class="flex items-center gap-4">
+          <button
+            class="p-2 text-slate-500 hover:text-orange-500 dark:text-slate-300 dark:hover:text-orange-300 transition-colors"
+            :title="isDarkMode ? '切换到亮色模式' : '切换到暗色模式'"
+            type="button"
+            @click="toggleThemeMode"
+          >
+            <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
+          </button>
+          <button v-if="isAuthenticated" class="p-2 text-slate-500 hover:text-orange-500 transition-colors relative" title="通知" type="button">
+            <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
+            <span class="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white"></span>
+          </button>
+          <div class="h-8 w-[1px] bg-slate-200 mx-1"></div>
+
+          <!-- 未登录：显示登录/注册按钮 -->
+          <template v-if="!isAuthenticated">
+            <button class="w-10 h-10 rounded-full bg-slate-100 hover:bg-orange-50 text-slate-500 hover:text-orange-500 flex items-center justify-center transition-all" title="账户" type="button" @click="showLoginForm">
+              <iconify-icon icon="mdi:account-outline" width="24"></iconify-icon>
+            </button>
+          </template>
+
+          <!-- 已登录：显示用户头像 -->
+          <template v-else>
+            <div class="flex items-center gap-3 px-2 py-1.5 rounded-full bg-white border border-slate-100 shadow-sm cursor-pointer group relative hover:border-orange-200 hover:shadow-md transition-all" @click="isAdmin ? openAdminDashboard() : openUserDashboard()">
+              <div class="w-9 h-9 rounded-full bg-orange-100 overflow-hidden flex items-center justify-center text-orange-600 text-sm font-bold">
+                {{ (currentUser?.username || '?')[0].toUpperCase() }}
+              </div>
+              <div class="hidden sm:block pr-2 leading-tight">
+                <p class="text-sm font-bold text-slate-800 group-hover:text-orange-500 transition-colors">{{ currentUser?.username || '用户' }}</p>
+                <p class="text-[10px] text-slate-400">{{ roleLabel }}</p>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
     </div>
   </header>
 
   <!-- ===== 主内容区 ===== -->
-  <main class="max-w-[1440px] mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-8 items-start">
+  <main
+    class="max-w-[1440px] mx-auto px-6 py-8 grid grid-cols-1 gap-8 items-start"
+    :class="view === 'article' ? 'article-detail-shell' : 'lg:grid-cols-[320px_minmax(0,1fr)]'"
+  >
     <!-- ===== 左侧操作区 (Sidebar) ===== -->
-    <aside class="w-full flex flex-col gap-6 lg:self-stretch">
+    <aside
+      v-if="view !== 'article' || selectedArticle"
+      :class="view === 'article' ? ['article-left-sidebar scrollbar-hidden', { 'is-open': mobileMenuOpen }] : 'w-full flex flex-col gap-6 lg:self-stretch'"
+    >
       <!-- 登录/注册卡片 -->
-      <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 card-hover">
+      <section v-if="view !== 'article'" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 card-hover">
         <template v-if="!isAuthenticated">
           <div class="flex gap-2 mb-6">
             <button
@@ -950,6 +1139,46 @@ onBeforeUnmount(() => {
         </template>
       </section>
 
+      <section v-else class="article-side-card author-card article-left-author-card">
+        <div class="author-row">
+          <span class="article-avatar large">{{ selectedArticleAuthorInitial }}</span>
+          <div>
+            <h3>{{ selectedArticleAuthorName }}</h3>
+            <p>博客作者</p>
+          </div>
+        </div>
+        <div class="author-stats">
+          <div>
+            <strong>{{ authorStats.articles }}</strong>
+            <span>文章</span>
+          </div>
+          <div>
+            <strong>{{ authorStats.followers }}</strong>
+            <span>粉丝</span>
+          </div>
+          <div>
+            <strong>{{ authorStats.likes }}</strong>
+            <span>获赞</span>
+          </div>
+        </div>
+        <button type="button">
+          <iconify-icon icon="mdi:account-outline" width="22"></iconify-icon>
+          关注作者
+        </button>
+      </section>
+
+      <nav v-if="view === 'article' && selectedToc?.length" class="article-side-card article-toc-card article-left-toc-card">
+        <h3>
+          <iconify-icon icon="mdi:format-list-bulleted" width="24"></iconify-icon>
+          目录
+        </h3>
+        <ol>
+          <li v-for="item in selectedToc" :key="item.id" :class="`toc-level-${item.level}`">
+            <a :href="`#${item.id}`">{{ item.title }}</a>
+          </li>
+        </ol>
+      </nav>
+
       <!-- 筛选文章卡片 -->
       <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 card-hover">
         <div class="flex items-center justify-between mb-4">
@@ -985,7 +1214,7 @@ onBeforeUnmount(() => {
       </section>
 
       <!-- 文章列表卡片 -->
-      <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex min-h-[620px] flex-col lg:flex-1 card-hover">
+      <section class="article-sidebar-list-card bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col card-hover">
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-bold text-slate-800 flex items-center gap-2">
             <iconify-icon class="text-orange-500" icon="mdi:format-list-bulleted"></iconify-icon>
@@ -993,12 +1222,14 @@ onBeforeUnmount(() => {
           </h3>
           <button class="text-xs px-2 py-1 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors" type="button" @click="openPublicHome">首页</button>
         </div>
-        <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-3 pr-1">
+        <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar scrollbar-hidden space-y-3 pr-1">
           <p v-if="articleLoading" class="text-sm text-slate-400 text-center py-8">正在加载文章...</p>
           <template v-else-if="publishedArticles.length === 0">
-            <div class="flex flex-col items-center justify-center py-10 opacity-40">
+            <div class="flex flex-col items-center justify-center py-10 text-center">
               <iconify-icon icon="mdi:folder-open-outline" width="48"></iconify-icon>
-              <p class="text-xs mt-2 text-slate-400">没有匹配的已发布文章。</p>
+              <p class="text-sm font-bold mt-2 text-slate-500">暂无匹配文章</p>
+              <p class="text-xs mt-1 text-slate-400">换个关键词试试</p>
+              <button class="mt-4 text-xs px-3 py-1.5 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 transition-colors" type="button" @click="clearFilters">清空筛选</button>
             </div>
           </template>
           <template v-else>
@@ -1006,7 +1237,8 @@ onBeforeUnmount(() => {
               v-for="article in publishedArticles"
               :key="article.id"
               class="p-3 hover:bg-orange-50 rounded-xl cursor-pointer group transition-all border border-transparent hover:border-orange-100"
-              @click="openArticle(article.slug)"
+              :class="{ 'article-list-item-active': view === 'article' && article.slug === selectedArticleSlug }"
+              @click="handleArticleNavClick(article.slug)"
             >
               <h4 class="text-sm font-semibold text-slate-700 group-hover:text-orange-600 transition-colors line-clamp-1">{{ article.title }}</h4>
               <p class="text-xs text-slate-400 mt-1 flex items-center gap-2">
@@ -1020,7 +1252,7 @@ onBeforeUnmount(() => {
     </aside>
 
     <!-- ===== 右侧内容区 ===== -->
-    <div class="flex-1 flex flex-col gap-8 min-w-0">
+    <div v-if="view !== 'article'" class="flex-1 flex flex-col gap-8 min-w-0">
 
       <!-- ========== PUBLIC 视图 (新 UI) ========== -->
       <template v-if="view === 'public'">
@@ -1232,65 +1464,157 @@ onBeforeUnmount(() => {
             </article>
           </section>
 
-          <!-- 文章详情页 / 空状态 (旧 UI) -->
           <section v-else class="workspace-card article-card">
-            <template v-if="selectedArticle">
-              <div class="article-layout">
-                <article>
-                  <div class="article-meta">
-                    <p class="eyebrow">文章</p>
-                    <h2>{{ selectedArticle.title }}</h2>
-                    <p class="muted">作者 {{ selectedArticle.author?.username || "未知作者" }} - {{ selectedArticle.category?.name || "未分类" }}</p>
-                    <div v-if="selectedArticle.tags?.length" class="tag-row">
-                      <button v-for="tag in selectedArticle.tags" :key="tag.id" class="tag-chip" type="button" @click="filters.tag = tag.slug; applyFilters()">{{ tag.name }}</button>
-                    </div>
-                  </div>
-                  <div class="article-html" v-html="selectedArticleHtml" />
-
-                  <section class="comments-section">
-                    <div class="section-header">
-                      <div><p class="eyebrow">评论</p><h3>{{ comments.length }} 条评论</h3></div>
-                    </div>
-                    <p v-if="commentsLoading" class="muted">正在加载评论...</p>
-                    <p v-else-if="comments.length === 0" class="muted">还没有评论。</p>
-                    <ul v-else class="comment-list">
-                      <li v-for="comment in comments" :key="comment.id" class="comment-item">
-                        <div class="comment-main" :class="{ reply: comment.parentId }">
-                          <div class="comment-header">
-                            <strong>{{ comment.user?.username || "未知用户" }}</strong>
-                            <span>{{ formatDate(comment.createdAt) }}</span>
-                          </div>
-                          <p>{{ comment.content }}</p>
-                          <small v-if="comment.parentId">回复评论 #{{ comment.parentId }}</small>
-                        </div>
-                        <button v-if="isAdmin" class="ghost-button danger-button" type="button" @click="deleteComment(comment)">删除</button>
-                      </li>
-                    </ul>
-                    <form v-if="isAuthenticated" class="comment-form" @submit.prevent="submitComment">
-                      <div class="form-field"><span>发表评论</span><textarea v-model.trim="commentForm.content" :disabled="postingComment" maxlength="2000" placeholder="写下你的想法..." required /></div>
-                      <button class="primary-button" :disabled="postingComment || !commentForm.content" type="submit">{{ postingComment ? "发布中..." : "发布评论" }}</button>
-                    </form>
-                    <p v-else class="muted comment-login-hint">登录后可以发表评论。</p>
-                  </section>
-                </article>
-                <nav v-if="selectedToc?.length" class="toc-panel" :class="{ open: tocOpen }">
-                  <button class="toc-toggle" type="button" @click="tocOpen = !tocOpen">文章目录</button>
-                  <ol>
-                    <li v-for="item in selectedToc" :key="item.id" :class="`toc-level-${item.level}`"><a :href="`#${item.id}`">{{ item.title }}</a></li>
-                  </ol>
-                </nav>
-              </div>
-            </template>
-            <template v-else>
-              <p class="eyebrow">首页</p>
-              <h2>请选择一篇文章</h2>
-              <p class="muted">文章发布后会出现在左侧列表。</p>
-            </template>
+            <p class="eyebrow">首页</p>
+            <h2>请选择一篇文章</h2>
+            <p class="muted">文章发布后会出现在左侧列表。</p>
           </section>
         </div>
       </template>
 
     </div>
+
+    <template v-if="view === 'article'">
+      <section v-if="articleLoading && !selectedArticle" class="article-loading-card">
+        <iconify-icon icon="mdi:loading" width="34"></iconify-icon>
+        <p>正在加载文章...</p>
+      </section>
+      <section v-else-if="selectedArticle" class="article-detail-layout">
+        <div class="article-detail-main">
+          <button class="article-mobile-filter-button" type="button" @click="toggleMobileMenu">
+            <iconify-icon icon="mdi:filter-variant" width="20"></iconify-icon>
+            文章筛选
+          </button>
+
+          <section class="article-hero-card">
+            <div class="article-hero-content">
+              <div class="article-hero-meta">
+                <span class="article-badge">精选推荐</span>
+                <span class="article-hero-date">
+                  <iconify-icon icon="mdi:calendar"></iconify-icon>
+                  {{ formatDate(selectedArticle.createdAt) }}
+                </span>
+              </div>
+              <h1>{{ selectedArticle.title }}</h1>
+              <p>{{ selectedArticle.category?.name || '未分类' }} · 作者 {{ selectedArticleAuthorName }}</p>
+            </div>
+            <div class="article-hero-icon">
+              <iconify-icon icon="mdi:file-document-outline" width="58"></iconify-icon>
+              <span class="file-icon-fallback hero" aria-hidden="true"></span>
+            </div>
+          </section>
+
+          <section class="article-title-section">
+            <div class="article-meta-row">
+              <span class="article-avatar small">{{ selectedArticleAuthorInitial }}</span>
+              <strong>{{ selectedArticleAuthorName }}</strong>
+              <span class="article-meta-item">
+                <iconify-icon icon="mdi:calendar-blank-outline" width="20"></iconify-icon>
+                {{ formatDate(selectedArticle.createdAt) }}
+              </span>
+              <span class="article-meta-item">
+                <iconify-icon icon="mdi:clock-outline" width="20"></iconify-icon>
+                {{ selectedArticleReadTime }}
+              </span>
+            </div>
+            <div class="article-stats-strip">
+              <span>
+                <iconify-icon icon="mdi:eye-outline" width="22"></iconify-icon>
+                <strong>{{ selectedArticleStats.views }}</strong>
+                阅读
+              </span>
+              <span>
+                <iconify-icon icon="mdi:thumb-up-outline" width="22"></iconify-icon>
+                <strong>{{ selectedArticleStats.likes }}</strong>
+                点赞
+              </span>
+              <span>
+                <iconify-icon icon="mdi:comment-outline" width="22"></iconify-icon>
+                <strong>{{ selectedArticleStats.comments }}</strong>
+                评论
+              </span>
+            </div>
+          </section>
+
+          <article class="article-content-card">
+            <div class="article-html article-detail-html" v-html="selectedArticleHtml" />
+          </article>
+
+          <section class="article-action-strip">
+            <p>觉得文章不错？</p>
+            <div class="article-action-buttons">
+              <button :class="{ 'is-active': isSelectedArticleLiked }" type="button" @click="likeArticle">
+                <iconify-icon :icon="isSelectedArticleLiked ? 'mdi:heart' : 'mdi:heart-outline'" width="24"></iconify-icon>
+                点赞 {{ selectedArticleStats.likes }}
+              </button>
+              <button :class="{ 'is-active': isSelectedArticleFavorited }" type="button" @click="favoriteArticle">
+                <iconify-icon :icon="isSelectedArticleFavorited ? 'mdi:bookmark' : 'mdi:bookmark-outline'" width="24"></iconify-icon>
+                收藏
+              </button>
+              <button type="button" @click="shareArticle">
+                <iconify-icon icon="mdi:share-variant-outline" width="24"></iconify-icon>
+                分享
+              </button>
+            </div>
+          </section>
+
+          <section class="article-comments-card">
+            <div class="article-card-title">
+              <iconify-icon icon="mdi:comment-outline" width="32"></iconify-icon>
+              <h2>评论 ({{ comments.length }})</h2>
+            </div>
+            <form v-if="isAuthenticated" class="article-comment-form" @submit.prevent="submitComment">
+              <textarea v-model.trim="commentForm.content" :disabled="postingComment" maxlength="2000" placeholder="写下你的评论..." required />
+              <button :disabled="postingComment || !commentForm.content" type="submit">{{ postingComment ? "发布中..." : "发表评论" }}</button>
+            </form>
+            <div v-else class="article-login-hint">
+              登录后可以发表评论。
+              <button type="button" @click="showLoginForm">去登录</button>
+            </div>
+
+            <div class="article-comments-divider"></div>
+            <p v-if="commentsLoading" class="article-muted">正在加载评论...</p>
+            <p v-else-if="comments.length === 0" class="article-muted">还没有评论。</p>
+            <ul v-else class="article-comment-list">
+              <li v-for="comment in comments" :key="comment.id" class="article-comment-item">
+                <span class="article-avatar article-comment-avatar">{{ (comment.user?.username || '访')[0]?.toUpperCase() }}</span>
+                <div class="article-comment-body">
+                  <div class="article-comment-head">
+                    <strong>{{ comment.user?.username || "未知用户" }}</strong>
+                    <time>{{ formatDate(comment.createdAt) }}</time>
+                  </div>
+                  <p>{{ comment.content }}</p>
+                  <div class="article-comment-actions">
+                    <span>
+                      <iconify-icon icon="mdi:thumb-up-outline" width="16"></iconify-icon>
+                      {{ Math.max(1, comment.id % 13) }}
+                    </span>
+                    <span>回复</span>
+                    <button v-if="isAdmin" type="button" @click="deleteComment(comment)">删除</button>
+                  </div>
+                </div>
+              </li>
+            </ul>
+          </section>
+        </div>
+
+      </section>
+      <section v-else class="article-loading-card">
+        <p>文章不存在或尚未发布。</p>
+        <button type="button" @click="openPublicHome">返回首页</button>
+      </section>
+    </template>
+
+    <button
+      v-if="view === 'article' && showBackToTop"
+      class="back-to-top-button"
+      type="button"
+      title="回到顶部"
+      @click="scrollToTop"
+    >
+      <iconify-icon icon="mdi:arrow-up" width="22"></iconify-icon>
+      <span class="icon-fallback" aria-hidden="true">↑</span>
+    </button>
 
     <!-- 页脚 -->
     <footer v-if="view === 'public'" class="bg-white border-t border-slate-100 rounded-2xl py-12 px-6 lg:col-span-2">

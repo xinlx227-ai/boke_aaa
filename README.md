@@ -1,151 +1,89 @@
 # Private Blog System - 私有博客系统
 
-## 项目概述
+一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索/分类/标签/目录等基础能力；当前分支正在将文章详情页 UI 向首页风格统一。
 
-| 项目 | 说明 |
+## 当前状态
+
+| 项目 | 状态 |
 | --- | --- |
-| 项目名称 | `private-blog`（私有博客系统） |
-| 前端 | Vue 3 + Vite 5 + Tailwind CSS |
-| 后端 | Express + MySQL + Prisma ORM |
-| 认证 | JWT |
+| 当前分支 | `codex/article-detail-ui` |
+| 主要未提交改动 | `client/src/App.vue`、`client/src/style.css`、`README.md`、`codex-project-boke-handoff.md` |
+| 最新 UI 工作 | 文章详情页已向首页统一，包含首页同款顶部导航骨架、左侧用户/筛选/文章列表、深色 hero、统计条、正文卡片、底部互动条、评论区、作者/目录/标签/推荐右栏和移动端抽屉 |
+| 最近验证 | 2026-05-29：`npm run build` 通过 |
+| 交接文档 | `codex-project-boke-handoff.md` |
 
-## Git 分支与版本状态
-
-| 分支 / 标签 | 状态 | 说明 |
-| --- | --- | --- |
-| `main` | 已提交 | 基础功能已经实现，并已合并 `dev/new-ui` 新 UI 改造 |
-| `dev/new-ui` | 已提交并合并 | 用于实现新 UI 界面，当前已快进合并到 `main` |
-| `codex/login-ui-dark-mode` | 已提交 | 用于修复部分新旧 UI 不匹配问题，并实现明暗色调转换功能 |
-| `version-1` | 历史标签 | 原始旧 UI |
-| `version-2` | 阶段标签 | 新 UI 改造阶段 |
-
-## 版本 2 改造内容（2026-05-26）
-
-| 项目 | 说明 |
-| --- | --- |
-| 新 UI 来源 | 墨刀 AI 生成（`D:\mszb\private-blog.html`） |
-| 改造分支 | `dev/new-ui`、`login-ui-darkmode` |
-| 样式方案 | Tailwind CSS（npm 方式，非 CDN） |
-| 外部资源 | Google Fonts（Inter + Noto Sans SC）、Iconify、ECharts |
-| 样式隔离 | 旧版样式隔离在 `.legacy-ui` 类下 |
-| 模板改造 | `App.vue` 替换为新 UI 布局，业务逻辑保留 |
-| 代理修复 | Vite 代理补充 `/uploads` 路径 |
-| 明暗色调 | 右上角主题按钮已接入亮色/暗色切换，主题偏好保存到本地 |
-
-## 视图状态
-
-| Hash | 视图 | 当前样式 | 说明 |
-| --- | --- | --- | --- |
-| `#` | 公开首页 | 新 UI | Hero、文章卡片 Grid、标签云、阅读趋势、热门排行、页脚 |
-| `#article/<slug>` | 文章详情 | 旧 UI | 已通过 `.legacy-ui` 隔离，待后续改造 |
-| `#login` / `#register` | 登录/注册 | 新 UI | 回到首页，并切换左侧登录/注册卡片 |
-| `#dashboard` | 用户面板 | 旧 UI | 已通过 `.legacy-ui` 隔离，待后续改造 |
-| `#admin` | 管理后台 | 旧 UI | 已通过 `.legacy-ui` 隔离，待后续改造 |
-
-## 待改造模块
-
-| 模块 | 当前状态 | 后续工作 |
-| --- | --- | --- |
-| 文章详情页 | 旧 UI | 使用新 UI 风格重新设计 |
-| 管理后台 | 旧 UI | 使用新 UI 风格重新设计 |
-| 用户面板 | 旧 UI | 使用新 UI 风格重新设计 |
-| 暗色模式 | 已接入 | 继续完善旧 UI 细节适配 |
-| ECharts 阅读趋势 | 静态假数据 | 对接后端统计 API |
-| 热门排行 | 静态假数据 | 对接后端统计 API |
-
-## 启动方式
+注意：本仓库当前仍保留未提交的前端 UI 改动。继续开发前请先查看：
 
 ```bash
-npm run dev
+git status --short
+git diff -- client/src/App.vue client/src/style.css
 ```
 
-默认地址：
+## 当前 UI 说明
 
-| 服务 | 地址 |
+- 首页是当前新 UI 的主视觉标准。
+- 文章详情页已按首页风格重排为三栏：左侧复用首页用户信息、筛选文章和文章列表；中间为文章阅读主体；右侧为作者卡片、目录、热门标签和相关推荐。
+- 详情页顶部保留 `MyBlog Pro`、返回、搜索框视觉预留、点赞/收藏/分享、暗色切换、通知和用户胶囊。
+- 详情页点赞/收藏目前是前端本地状态，顶部与底部互动条同步；刷新后不会持久化。
+- 移动端优先展示文章内容，左侧筛选折叠为抽屉，作者卡片/热门标签/目录卡隐藏，相关推荐放到评论区之后。
+- 用户面板和管理后台仍是旧 UI，通过 `.legacy-ui` 隔离。
+
+## 功能概览
+
+### 公开阅读体验
+
+- 公开文章列表
+- 文章搜索
+- 分类筛选
+- 标签筛选
+- 文章详情页渲染
+- Markdown 生成目录 TOC
+- 评论列表
+- 移动端响应式布局
+
+### 认证与会话
+
+- 用户注册
+- bcrypt 密码哈希
+- JWT 登录
+- 登录设备 `device_id`
+- `user_sessions` 会话记录
+- 超过 3 个活跃设备后自动淘汰旧会话
+- 登录态校验和退出登录
+
+### 管理员文章能力
+
+- 创建、编辑、发布、删除文章
+- Markdown 原文存储
+- 安全 HTML 渲染存储
+- 图片上传到 `uploads/articles/{articleId}/`
+- 图片上传接口返回可直接粘贴的 Markdown
+- Markdown zip 批量导入
+- 导入时复制本地图片并重写图片路径
+- 导入结果包含成功、缺失图片、格式错误、失败文件日志
+
+### 评论
+
+- 匿名用户可读取评论
+- 登录用户可发布评论
+- 评论支持 `parent_id` 字段，为后续回复 UI 预留
+- 管理员可删除评论
+
+## 技术栈
+
+| 层级 | 技术 |
 | --- | --- |
-| 前端 | `http://localhost:5173` |
-| 后端 | `http://localhost:3000` |
+| 前端 | Vue 3、Vite 5、Tailwind CSS |
+| 后端 | Node.js、Express |
+| 数据库 | MySQL 8 |
+| ORM | Prisma |
+| 认证 | JWT、bcrypt |
+| Markdown | markdown-it、sanitize-html |
+| 上传 | multer |
+| 压缩包导入 | adm-zip |
+| 测试 | Node.js test runner |
 
----
-
-## Original Documentation (English)
-
-This repository contains a staged full-stack private blog project built with Vue 3, Express, MySQL, and Prisma.
-
-The project currently includes two working milestones:
-- Task 2: authentication and session management
-- Task 3: article publishing with Markdown, safe HTML rendering, and image uploads
-- Task 4: admin batch article import from Markdown zip archives
-- Task 5: comments and mobile responsive layout
-- Task 6: public reading experience with search, categories, tags, and table of contents
-
-## Implemented Features
-
-### Authentication
-
-- user registration with bcrypt password hashing
-- JWT-based login
-- per-login `device_id` generation
-- `user_sessions` tracking
-- automatic eviction when a user exceeds 3 active devices
-- protected API validation against both JWT and active session state
-- client-side redirect back to login when a session becomes invalid
-
-### Article Publishing
-
-- admin-only article create, edit, publish, and delete
-- Markdown stored in `content_markdown`
-- sanitized rendered HTML stored in `content_html`
-- XSS-safe Markdown rendering via `markdown-it` + `sanitize-html`
-- article image uploads stored under `uploads/articles/{articleId}/`
-- image upload API returns a Markdown snippet ready to paste into the editor
-- admin batch import from `.zip` files containing Markdown and images
-- imported Markdown files are sorted by filename and created as draft articles
-- imported local image references such as `images/a.png` are copied to article uploads and rewritten to `/uploads/articles/{articleId}/...`
-- import API returns detailed logs for imported articles, missing images, unsupported files, and per-file failures
-- public published article list and article detail rendering
-- public article search by title or Markdown content
-- public article filtering by category or tag
-- article detail responses include a Markdown-generated table of contents
-
-### Taxonomy
-
-- articles can belong to one category
-- articles can have multiple tags
-- category and tag metadata are returned with article list and detail responses
-- public filter metadata is available for building navigation controls
-
-### Comments
-
-- published article detail pages show comments
-- anonymous visitors can read comments
-- logged-in users can post comments
-- comments store `parent_id` for future reply support
-- admins can delete comments
-
-### Mobile Layout
-
-- top navigation collapses into a mobile menu
-- 375px wide screens avoid horizontal page scrolling
-- article images use `max-width: 100%` and `height: auto`
-- comment form stays in normal page flow and does not cover content
-- article body line-height is tuned for phone reading
-- article table of contents collapses on mobile
-
-## Tech Stack
-
-- Frontend: Vue 3 + Vite
-- Backend: Node.js + Express
-- Database: MySQL
-- ORM: Prisma
-- Auth: JWT + `user_sessions`
-- Markdown: `markdown-it`
-- HTML sanitizing: `sanitize-html`
-- Uploads: `multer`
-- Zip parsing: `adm-zip`
-- Password hashing: `bcrypt`
-
-## Project Structure
+## 项目结构
 
 ```text
 .
@@ -163,45 +101,28 @@ The project currently includes two working milestones:
 |   |   `-- schema.prisma
 |   |-- src/
 |   |   |-- config/
-|   |   |   `-- env.js
 |   |   |-- lib/
-|   |   |   |-- auth.js
-|   |   |   |-- markdown.js
-|   |   |   `-- prisma.js
 |   |   |-- middleware/
-|   |   |   |-- auth.js
-|   |   |   `-- role.js
 |   |   |-- routes/
-|   |   |   |-- articles.js
-|   |   |   |-- auth.js
-|   |   |   |-- comments.js
-|   |   |   `-- index.js
 |   |   |-- app.js
 |   |   `-- server.js
 |   |-- test/
-|   |   |-- articles.test.js
-|   |   `-- auth.test.js
 |   |-- uploads/
-|   |   `-- articles/
-|   |-- .env
-|   |-- .env.example
-|   |-- .env.test
 |   `-- package.json
 |-- package.json
-`-- README.md
+|-- README.md
+`-- codex-project-boke-handoff.md
 ```
 
-## Environment Requirements
+## 环境要求
 
 - Node.js 20+
 - npm 10+
 - MySQL 8+
 
-## Environment Variables
+## 环境变量
 
-### Main environment
-
-Create `server/.env` from `server/.env.example`.
+复制 `server/.env.example` 为 `server/.env`，并按本机数据库实际配置调整。
 
 ```env
 DATABASE_URL="mysql://root:password@localhost:3306/private_blog"
@@ -211,160 +132,88 @@ JWT_SECRET="replace-with-a-strong-secret"
 JWT_EXPIRES_IN="7d"
 ```
 
-### Test environment
+测试环境使用 `server/.env.test`，默认连接 `private_blog_test`。
 
-`server/.env.test` is used by the backend test suite.
+本地 MySQL 注意事项：
 
-```env
-DATABASE_URL="mysql://root:password@localhost:3306/private_blog_test"
-PORT=3000
-CLIENT_URL="http://localhost:5173"
-JWT_SECRET="replace-with-a-strong-secret"
-JWT_EXPIRES_IN="7d"
-```
+- 确保 `server/.env` 指向当前真正运行的 MySQL 实例。
+- 不要让两个 MySQL 服务同时抢占 `3306`。
+- 如果本机把 MySQL 默认端口改到 `3307`，也要同步修改 `DATABASE_URL`。
 
-## Install
+## 安装
 
-Run from the repository root:
+在仓库根目录执行：
 
 ```bash
 npm install
 ```
 
-## Database Migration
+## 数据库迁移
 
-If the migration files already exist, apply them with:
+生成 Prisma Client：
 
 ```bash
 npm run prisma:generate
+```
+
+应用已有迁移：
+
+```bash
 npm run prisma:deploy
 ```
 
-If you are creating a new local migration during development:
+开发新迁移时使用：
 
 ```bash
 npm run prisma:migrate -- --name your_migration_name
 ```
 
-## Development
+## 本地开发
 
-Start both frontend and backend:
+同时启动前端和后端：
 
 ```bash
 npm run dev
 ```
 
-Default URLs:
+默认地址：
 
-- frontend: [http://localhost:5173](http://localhost:5173)
-- backend health check: [http://localhost:3000/api/health](http://localhost:3000/api/health)
+| 服务 | 地址 |
+| --- | --- |
+| 前端 | `http://localhost:5173` |
+| 后端健康检查 | `http://localhost:3000/api/health` |
 
-## Backend Test
+如果用户或其他进程已经占用 `3000` 或 `5173`，请不要直接关闭对方服务，改用其他端口进行临时验收。
 
-Run the backend integration tests:
+## 常用脚本
 
 ```bash
+npm run dev
+npm run dev:client
+npm run dev:server
+npm run build
+npm run start
 npm test --workspace server
 ```
 
-The backend test suite uses the isolated `private_blog_test` database defined in `server/.env.test`.
+## API 摘要
 
-Current backend test coverage:
-- registration
-- bcrypt password hashing
-- JWT login
-- `user_sessions` writes
-- three-device active-session limit
-- invalidated session returning `401`
-- logout invalidating the current session
-- admin article creation
-- Markdown to HTML generation
-- XSS sanitization checks
-- image upload handling
-- Markdown zip batch import
-- import logs for successful articles, missing images, unsupported files, and failed files
-- public article search by content
-- public article filtering by category and tag
-- article detail table of contents generation
-- public comment listing
-- authenticated comment creation
-- `parent_id` validation for reply-ready comments
-- admin-only comment deletion
-- public published article retrieval
-- article deletion
+### Auth
 
-## Frontend Build
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `POST /api/auth/logout`
 
-```bash
-npm run build --workspace client
-```
+### Articles
 
-## Auth API
-
-### `POST /api/auth/register`
-
-Request body:
-
-```json
-{
-  "username": "alice",
-  "email": "alice@example.com",
-  "password": "Passw0rd!"
-}
-```
-
-### `POST /api/auth/login`
-
-Request body:
-
-```json
-{
-  "account": "alice@example.com",
-  "password": "Passw0rd!"
-}
-```
-
-Response body:
-
-```json
-{
-  "token": "<jwt>",
-  "deviceId": "<uuid>",
-  "user": {
-    "id": 1,
-    "username": "alice",
-    "email": "alice@example.com",
-    "role": "USER",
-    "createdAt": "2026-05-01T00:00:00.000Z"
-  }
-}
-```
-
-### `GET /api/auth/me`
-
-Requires `Authorization: Bearer <jwt>`.
-
-### `POST /api/auth/logout`
-
-Requires `Authorization: Bearer <jwt>`.
-
-## Article API
-
-### Public endpoints
+公开接口：
 
 - `GET /api/articles`
-  Returns published articles only. Supports optional query parameters:
-  - `q`: search article title or Markdown content
-  - `category`: category slug
-  - `tag`: tag slug
 - `GET /api/articles/filters`
-  Returns categories and tags for public filter controls.
 - `GET /api/articles/:slug`
-  Returns a published article detail with rendered `content_html`, category, tags, and `toc`.
 
-### Admin endpoints
-
-These endpoints require a logged-in user with `role = ADMIN`.
+管理员接口：
 
 - `GET /api/articles/admin/list`
 - `POST /api/articles/admin`
@@ -374,7 +223,7 @@ These endpoints require a logged-in user with `role = ADMIN`.
 - `POST /api/articles/admin/:id/images`
 - `POST /api/articles/admin/import`
 
-### Create or update article payload
+创建或更新文章示例：
 
 ```json
 {
@@ -387,157 +236,31 @@ These endpoints require a logged-in user with `role = ADMIN`.
 }
 ```
 
-### Article detail TOC response
+### Comments
 
-Article detail responses include a `toc` array generated from Markdown headings:
+- `GET /api/comments/articles/:slug`
+- `POST /api/comments/articles/:slug`
+- `DELETE /api/comments/:id`
 
-```json
-{
-  "article": {
-    "title": "Hello Markdown",
-    "contentHtml": "<h1 id=\"heading\">Heading</h1>",
-    "category": {
-      "name": "Guides",
-      "slug": "guides"
-    },
-    "tags": [
-      {
-        "name": "Markdown",
-        "slug": "markdown"
-      }
-    ],
-    "toc": [
-      {
-        "id": "heading",
-        "level": 1,
-        "title": "Heading"
-      }
-    ]
-  }
-}
+## 测试与构建
+
+后端测试：
+
+```bash
+npm test --workspace server
 ```
 
-### Upload image response
+前端构建：
 
-Example response:
-
-```json
-{
-  "image": {
-    "id": 1,
-    "imageUrl": "/uploads/articles/12/1714555555555-demo.png",
-    "altText": "Demo image",
-    "sortOrder": 0
-  },
-  "markdown": "![Demo image](/uploads/articles/12/1714555555555-demo.png)"
-}
+```bash
+npm run build
 ```
 
-### Batch import articles
+当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除等流程。
 
-`POST /api/articles/admin/import`
+## 管理员账号说明
 
-Requires `Authorization: Bearer <jwt>` and `role = ADMIN`.
-
-Request content type: `multipart/form-data`
-
-Form field:
-
-- `archive`: a `.zip` file
-
-Supported zip layout:
-
-```text
-01-first-chapter.md
-02-second-chapter.md
-03-third-chapter.md
-images/a.png
-images/b.jpg
-```
-
-Import behavior:
-
-- every `.md` file becomes one draft article
-- Markdown files are sorted by filename with numeric ordering
-- the article title is read from the first `# Heading`; if no heading exists, it falls back to the filename
-- the article slug is generated from the Markdown filename
-- Markdown image references such as `images/a.png` are copied to `uploads/articles/{articleId}/`
-- copied images are rewritten to `/uploads/articles/{articleId}/{fileName}`
-- one failed Markdown file does not stop the rest of the import
-- unsupported files are reported as format errors
-
-Example response:
-
-```json
-{
-  "imported": [
-    {
-      "file": "01-first-chapter.md",
-      "article": {
-        "id": 12,
-        "title": "First Chapter",
-        "slug": "01-first-chapter",
-        "status": "DRAFT"
-      }
-    }
-  ],
-  "missingImages": [
-    {
-      "articleId": 13,
-      "path": "images/missing.jpg"
-    }
-  ],
-  "formatErrors": [
-    {
-      "file": "notes.txt",
-      "reason": "Unsupported file type. Only .md and common image files are imported."
-    }
-  ],
-  "failed": [
-    {
-      "file": "02-duplicate.md",
-      "reason": "An article with that slug already exists."
-    }
-  ],
-  "summary": {
-    "imported": 1,
-    "missingImages": 1,
-    "formatErrors": 1,
-    "failed": 1
-  }
-}
-```
-
-## Comment API
-
-### `GET /api/comments/articles/:slug`
-
-Returns approved comments for a published article. This endpoint is public.
-
-### `POST /api/comments/articles/:slug`
-
-Requires `Authorization: Bearer <jwt>`.
-
-Request body:
-
-```json
-{
-  "content": "A useful comment",
-  "parentId": null
-}
-```
-
-`parentId` is optional. When provided, it must reference an approved comment on the same article.
-
-### `DELETE /api/comments/:id`
-
-Requires a logged-in admin.
-
-## Admin Role Note
-
-Newly registered users default to `USER`.
-
-If you want to test article publishing immediately, promote a user manually:
+新注册用户默认是 `USER`。如果需要立即测试文章发布，可在本地数据库中手动提升角色：
 
 ```sql
 UPDATE users
@@ -545,28 +268,9 @@ SET role = 'ADMIN'
 WHERE email = 'your-admin@example.com';
 ```
 
-## Current Status
+## 后续建议
 
-Implemented:
-- workspace setup with frontend/backend split
-- Prisma schema and migration
-- safe Markdown rendering utilities
-- auth routes and session middleware
-- frontend login/register flow
-- admin article publishing workflow
-- image upload and Markdown insertion support
-- admin Markdown zip batch import workflow
-- article search, category filtering, tag filtering, and TOC
-- article comment list, posting, and admin deletion
-- mobile top menu and 375px responsive layout
-- public article list and detail rendering
-- backend integration tests for auth and articles
-
-Last local validation on 2026-05-02:
-- `npm install` passed
-- `npm run prisma:deploy` passed; production database applied `20260502113000_reading_experience`
-- `npm test --workspace server` passed, 4/4 tests
-- `npm run build --workspace client` passed
-
-Next suggested milestone:
-- pagination, comment moderation, richer public blog navigation, and nested reply UI
+- 让用户自行查看文章详情页桌面和移动端视觉效果，并按反馈微调。
+- 继续改造用户面板和管理后台旧 UI。
+- 将热门排行、阅读趋势、阅读量、点赞/收藏、作者粉丝、相关推荐等静态或本地展示对接真实统计 API。
+- 补充分页、评论审核、嵌套回复 UI。
