@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-用户要求将阅读量、点赞、收藏、热门排行等静态或本地展示接入真实后端统计 API，随后更新本地 `handoff.md` 和 `README.md` 并提交。本文件用于让下一位 Agent 在当前分支继续工作。
+用户已完成两轮功能开发：先将阅读量、点赞、收藏、热门排行等静态或本地展示接入真实后端统计 API；随后在其上继续开发评论区主评论点赞和抖音式一层回复。本文件用于让下一位 Agent 在当前分支继续工作。
 
 ## 建议下个 Agent 使用的技能
 
@@ -13,17 +13,30 @@
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前分支：`codex/article-apiset`
+- 当前分支：`codex/comment-thread-interactions`
 - `main` 与 `origin/main` 在本次统计 API 开始前均指向 `b251ad6 Update homepage sidebar handoff notes`。
+- `codex/article-apiset` 指向 `1a2f29b Add article statistics APIs`，基于 `main`。
+- `codex/comment-thread-interactions` 指向 `7f683c9 Add threaded comment interactions`，基于 `codex/article-apiset`。
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - 不要提交、回滚或覆盖用户自己的未提交改动；继续工作前先检查工作区。
+
+当前分支结构：
+
+```text
+main / origin/main
+└─ b251ad6 Update homepage sidebar handoff notes
+   └─ codex/article-apiset
+      └─ 1a2f29b Add article statistics APIs
+         └─ codex/comment-thread-interactions
+            └─ 7f683c9 Add threaded comment interactions
+```
 
 继续工作前建议先执行：
 
 ```bash
 git status --short --branch
 git log --oneline --decorate -5
-git diff -- client/src/App.vue server/src/routes/articles.js server/prisma/schema.prisma
+git diff -- client/src/App.vue client/src/style.css server/src/routes/comments.js server/prisma/schema.prisma
 git diff -- README.md handoff.md
 ```
 
@@ -39,6 +52,57 @@ git diff -- README.md handoff.md
 ## 项目概况
 
 这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
+
+## 本次已完成：评论区主评论点赞与一层回复
+
+提交：`7f683c9 Add threaded comment interactions`
+
+### 数据库与迁移
+
+新增迁移：
+
+- `server/prisma/migrations/20260531110000_comment_threads/migration.sql`
+
+新增或调整：
+
+- `comments.reply_to_comment_id`：记录精确回复目标；回复某条回复时仍归属主评论，但可显示“回复 @用户名”。
+- `comment_likes`：主评论点赞明细表，主键为 `(comment_id, user_id)`，保证同一用户同一评论只能点赞一次。
+- `schema.prisma` 已新增 `CommentLike`、`replyToCommentId`、`replyTo` / `targetedReplies` 关系。
+
+本迁移已应用到测试库 `private_blog_test` 用于跑测试；开发库/线上库在使用前仍需对对应环境执行：
+
+```bash
+npm run prisma:deploy
+```
+
+### 评论规则
+
+- 只有主评论支持点赞；回复不支持点赞。
+- 主评论作者本人不能点赞自己的评论，其他登录用户可点赞/取消。
+- 同一用户同一主评论只能点赞一次。
+- 未登录用户点击评论点赞或回复时，前端提示登录，登录后回到文章，不自动补执行操作。
+- 回复采用一层楼中楼：回复某条回复时，新回复仍挂到主评论下，并显示 `回复 @用户名`。
+- 默认展示 2 条回复，支持展开/收起。
+- 主评论和回复都计入文章评论数和热门分。
+- 管理员可删除评论；删除主评论时删除其直接回复，删除回复时只删该回复。
+
+安全审查备注：当前评论内容前端使用 Vue 插值渲染，不使用 `v-html`；评论接口 raw SQL 使用 Prisma tagged `$queryRaw` / `$executeRaw` 和 `Prisma.join`，未发现直接 SQL 注入点；认证使用 `Authorization: Bearer`，评论区 CSRF 风险较低；敏感操作使用 `POST` / `DELETE`，未使用 `GET`。待改进点：删除主评论时只清理直接回复，若历史数据存在多层 `parent_id`，可能留下孤儿回复；评论列表暂未分页，高评论量文章存在性能隐患。
+
+### 后端 API
+
+- `GET /api/comments/articles/:slug`：返回主评论 + 回复树形结构，并返回 `count`。
+- `POST /api/comments/articles/:slug`：创建主评论或回复，需登录。
+- `POST /api/comments/:id/likes`：点赞主评论，需登录；评论作者本人禁止点赞。
+- `DELETE /api/comments/:id/likes`：取消主评论点赞，需登录。
+- `DELETE /api/comments/:id`：管理员删除评论。
+
+### 前端接入
+
+- `client/src/App.vue`：评论区改为树形渲染，评论标题显示主评论 + 回复总数。
+- 主评论显示真实点赞数和点赞状态；作者本人点赞按钮置灰。
+- 回复只显示“回复/删除”，不显示点赞。
+- 回复输入框在被回复的评论/回复下方展开。
+- `client/src/style.css`：新增楼中楼回复列表、回复输入框、点赞状态、暗色模式和移动端样式。
 
 ## 本次已完成：真实统计 API
 
@@ -129,6 +193,7 @@ hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
 - 文章详情页只保留左侧栏 + 中间正文两栏；右侧栏已移除。
 - 详情页左侧栏为紧凑作者卡、条件显示的目录、筛选文章、文章列表。
 - 详情页点赞/收藏已由前端本地状态改为后端持久化状态。
+- 详情页评论区已支持主评论点赞、回复输入框、默认 2 条回复和展开/收起。
 - 移动端详情页优先正文，左侧内容折叠为抽屉。
 - 用户面板和管理后台仍为旧 UI，通过 `.legacy-ui` 隔离。
 
@@ -139,43 +204,47 @@ hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
   - `server/prisma/migrations/20260528162000_add_article_published_at/migration.sql`
   - `server/prisma/migrations/20260528163500_drop_article_chapter_order_index/migration.sql`
   - `server/prisma/migrations/20260530120000_article_stats/migration.sql`
+  - `server/prisma/migrations/20260531110000_comment_threads/migration.sql`
 - 后端发布接口首次发布时写入 `published_at`，再次发布不覆盖原首次发布时间。
 - `chapterOrder` 作为文章序号，新建默认当前文章总数 + 1；手动重排时会顺延其他文章。
+- 评论区接口仍主要使用 Prisma raw SQL 访问新评论点赞表/新回复目标字段，以降低本机 Prisma Client 生成被 Windows DLL 占用时的阻塞风险；`schema.prisma` 和迁移已完整更新。
 
 ## 最近重要提交
 
+- `7f683c9 Add threaded comment interactions`：当前 `codex/comment-thread-interactions`，新增评论区主评论点赞、评论回复树形结构、回复 UI、`comment_likes` 迁移和测试。
+- `1a2f29b Add article statistics APIs`：`codex/article-apiset`，新增阅读/点赞/收藏/热门排行真实统计 API 和前端接入。
 - `b251ad6 Update homepage sidebar handoff notes`：本次统计 API 开始前的 `HEAD` / `main` / `origin/main`。
 - `60074c7 Update handoff after index layout merge`：首页侧栏交接更新。
 - `d461d5b Merge index layout updates into main`：将 `codex/index-layout` 合并进 `main`。
 - `b328f4e Add stable homepage latest pagination`：稳定首页最新发布分页、四卡位占位和文章卡片定高。
 - `c07cac4 Update article detail UI`：文章详情页 UI 调整。
 
-本次提交预计为统计 API 与文档更新提交。
-
 ## 最近验证
 
-本次统计 API 工作已执行：
+评论区互动工作已执行：
 
 ```bash
 npm test --workspace server
 npm run build
 git diff --check
+node --env-file=.env.test ..\node_modules\prisma\build\index.js validate --schema prisma\schema.prisma
 ```
 
 结果均通过。
 
 还执行过本地前端临时预览：
 
-- 尝试使用 `5174`，因端口占用自动切到 `http://127.0.0.1:5175/`。
-- `Invoke-WebRequest http://127.0.0.1:5175/` 返回 200。
+- 使用 `http://127.0.0.1:5174/`。
+- `Invoke-WebRequest http://127.0.0.1:5174/` 返回 200。
 - 临时 Vite 进程已停止，未占用用户的 `3000` 后端端口。
 
-已执行数据库迁移：
+数据库迁移状态：
 
 ```bash
-npm run prisma:deploy
 node --env-file=.env.test ..\node_modules\prisma\build\index.js migrate deploy --schema prisma\schema.prisma
 ```
+
+上述命令已将 `20260531110000_comment_threads` 应用到测试库 `private_blog_test`。本轮未对开发库或线上库执行 `npm run prisma:deploy`；使用评论区新功能前需在对应环境执行迁移。
 
 ## 本地 MySQL 备注
 
@@ -201,5 +270,7 @@ sc.exe config MySQL start= demand
 - 可继续改造用户面板和管理后台旧 UI。
 - 可基于 `article_stats` 和 `site_visits` 做真实阅读趋势折线图；第一版目前只把趋势卡下方数字接真。
 - 可做“我的收藏列表”，本次只实现收藏状态和计数。
-- 可补充分页、评论审核、嵌套回复 UI。
+- 可补充评论分页、评论审核。
+- 可修复安全审查中提到的评论删除边界：删除主评论时递归清理历史多层回复，或先迁移历史 `parent_id` 到一层结构。
+- 可给 `comment_likes` 增加 `(user_id, comment_id)` 复合索引，优化用户态 `likedByMe` 查询。
 - 可将粉丝数、作者关注等继续接入真实后端模型。

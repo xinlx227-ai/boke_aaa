@@ -6,14 +6,14 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前工作分支 | `codex/article-apiset` |
+| 当前工作分支 | `codex/comment-thread-interactions` |
 | 最新已合并 UI 工作 | `codex/article-detail-ui`、`codex/ui-layout`、`codex/index-layout` 均已合并到 `main` |
-| 最新功能工作 | 阅读量、点赞、收藏、今日阅读、热门排行等已接入真实后端统计 API |
+| 最新功能工作 | 阅读量、点赞、收藏、今日阅读、热门排行等已接入真实后端统计 API；评论区已支持主评论点赞和抖音式一层回复 |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
-| 统计数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits` |
-| 最近验证 | 2026-05-30：`npm test --workspace server`、`npm run build`、`git diff --check` 均通过 |
+| 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes` |
+| 最近验证 | 2026-05-31：`npm test --workspace server`、`npm run build`、`git diff --check`、`prisma validate` 均通过 |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
@@ -31,6 +31,8 @@
 - 详情页顶部保留 `MyBlog Pro`、返回、搜索框视觉预留、点赞/收藏/分享、暗色切换、通知和用户胶囊。
 - 详情页阅读、点赞、评论指标条已接入真实统计。
 - 详情页点赞/收藏为后端持久化状态，顶部与底部互动条同步；未登录点击会提示登录。
+- 评论区主评论已接入真实点赞，评论作者本人不能点赞自己的评论，其他登录用户可点赞/取消。
+- 评论区回复采用一层楼中楼：回复某条回复时仍归到主评论下，并显示“回复 @用户名”；默认展示 2 条回复，可展开/收起。
 - 详情页目录只在当前文章存在 TOC 时显示，并位于作者卡和筛选文章之间。
 - 详情页右侧栏已移除，热门标签和相关推荐不在详情页显示，主内容区域向右扩展。
 - 移动端优先展示文章内容，左侧信息折叠为抽屉；抽屉内保留作者卡、目录、筛选和文章列表。
@@ -50,7 +52,7 @@
 - 标签筛选
 - 文章详情页渲染
 - Markdown 生成目录 TOC
-- 评论列表
+- 评论列表与一层回复
 - 移动端响应式布局
 - 首页最新发布分页已稳定实现，桌面端分页位置按四卡位区域固定
 
@@ -100,9 +102,15 @@ hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
 
 - 匿名用户可读取评论
 - 登录用户可发布评论
-- 评论支持 `parent_id` 字段，为后续回复 UI 预留
+- 评论接口返回主评论 + 回复树形结构
+- 回复采用一层楼中楼结构，回复的回复仍归属主评论，并通过 `reply_to_comment_id` 记录精确回复目标
+- 默认展示 2 条回复，支持展开/收起
+- 只有主评论支持点赞；回复不支持点赞
+- 主评论作者本人不能点赞自己的评论，其他登录用户可点赞/取消
+- 同一用户同一主评论只能点赞一次
 - 管理员可删除评论
-- 已通过统计 API 真实计入文章评论数和热门分
+- 删除主评论时会删除其直接回复；删除回复只删除该回复
+- 评论和回复都计入文章评论数和热门分
 
 ## 技术栈
 
@@ -203,12 +211,13 @@ npm run prisma:deploy
 npm run prisma:migrate -- --name your_migration_name
 ```
 
-本项目当前包含 `published_at` 相关迁移、取消 `chapterOrder` 唯一索引的迁移，以及文章统计相关迁移。其他环境同步代码后需要执行迁移部署。
+本项目当前包含 `published_at` 相关迁移、取消 `chapterOrder` 唯一索引的迁移、文章统计相关迁移，以及评论回复/评论点赞相关迁移。其他环境同步代码后需要执行迁移部署。
 
-本次统计 API 新增迁移：
+最近新增迁移：
 
 ```text
 server/prisma/migrations/20260530120000_article_stats/migration.sql
+server/prisma/migrations/20260531110000_comment_threads/migration.sql
 ```
 
 ## 本地开发
@@ -319,7 +328,36 @@ npm test --workspace server
 
 - `GET /api/comments/articles/:slug`
 - `POST /api/comments/articles/:slug`
+- `POST /api/comments/:id/likes`
+- `DELETE /api/comments/:id/likes`
 - `DELETE /api/comments/:id`
+
+评论列表接口返回树形结构：
+
+```json
+{
+  "comments": [
+    {
+      "id": 1,
+      "content": "A useful comment",
+      "likeCount": 1,
+      "likedByMe": false,
+      "replies": [
+        {
+          "id": 2,
+          "parentId": 1,
+          "replyToCommentId": 1,
+          "content": "First reply",
+          "replyToUser": {
+            "username": "comment_user"
+          }
+        }
+      ]
+    }
+  ],
+  "count": 2
+}
+```
 
 ## 测试与构建
 
@@ -335,14 +373,15 @@ npm test --workspace server
 npm run build
 ```
 
-当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、文章序号、首次发布时间、阅读去重、点赞/收藏登录限制、热门排行和全站 summary 等流程。
+当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、评论回复、评论点赞/取消、评论作者禁止自赞、回复禁止点赞、文章序号、首次发布时间、阅读去重、点赞/收藏登录限制、热门排行和全站 summary 等流程。
 
-本次统计 API 工作已验证：
+最近评论区互动工作已验证：
 
 ```bash
 npm test --workspace server
 npm run build
 git diff --check
+node --env-file=.env.test ..\node_modules\prisma\build\index.js validate --schema prisma\schema.prisma
 ```
 
 ## 管理员账号说明
@@ -360,5 +399,5 @@ WHERE email = 'your-admin@example.com';
 - 基于 `site_visits` 做真实阅读趋势折线图；当前第一版只把趋势卡下方数字接真。
 - 继续改造用户面板和管理后台旧 UI。
 - 增加“我的收藏列表”，本次只实现收藏状态和计数。
-- 补充分页、评论审核、嵌套回复 UI。
+- 补充评论分页、评论审核、删除主评论时递归清理历史多层回复。
 - 将粉丝数、作者关注等静态展示接入真实后端模型。
