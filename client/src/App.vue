@@ -43,6 +43,9 @@ const siteSummary = ref({
   totalFavorites: 0
 });
 const returnArticleSlugAfterLogin = ref("");
+const activeReplyTarget = ref(null);
+const expandedReplyCommentIds = ref(new Set());
+const DEFAULT_VISIBLE_REPLY_COUNT = 2;
 
 const filters = reactive({
   q: "",
@@ -77,7 +80,8 @@ const imageForm = reactive({
 
 const commentForm = reactive({
   content: "",
-  parentId: null
+  parentId: null,
+  replyToCommentId: null
 });
 
 const isAuthenticated = computed(() => Boolean(token.value && currentUser.value));
@@ -97,10 +101,13 @@ const selectedArticleReadTime = computed(() => {
 const selectedArticleSlug = computed(() => selectedArticle.value?.slug || "");
 const isSelectedArticleLiked = computed(() => Boolean(selectedArticle.value?.stats?.likedByMe));
 const isSelectedArticleFavorited = computed(() => Boolean(selectedArticle.value?.stats?.favoritedByMe));
+const commentTotalCount = computed(() =>
+  comments.value.reduce((total, comment) => total + 1 + (comment.replies?.length || 0), 0)
+);
 const selectedArticleStats = computed(() => ({
   views: formatCompactNumber(selectedArticle.value?.stats?.viewCount || 0),
   likes: formatCompactNumber(selectedArticle.value?.stats?.likeCount || 0),
-  comments: formatCompactNumber(selectedArticle.value?.stats?.commentCount ?? comments.value.length)
+  comments: formatCompactNumber(commentTotalCount.value)
 }));
 const authorStats = computed(() => ({
   articles: publishedArticles.value.length,
@@ -287,6 +294,98 @@ function requireLoginForArticleAction() {
   authMode.value = "login";
   setHash("login");
   return false;
+}
+
+function requireLoginForCommentAction() {
+  if (isAuthenticated.value) {
+    return true;
+  }
+
+  returnArticleSlugAfterLogin.value = selectedArticleSlug.value;
+  setMessage("请先登录后再操作。");
+  authMode.value = "login";
+  setHash("login");
+  return false;
+}
+
+function resetCommentForm() {
+  commentForm.content = "";
+  commentForm.parentId = null;
+  commentForm.replyToCommentId = null;
+  activeReplyTarget.value = null;
+}
+
+function getReplyContext(comment, reply = null) {
+  const target = reply || comment;
+
+  return {
+    parentId: comment.id,
+    replyToCommentId: target.id,
+    username: target.user?.username || "用户"
+  };
+}
+
+function startReply(comment, reply = null) {
+  if (!requireLoginForCommentAction()) {
+    return;
+  }
+
+  activeReplyTarget.value = getReplyContext(comment, reply);
+  commentForm.parentId = activeReplyTarget.value.parentId;
+  commentForm.replyToCommentId = activeReplyTarget.value.replyToCommentId;
+  commentForm.content = "";
+}
+
+function cancelReply() {
+  resetCommentForm();
+}
+
+function isReplyingTo(comment, reply = null) {
+  const targetId = reply?.id || comment.id;
+
+  return (
+    activeReplyTarget.value?.parentId === comment.id &&
+    activeReplyTarget.value?.replyToCommentId === targetId
+  );
+}
+
+function visibleReplies(comment) {
+  if (expandedReplyCommentIds.value.has(comment.id)) {
+    return comment.replies || [];
+  }
+
+  return (comment.replies || []).slice(0, DEFAULT_VISIBLE_REPLY_COUNT);
+}
+
+function hiddenReplyCount(comment) {
+  return Math.max(0, (comment.replies?.length || 0) - DEFAULT_VISIBLE_REPLY_COUNT);
+}
+
+function toggleReplies(comment) {
+  const nextExpandedIds = new Set(expandedReplyCommentIds.value);
+
+  if (nextExpandedIds.has(comment.id)) {
+    nextExpandedIds.delete(comment.id);
+  } else {
+    nextExpandedIds.add(comment.id);
+  }
+
+  expandedReplyCommentIds.value = nextExpandedIds;
+}
+
+function patchComment(commentId, patch) {
+  comments.value = comments.value.map((comment) =>
+    comment.id === commentId
+      ? {
+          ...comment,
+          ...patch
+        }
+      : comment
+  );
+}
+
+function isMyComment(comment) {
+  return Boolean(currentUser.value?.id && comment.userId === currentUser.value.id);
 }
 
 async function likeArticle() {
@@ -600,6 +699,7 @@ async function loadComments(slug) {
   try {
     const payload = await apiFetch(`/comments/articles/${encodeURIComponent(slug)}`);
     comments.value = payload.comments;
+    resetCommentForm();
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -1063,6 +1163,10 @@ async function submitComment() {
     return;
   }
 
+  if (!requireLoginForCommentAction()) {
+    return;
+  }
+
   postingComment.value = true;
   setMessage("");
 
@@ -1074,9 +1178,12 @@ async function submitComment() {
       },
       body: JSON.stringify(commentForm)
     });
-    commentForm.content = "";
-    commentForm.parentId = null;
-    setMessage("评论已发布。");
+    const parentId = commentForm.parentId;
+    if (parentId) {
+      expandedReplyCommentIds.value = new Set([...expandedReplyCommentIds.value, parentId]);
+    }
+    resetCommentForm();
+    setMessage(parentId ? "回复已发布。" : "评论已发布。");
     await loadComments(selectedArticle.value.slug);
     await loadArticleDetail(selectedArticle.value.slug);
     await loadPopularArticles();
@@ -1086,6 +1193,39 @@ async function submitComment() {
     }
   } finally {
     postingComment.value = false;
+  }
+}
+
+async function likeComment(comment) {
+  if (!requireLoginForCommentAction()) {
+    return;
+  }
+
+  if (isMyComment(comment)) {
+    setMessage("不能点赞自己的评论。");
+    return;
+  }
+
+  const wasLiked = Boolean(comment.likedByMe);
+  const previousComment = { ...comment };
+  patchComment(comment.id, {
+    likedByMe: !wasLiked,
+    likeCount: Math.max(0, Number(comment.likeCount || 0) + (wasLiked ? -1 : 1))
+  });
+
+  try {
+    const payload = await apiFetch(`/comments/${comment.id}/likes`, {
+      method: wasLiked ? "DELETE" : "POST"
+    });
+    patchComment(comment.id, {
+      likedByMe: payload.likedByMe,
+      likeCount: payload.likeCount
+    });
+  } catch (error) {
+    patchComment(comment.id, previousComment);
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
   }
 }
 
@@ -1904,13 +2044,13 @@ onBeforeUnmount(() => {
           <section class="article-comments-card">
             <div class="article-card-title">
               <iconify-icon icon="mdi:comment-outline" width="32"></iconify-icon>
-              <h2>评论 ({{ comments.length }})</h2>
+              <h2>评论 ({{ commentTotalCount }})</h2>
             </div>
-            <form v-if="isAuthenticated" class="article-comment-form" @submit.prevent="submitComment">
+            <form v-if="isAuthenticated && !activeReplyTarget" class="article-comment-form" @submit.prevent="submitComment">
               <textarea v-model.trim="commentForm.content" :disabled="postingComment" maxlength="2000" placeholder="写下你的评论..." required />
               <button :disabled="postingComment || !commentForm.content" type="submit">{{ postingComment ? "发布中..." : "发表评论" }}</button>
             </form>
-            <div v-else class="article-login-hint">
+            <div v-else-if="!isAuthenticated" class="article-login-hint">
               登录后可以发表评论。
               <button type="button" @click="showLoginForm">去登录</button>
             </div>
@@ -1928,13 +2068,78 @@ onBeforeUnmount(() => {
                   </div>
                   <p>{{ comment.content }}</p>
                   <div class="article-comment-actions">
-                    <span>
-                      <iconify-icon icon="mdi:thumb-up-outline" width="16"></iconify-icon>
-                      {{ Math.max(1, comment.id % 13) }}
-                    </span>
-                    <span>回复</span>
+                    <button
+                      :class="{ 'is-active': comment.likedByMe }"
+                      :disabled="isMyComment(comment)"
+                      :title="isMyComment(comment) ? '不能点赞自己的评论' : '点赞评论'"
+                      type="button"
+                      @click="likeComment(comment)"
+                    >
+                      <iconify-icon :icon="comment.likedByMe ? 'mdi:thumb-up' : 'mdi:thumb-up-outline'" width="16"></iconify-icon>
+                      {{ comment.likeCount || 0 }}
+                    </button>
+                    <button type="button" @click="startReply(comment)">
+                      回复
+                    </button>
                     <button v-if="isAdmin" type="button" @click="deleteComment(comment)">删除</button>
                   </div>
+
+                  <form
+                    v-if="isAuthenticated && isReplyingTo(comment)"
+                    class="article-comment-form article-reply-form"
+                    @submit.prevent="submitComment"
+                  >
+                    <p>回复 @{{ activeReplyTarget.username }}</p>
+                    <textarea v-model.trim="commentForm.content" :disabled="postingComment" maxlength="2000" placeholder="写下你的回复..." required />
+                    <div class="article-reply-form-actions">
+                      <button type="button" @click="cancelReply">取消</button>
+                      <button :disabled="postingComment || !commentForm.content" type="submit">{{ postingComment ? "发布中..." : "发表回复" }}</button>
+                    </div>
+                  </form>
+
+                  <div v-if="comment.replies?.length" class="article-reply-list">
+                    <div v-for="reply in visibleReplies(comment)" :key="reply.id" class="article-reply-item">
+                      <span class="article-avatar article-reply-avatar">{{ (reply.user?.username || '访')[0]?.toUpperCase() }}</span>
+                      <div class="article-reply-body">
+                        <div class="article-comment-head">
+                          <strong>{{ reply.user?.username || "未知用户" }}</strong>
+                          <time>{{ formatDate(reply.createdAt) }}</time>
+                        </div>
+                        <p>
+                          <template v-if="reply.replyToUser && reply.replyToUser.id !== reply.user?.id">
+                            <span>回复 @{{ reply.replyToUser.username }}：</span>
+                          </template>
+                          {{ reply.content }}
+                        </p>
+                        <div class="article-comment-actions">
+                          <button type="button" @click="startReply(comment, reply)">回复</button>
+                          <button v-if="isAdmin" type="button" @click="deleteComment(reply)">删除</button>
+                        </div>
+                        <form
+                          v-if="isAuthenticated && isReplyingTo(comment, reply)"
+                          class="article-comment-form article-reply-form"
+                          @submit.prevent="submitComment"
+                        >
+                          <p>回复 @{{ activeReplyTarget.username }}</p>
+                          <textarea v-model.trim="commentForm.content" :disabled="postingComment" maxlength="2000" placeholder="写下你的回复..." required />
+                          <div class="article-reply-form-actions">
+                            <button type="button" @click="cancelReply">取消</button>
+                            <button :disabled="postingComment || !commentForm.content" type="submit">{{ postingComment ? "发布中..." : "发表回复" }}</button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                    <button
+                      v-if="hiddenReplyCount(comment) > 0 || expandedReplyCommentIds.has(comment.id)"
+                      class="article-replies-toggle"
+                      type="button"
+                      @click="toggleReplies(comment)"
+                    >
+                      <template v-if="expandedReplyCommentIds.has(comment.id)">收起回复</template>
+                      <template v-else>展开 {{ hiddenReplyCount(comment) }} 条回复</template>
+                    </button>
+                  </div>
+
                 </div>
               </li>
             </ul>

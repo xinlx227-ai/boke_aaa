@@ -530,8 +530,10 @@ test("article comments can be viewed publicly, created by users, and deleted by 
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
   const adminUsername = `comment_admin_${suffix}`;
   const userUsername = `comment_user_${suffix}`;
+  const otherUsername = `comment_other_${suffix}`;
   const adminEmail = `${adminUsername}@example.com`;
   const userEmail = `${userUsername}@example.com`;
+  const otherEmail = `${otherUsername}@example.com`;
   const password = "Passw0rd!";
   const articleSlug = `commented-article-${suffix}`;
 
@@ -570,6 +572,19 @@ test("article comments can be viewed publicly, created by users, and deleted by 
   });
   assert.equal(userRegister.status, 201);
 
+  const otherRegister = await apiRequest("/auth/register", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username: otherUsername,
+      email: otherEmail,
+      password
+    })
+  });
+  assert.equal(otherRegister.status, 201);
+
   const adminLogin = await apiRequest("/auth/login", {
     method: "POST",
     headers: {
@@ -593,6 +608,18 @@ test("article comments can be viewed publicly, created by users, and deleted by 
     })
   });
   assert.equal(userLogin.status, 200);
+
+  const otherLogin = await apiRequest("/auth/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      account: otherEmail,
+      password
+    })
+  });
+  assert.equal(otherLogin.status, 200);
 
   const article = await prisma.article.create({
     data: {
@@ -634,25 +661,98 @@ test("article comments can be viewed publicly, created by users, and deleted by 
   assert.equal(createComment.status, 201);
   assert.equal(createComment.body.comment.content, "A useful comment");
   assert.equal(createComment.body.comment.parentId, null);
+  assert.equal(createComment.body.comment.likeCount, 0);
+  assert.equal(createComment.body.comment.likedByMe, false);
 
-  const createReplyReadyComment = await apiRequest(`/comments/articles/${articleSlug}`, {
+  const createReply = await apiRequest(`/comments/articles/${articleSlug}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${otherLogin.body.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      content: "First reply",
+      parentId: createComment.body.comment.id,
+      replyToCommentId: createComment.body.comment.id
+    })
+  });
+  assert.equal(createReply.status, 201);
+  assert.equal(createReply.body.comment.parentId, createComment.body.comment.id);
+  assert.equal(createReply.body.comment.replyToCommentId, createComment.body.comment.id);
+  assert.equal(createReply.body.comment.replyToUser.username, userUsername);
+
+  const createNestedReply = await apiRequest(`/comments/articles/${articleSlug}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${userLogin.body.token}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      content: "Reply-ready comment",
-      parentId: createComment.body.comment.id
+      content: "Nested reply",
+      parentId: createComment.body.comment.id,
+      replyToCommentId: createReply.body.comment.id
     })
   });
-  assert.equal(createReplyReadyComment.status, 201);
-  assert.equal(createReplyReadyComment.body.comment.parentId, createComment.body.comment.id);
+  assert.equal(createNestedReply.status, 201);
+  assert.equal(createNestedReply.body.comment.parentId, createComment.body.comment.id);
+  assert.equal(createNestedReply.body.comment.replyToCommentId, createReply.body.comment.id);
+  assert.equal(createNestedReply.body.comment.replyToUser.username, otherUsername);
+
+  const selfLike = await apiRequest(`/comments/${createComment.body.comment.id}/likes`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userLogin.body.token}`
+    }
+  });
+  assert.equal(selfLike.status, 403);
+
+  const likeReply = await apiRequest(`/comments/${createReply.body.comment.id}/likes`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userLogin.body.token}`
+    }
+  });
+  assert.equal(likeReply.status, 400);
+
+  const likeComment = await apiRequest(`/comments/${createComment.body.comment.id}/likes`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${otherLogin.body.token}`
+    }
+  });
+  assert.equal(likeComment.status, 200);
+  assert.equal(likeComment.body.changed, true);
+  assert.equal(likeComment.body.likeCount, 1);
+  assert.equal(likeComment.body.likedByMe, true);
 
   const publicList = await apiRequest(`/comments/articles/${articleSlug}`);
   assert.equal(publicList.status, 200);
-  assert.equal(publicList.body.comments.length, 2);
+  assert.equal(publicList.body.count, 3);
+  assert.equal(publicList.body.comments.length, 1);
   assert.equal(publicList.body.comments[0].user.username, userUsername);
+  assert.equal(publicList.body.comments[0].likeCount, 1);
+  assert.equal(publicList.body.comments[0].likedByMe, false);
+  assert.equal(publicList.body.comments[0].replies.length, 2);
+  assert.equal(publicList.body.comments[0].replies[0].replyToUser.username, userUsername);
+  assert.equal(publicList.body.comments[0].replies[1].replyToUser.username, otherUsername);
+
+  const likedList = await apiRequest(`/comments/articles/${articleSlug}`, {
+    headers: {
+      Authorization: `Bearer ${otherLogin.body.token}`
+    }
+  });
+  assert.equal(likedList.status, 200);
+  assert.equal(likedList.body.comments[0].likedByMe, true);
+
+  const unlikeComment = await apiRequest(`/comments/${createComment.body.comment.id}/likes`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${otherLogin.body.token}`
+    }
+  });
+  assert.equal(unlikeComment.status, 200);
+  assert.equal(unlikeComment.body.changed, true);
+  assert.equal(unlikeComment.body.likeCount, 0);
 
   const userDelete = await apiRequest(`/comments/${createComment.body.comment.id}`, {
     method: "DELETE",
@@ -662,17 +762,30 @@ test("article comments can be viewed publicly, created by users, and deleted by 
   });
   assert.equal(userDelete.status, 403);
 
-  const adminDelete = await apiRequest(`/comments/${createReplyReadyComment.body.comment.id}`, {
+  const adminDeleteReply = await apiRequest(`/comments/${createReply.body.comment.id}`, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${adminLogin.body.token}`
     }
   });
-  assert.equal(adminDelete.status, 200);
+  assert.equal(adminDeleteReply.status, 200);
+
+  const afterReplyDeleteList = await apiRequest(`/comments/articles/${articleSlug}`);
+  assert.equal(afterReplyDeleteList.status, 200);
+  assert.equal(afterReplyDeleteList.body.count, 2);
+  assert.equal(afterReplyDeleteList.body.comments[0].replies.length, 1);
+
+  const adminDeleteRoot = await apiRequest(`/comments/${createComment.body.comment.id}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${adminLogin.body.token}`
+    }
+  });
+  assert.equal(adminDeleteRoot.status, 200);
 
   const remainingList = await apiRequest(`/comments/articles/${articleSlug}`);
   assert.equal(remainingList.status, 200);
-  assert.equal(remainingList.body.comments.length, 1);
+  assert.equal(remainingList.body.comments.length, 0);
 
   await prisma.article.delete({
     where: {
@@ -682,6 +795,11 @@ test("article comments can be viewed publicly, created by users, and deleted by 
   await prisma.user.delete({
     where: {
       email: userEmail
+    }
+  });
+  await prisma.user.delete({
+    where: {
+      email: otherEmail
     }
   });
   await prisma.user.delete({

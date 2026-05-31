@@ -37,6 +37,7 @@ model User {
   articleLikes    ArticleLike[]
   articleViews    ArticleView[]
   comments        Comment[]
+  commentLikes    CommentLike[]
   editedVersions  ArticleVersion[] @relation("ArticleVersionEditor")
   sessions        UserSession[]
   siteVisits      SiteVisit[]
@@ -198,19 +199,36 @@ model Comment {
   articleId  Int           @map("article_id")
   userId     Int           @map("user_id")
   parentId   Int?          @map("parent_id")
+  replyToCommentId Int?     @map("reply_to_comment_id")
   content    String        @db.Text
   status     CommentStatus @default(APPROVED)
   createdAt  DateTime      @default(now()) @map("created_at")
   updatedAt  DateTime      @updatedAt @map("updated_at")
   article    Article       @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  likes      CommentLike[]
   parent     Comment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: SetNull)
   replies    Comment[]     @relation("CommentReplies")
+  replyTo    Comment?      @relation("CommentReplyTargets", fields: [replyToCommentId], references: [id], onDelete: SetNull)
+  targetedReplies Comment[] @relation("CommentReplyTargets")
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([articleId, status, createdAt])
   @@index([parentId])
+  @@index([replyToCommentId])
   @@index([userId])
   @@map("comments")
+}
+
+model CommentLike {
+  commentId Int      @map("comment_id")
+  userId    Int      @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([commentId, userId])
+  @@index([userId])
+  @@map("comment_likes")
 }
 
 model UserSession {

@@ -1108,8 +1108,111 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   color: #667085;
 }
 
+.article-comment-actions button {
+  min-height: 26px;
+  border-radius: 999px;
+  transition: color 0.18s ease, background-color 0.18s ease;
+}
+
 .article-comment-actions button:hover {
   color: #be123c;
+}
+
+.article-comment-actions button.is-active {
+  color: #ea580c;
+}
+
+.article-comment-actions button:disabled {
+  cursor: not-allowed;
+  color: #a8b0bd;
+}
+
+.article-reply-form {
+  gap: 12px;
+  margin-top: 14px;
+  border-radius: 16px;
+  padding: 14px;
+  background: #fff7ed;
+}
+
+.article-reply-form p {
+  margin: 0;
+  color: #9a3412;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.article-reply-form textarea {
+  min-height: 86px;
+  padding: 14px 16px;
+}
+
+.article-reply-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.article-reply-form-actions button:first-child {
+  background: transparent;
+  color: #64748b;
+}
+
+.article-reply-form-actions button:first-child:hover {
+  background: #fff;
+  color: #334155;
+}
+
+.article-reply-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  border-radius: 18px;
+  padding: 16px;
+  background: #f8fafc;
+}
+
+.article-reply-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.article-reply-avatar {
+  width: 30px;
+  height: 30px;
+  background: #fff1e8;
+  color: #ea580c;
+  font-size: 0.78rem;
+}
+
+.article-reply-body {
+  min-width: 0;
+}
+
+.article-reply-body .article-comment-head {
+  margin-bottom: 4px;
+}
+
+.article-reply-body .article-comment-head strong {
+  font-size: 0.96rem;
+}
+
+.article-reply-body p span {
+  color: #ea580c;
+  font-weight: 800;
+}
+
+.article-replies-toggle {
+  justify-self: start;
+  color: #ea580c;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.article-replies-toggle:hover {
+  color: #c2410c;
 }
 
 .article-side-card {
@@ -1324,6 +1427,8 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 .dark .article-stats-strip,
 .dark .article-action-strip,
 .dark .article-login-hint,
+.dark .article-reply-list,
+.dark .article-reply-form,
 .dark .article-detail-html pre,
 .dark .article-detail-html code {
   background: #223047;
@@ -1343,8 +1448,16 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 .dark .author-row p,
 .dark .author-stats span,
 .dark .article-comment-head time,
-.dark .article-comment-actions {
+.dark .article-comment-actions,
+.dark .article-reply-form-actions button:first-child {
   color: #b6c4d8;
+}
+
+.dark .article-reply-form p,
+.dark .article-replies-toggle,
+.dark .article-reply-body p span,
+.dark .article-comment-actions button.is-active {
+  color: #fb923c;
 }
 
 .dark .article-comment-form textarea {
@@ -1566,6 +1679,14 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   .article-comment-head {
     flex-direction: column;
     gap: 4px;
+  }
+
+  .article-reply-list {
+    padding: 12px;
+  }
+
+  .article-reply-form-actions {
+    flex-wrap: wrap;
   }
 
   .article-avatar.large {
