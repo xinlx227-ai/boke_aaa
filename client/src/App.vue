@@ -46,6 +46,23 @@ const returnArticleSlugAfterLogin = ref("");
 const activeReplyTarget = ref(null);
 const expandedReplyCommentIds = ref(new Set());
 const DEFAULT_VISIBLE_REPLY_COUNT = 2;
+const userPanelActiveTab = ref("overview");
+const userPanelMobileNavOpen = ref(false);
+
+const userPanelTabs = [
+  { id: "overview", label: "数据看板", icon: "mdi:view-dashboard-outline" },
+  { id: "articles", label: "我的文章", icon: "mdi:file-document-edit-outline" },
+  { id: "favorites", label: "我的收藏", icon: "mdi:bookmark-outline" },
+  { id: "social", label: "社交互动", icon: "mdi:comment-account-outline" },
+  { id: "security", label: "安全设置", icon: "mdi:shield-check-outline" }
+];
+
+const userPanelArticleRows = [
+  { title: "投稿功能接入后显示文章标题", category: "未选择", status: "草稿", views: "--", date: "--" },
+  { title: "提交审核后显示审核进度", category: "分类", status: "待审核", views: "--", date: "--" },
+  { title: "审核通过后进入公开阅读页", category: "分类", status: "已发布", views: "--", date: "--" },
+  { title: "未通过文章可修改后重新提交", category: "分类", status: "未通过", views: "--", date: "--" }
+];
 
 const filters = reactive({
   q: "",
@@ -88,6 +105,52 @@ const isAuthenticated = computed(() => Boolean(token.value && currentUser.value)
 const isAdmin = computed(() => currentUser.value?.role === "ADMIN");
 const isDarkMode = computed(() => themeMode.value === "dark");
 const roleLabel = computed(() => (isAdmin.value ? "管理员" : "普通用户"));
+const isUserPanelView = computed(() => view.value === "dashboard" && isAuthenticated.value && !isAdmin.value);
+const currentUserInitial = computed(() => (currentUser.value?.username || "?")[0]?.toUpperCase() || "?");
+const userPanelActiveTitle = computed(() => userPanelTabs.find((tab) => tab.id === userPanelActiveTab.value)?.label || "用户面板");
+const userPanelStats = computed(() => [
+  {
+    label: "站内文章",
+    value: formatCompactNumber(publishedArticles.value.length),
+    note: "当前已发布",
+    icon: "mdi:file-document-multiple-outline",
+    tone: "orange"
+  },
+  {
+    label: "站内阅读",
+    value: formatCompactNumber(siteSummary.value.totalViews),
+    note: "真实统计",
+    icon: "mdi:eye-outline",
+    tone: "blue"
+  },
+  {
+    label: "站内点赞",
+    value: formatCompactNumber(siteSummary.value.totalLikes),
+    note: "真实统计",
+    icon: "mdi:heart-outline",
+    tone: "rose"
+  },
+  {
+    label: "站内收藏",
+    value: formatCompactNumber(siteSummary.value.totalFavorites),
+    note: "真实统计",
+    icon: "mdi:bookmark-outline",
+    tone: "purple"
+  }
+]);
+const userPanelCategoryStats = computed(() => {
+  const counts = new Map();
+
+  for (const article of publishedArticles.value) {
+    const categoryName = article.category?.name || "未分类";
+    counts.set(categoryName, (counts.get(categoryName) || 0) + 1);
+  }
+
+  return Array.from(counts, ([name, count]) => ({
+    name,
+    count
+  })).slice(0, 4);
+});
 const selectedArticleHtml = computed(() => mapAssetUrls(selectedArticle.value?.contentHtml || ""));
 const selectedToc = computed(() => selectedArticle.value?.toc || []);
 const editorHeading = computed(() => (articleForm.id ? `编辑：${articleForm.title || "未命名文章"}` : "新建文章"));
@@ -759,6 +822,10 @@ function syncViewToHash() {
   if (viewName === "public" && !selectedArticle.value && sortedPublishedArticles.value.length > 0) {
     selectedArticle.value = sortedPublishedArticles.value[0];
   }
+
+  if (viewName !== "dashboard") {
+    userPanelMobileNavOpen.value = false;
+  }
 }
 
 async function loadPublishedArticles() {
@@ -951,6 +1018,32 @@ function toggleMobileMenu() {
 
 function closeMobileMenu() {
   mobileMenuOpen.value = false;
+}
+
+function setUserPanelTab(tabId) {
+  userPanelActiveTab.value = tabId;
+  userPanelMobileNavOpen.value = false;
+}
+
+function toggleUserPanelMobileNav() {
+  userPanelMobileNavOpen.value = !userPanelMobileNavOpen.value;
+}
+
+function closeUserPanelMobileNav() {
+  userPanelMobileNavOpen.value = false;
+}
+
+function showUserPanelPlaceholder(featureName) {
+  setMessage(`${featureName}后续接入。`);
+}
+
+function userPanelArticleStatusClass(status) {
+  return {
+    草稿: "is-draft",
+    待审核: "is-review",
+    已发布: "is-published",
+    未通过: "is-rejected"
+  }[status] || "is-draft";
 }
 
 function handleArticleNavClick(slug) {
@@ -1356,9 +1449,17 @@ onBeforeUnmount(() => {
     aria-label="关闭文章筛选"
     @click="closeMobileMenu"
   ></button>
+  <button
+    v-if="isUserPanelView && userPanelMobileNavOpen"
+    class="user-panel-overlay"
+    type="button"
+    aria-label="关闭用户面板导航"
+    @click="closeUserPanelMobileNav"
+  ></button>
 
   <!-- ===== 顶部导航栏 (新 UI) ===== -->
   <header
+    v-if="!isUserPanelView"
     class="sticky top-0 z-50 w-full border-b"
     :class="view === 'article' ? 'article-detail-header bg-white/95 border-slate-200 backdrop-blur' : 'glass-effect border-orange-100/50'"
   >
@@ -1500,8 +1601,315 @@ onBeforeUnmount(() => {
     </div>
   </header>
 
+  <section v-if="isUserPanelView" class="user-panel-shell">
+    <header class="user-panel-topbar">
+      <div class="user-panel-brand">
+        <button class="user-panel-menu-button" type="button" aria-label="打开用户面板导航" @click="toggleUserPanelMobileNav">
+          <iconify-icon icon="mdi:menu" width="22"></iconify-icon>
+        </button>
+        <button class="user-panel-logo" type="button" @click="openPublicHome">
+          <span class="brand-logo-mark compact">
+            <iconify-icon icon="mdi:feather" width="24"></iconify-icon>
+            <span class="brand-feather-fallback" aria-hidden="true"></span>
+          </span>
+          <span class="brand-logo-text compact">MyBlog <span>Pro</span></span>
+        </button>
+        <span class="user-panel-header-divider"></span>
+        <button class="user-panel-return-link" type="button" @click="openPublicHome">
+          <iconify-icon icon="mdi:arrow-left" width="20"></iconify-icon>
+          <span>返回首页</span>
+        </button>
+      </div>
+      <div class="user-panel-topbar-actions">
+        <button
+          class="user-panel-icon-action"
+          :title="isDarkMode ? '切换到亮色模式' : '切换到暗色模式'"
+          type="button"
+          @click="toggleThemeMode"
+        >
+          <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
+        </button>
+        <button class="user-panel-icon-action" type="button" title="通知" @click="showUserPanelPlaceholder('消息通知')">
+          <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
+          <span></span>
+        </button>
+        <div class="user-panel-account">
+          <span class="user-panel-avatar">{{ currentUserInitial }}</span>
+          <div>
+            <strong>{{ currentUser?.username }}</strong>
+            <small>{{ roleLabel }}</small>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="user-panel-frame">
+      <aside class="user-panel-sidebar" :class="{ 'is-open': userPanelMobileNavOpen }">
+        <div class="user-panel-sidebar-profile">
+          <span class="user-panel-avatar large">{{ currentUserInitial }}</span>
+          <div>
+            <strong>{{ currentUser?.username }}</strong>
+            <small>{{ roleLabel }} · {{ currentSession?.deviceId || '未知设备' }}</small>
+          </div>
+        </div>
+        <nav class="user-panel-nav" aria-label="用户面板导航">
+          <button
+            v-for="tab in userPanelTabs"
+            :key="tab.id"
+            :class="{ 'is-active': userPanelActiveTab === tab.id }"
+            type="button"
+            @click="setUserPanelTab(tab.id)"
+          >
+            <iconify-icon :icon="tab.icon" width="22"></iconify-icon>
+            <span>{{ tab.label }}</span>
+          </button>
+        </nav>
+        <button class="user-panel-sidebar-logout" :disabled="submitLoading" type="button" @click="logout">
+          <iconify-icon icon="mdi:logout" width="20"></iconify-icon>
+          <span>退出登录</span>
+        </button>
+      </aside>
+
+      <main class="user-panel-main">
+        <div class="user-panel-page-head">
+          <div>
+            <h1>{{ userPanelActiveTitle }}</h1>
+          </div>
+          <button class="user-panel-primary-action" type="button" @click="showUserPanelPlaceholder('投稿发布')">
+            <iconify-icon icon="mdi:plus" width="20"></iconify-icon>
+            <span>发布新文章</span>
+          </button>
+        </div>
+
+        <section v-if="userPanelActiveTab === 'overview'" class="user-panel-tab">
+          <div class="user-panel-stat-grid">
+            <article v-for="stat in userPanelStats" :key="stat.label" class="user-panel-stat-card" :class="`tone-${stat.tone}`">
+              <div>
+                <span>
+                  <iconify-icon :icon="stat.icon" width="24"></iconify-icon>
+                </span>
+                <small>{{ stat.note }}</small>
+              </div>
+              <p>{{ stat.label }}</p>
+              <strong>{{ stat.value }}</strong>
+            </article>
+          </div>
+
+          <div class="user-panel-chart-grid">
+            <article class="user-panel-card user-panel-chart-card">
+              <div class="user-panel-card-head">
+                <div>
+                  <h2>近 7 日阅读趋势</h2>
+                  <p>后续接入 ECharts 折线图，当前为 CSS 占位。</p>
+                </div>
+              </div>
+              <!-- TODO: 后续用 ECharts 接入真实近 7 日阅读趋势数据。 -->
+              <div class="user-panel-line-chart" aria-label="近 7 日阅读趋势占位图">
+                <span style="height: 34%"></span>
+                <span style="height: 58%"></span>
+                <span style="height: 44%"></span>
+                <span style="height: 72%"></span>
+                <span style="height: 52%"></span>
+                <span style="height: 78%"></span>
+                <span style="height: 66%"></span>
+              </div>
+            </article>
+            <article class="user-panel-card user-panel-category-card">
+              <div class="user-panel-card-head">
+                <div>
+                  <h2>文章分类分布</h2>
+                  <p>后续接入 ECharts 环形图，当前为 CSS 占位。</p>
+                </div>
+              </div>
+              <!-- TODO: 后续用 ECharts 接入真实文章分类分布数据。 -->
+              <div class="user-panel-donut" aria-label="文章分类分布占位图"></div>
+              <div class="user-panel-category-list">
+                <p v-if="userPanelCategoryStats.length === 0">暂无分类数据</p>
+                <div v-for="item in userPanelCategoryStats" :key="item.name">
+                  <span></span>
+                  <strong>{{ item.name }}</strong>
+                  <small>{{ item.count }} 篇</small>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section v-else-if="userPanelActiveTab === 'articles'" class="user-panel-tab">
+          <div class="user-panel-card">
+            <div class="user-panel-card-head">
+              <div>
+                <h2>我的文章</h2>
+                <p>未来注册用户可写文章，状态流转为草稿、待审核、已发布、未通过。</p>
+              </div>
+              <button type="button" @click="showUserPanelPlaceholder('文章筛选')">
+                <iconify-icon icon="mdi:tune-variant" width="20"></iconify-icon>
+              </button>
+            </div>
+            <div class="user-panel-table-wrap">
+              <table class="user-panel-table">
+                <thead>
+                  <tr>
+                    <th>文章标题</th>
+                    <th>分类</th>
+                    <th>状态</th>
+                    <th>阅读量</th>
+                    <th>更新时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="article in userPanelArticleRows" :key="article.title">
+                    <td>
+                      <div class="user-panel-article-title">
+                        <span><iconify-icon icon="mdi:file-document-outline" width="20"></iconify-icon></span>
+                        <strong>{{ article.title }}</strong>
+                      </div>
+                    </td>
+                    <td>{{ article.category }}</td>
+                    <td><span class="user-panel-status" :class="userPanelArticleStatusClass(article.status)">{{ article.status }}</span></td>
+                    <td>{{ article.views }}</td>
+                    <td>{{ article.date }}</td>
+                    <td>
+                      <button type="button" title="编辑" @click="showUserPanelPlaceholder('文章编辑')">
+                        <iconify-icon icon="mdi:pencil-outline" width="18"></iconify-icon>
+                      </button>
+                      <button type="button" title="删除" @click="showUserPanelPlaceholder('文章删除')">
+                        <iconify-icon icon="mdi:trash-can-outline" width="18"></iconify-icon>
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section v-else-if="userPanelActiveTab === 'favorites'" class="user-panel-tab">
+          <div class="user-panel-card user-panel-empty-card">
+            <iconify-icon icon="mdi:bookmark-heart-outline" width="54"></iconify-icon>
+            <h2>我的收藏列表后续接入</h2>
+            <p>当前版本只完成用户面板 UI。收藏状态和计数已存在，后续可补充收藏列表 API。</p>
+            <button type="button" @click="openPublicHome">去首页阅读文章</button>
+          </div>
+        </section>
+
+        <section v-else-if="userPanelActiveTab === 'social'" class="user-panel-tab">
+          <div class="user-panel-social-grid">
+            <article class="user-panel-card">
+              <div class="user-panel-card-head">
+                <div>
+                  <h2>我的评论</h2>
+                  <p>后续展示我发表的评论与回复记录。</p>
+                </div>
+              </div>
+              <div class="user-panel-comment-placeholder">
+                <span class="user-panel-avatar">评</span>
+                <div>
+                  <strong>评论记录后续接入</strong>
+                  <p>将展示评论内容、所属文章和快捷跳转。</p>
+                </div>
+              </div>
+            </article>
+            <article class="user-panel-card">
+              <div class="user-panel-card-head">
+                <div>
+                  <h2>互动通知</h2>
+                  <p>后续展示回复、点赞、收藏等互动。</p>
+                </div>
+              </div>
+              <div class="user-panel-notice-list">
+                <div>
+                  <span><iconify-icon icon="mdi:heart-outline" width="20"></iconify-icon></span>
+                  <p>你的文章获得点赞后会显示在这里。</p>
+                </div>
+                <div>
+                  <span><iconify-icon icon="mdi:comment-outline" width="20"></iconify-icon></span>
+                  <p>有人回复你的评论后会显示在这里。</p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section v-else-if="userPanelActiveTab === 'security'" class="user-panel-tab">
+          <div class="user-panel-security-stack">
+            <article class="user-panel-card user-panel-form-card">
+              <div class="user-panel-card-head">
+                <div>
+                  <h2>修改登录密码</h2>
+                  <p>表单 UI 已预留，接口后续接入。</p>
+                </div>
+              </div>
+              <form @submit.prevent="showUserPanelPlaceholder('修改密码')">
+                <label>
+                  <span>当前密码</span>
+                  <input autocomplete="current-password" placeholder="请输入当前密码" type="password" />
+                </label>
+                <label>
+                  <span>新密码</span>
+                  <input autocomplete="new-password" placeholder="请输入新密码" type="password" />
+                </label>
+                <label>
+                  <span>确认新密码</span>
+                  <input autocomplete="new-password" placeholder="请再次输入新密码" type="password" />
+                </label>
+                <button type="submit">更新密码</button>
+              </form>
+            </article>
+            <article class="user-panel-card user-panel-form-card">
+              <div class="user-panel-card-head">
+                <div>
+                  <h2>手机号码绑定</h2>
+                  <p>验证码与手机号绑定接口后续接入。</p>
+                </div>
+              </div>
+              <form @submit.prevent="showUserPanelPlaceholder('手机绑定')">
+                <label>
+                  <span>更换新手机号</span>
+                  <input placeholder="请输入手机号" type="text" />
+                </label>
+                <label>
+                  <span>短信验证码</span>
+                  <input placeholder="6 位验证码" type="text" />
+                </label>
+                <button type="submit">确认修改</button>
+              </form>
+            </article>
+            <article class="user-panel-card">
+              <div class="user-panel-card-head">
+                <div>
+                  <h2>第三方账号绑定</h2>
+                  <p>微信、QQ、支付宝等绑定能力后续接入。</p>
+                </div>
+              </div>
+              <div class="user-panel-bind-grid">
+                <button type="button" @click="showUserPanelPlaceholder('微信绑定')">
+                  <iconify-icon icon="mdi:wechat" width="24"></iconify-icon>
+                  <span>微信</span>
+                  <small>去绑定</small>
+                </button>
+                <button type="button" @click="showUserPanelPlaceholder('QQ 绑定')">
+                  <iconify-icon icon="mdi:qqchat" width="24"></iconify-icon>
+                  <span>QQ</span>
+                  <small>去绑定</small>
+                </button>
+                <button type="button" @click="showUserPanelPlaceholder('支付宝绑定')">
+                  <iconify-icon icon="mdi:credit-card-outline" width="24"></iconify-icon>
+                  <span>支付宝</span>
+                  <small>去绑定</small>
+                </button>
+              </div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+  </section>
+
   <!-- ===== 主内容区 ===== -->
   <main
+    v-else
     class="max-w-[1440px] mx-auto px-6 py-8 grid grid-cols-1 gap-8 items-start"
     :class="view === 'article' ? 'article-detail-shell' : 'lg:grid-cols-[320px_minmax(0,1fr)]'"
   >

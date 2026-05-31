@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-用户已完成两轮功能开发：先将阅读量、点赞、收藏、热门排行等静态或本地展示接入真实后端统计 API；随后在其上继续开发评论区主评论点赞和抖音式一层回复。两个功能分支均已 fast-forward 合并到 `main` 并推送到 `origin/main`。本文件用于让下一位 Agent 在当前 `main` 上继续工作。
+用户已完成三轮主要工作：先将阅读量、点赞、收藏、热门排行等静态或本地展示接入真实后端统计 API；随后继续开发评论区主评论点赞和抖音式一层回复；本轮在 `codex/newuser-ui` 上将普通用户面板重构为独立工作台 UI。统计 API 和评论互动分支已 fast-forward 合并到 `main` 并推送到 `origin/main`；用户面板新 UI 当前仍在本地分支，后续可合并/推送。
 
 ## 建议下个 Agent 使用的技能
 
@@ -13,11 +13,11 @@
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前分支：`main`
+- 当前分支：`codex/newuser-ui`
 - `main` 与 `origin/main` 在本次统计 API 开始前均指向 `b251ad6 Update homepage sidebar handoff notes`。
 - `codex/article-apiset` 指向 `1a2f29b Add article statistics APIs`，基于 `main`。
 - `codex/comment-thread-interactions` 指向 `5bb0079 comment`，基于 `codex/article-apiset`。
-- 当前 `main` / `origin/main` 已指向 `5bb0079 comment`，包含统计 API、评论区互动和上一轮文档更新。
+- 当前本地 `codex/newuser-ui` 基于 `ee60ec2 Update handoff after merging comment interactions`，包含统计 API、评论区互动和上一轮文档更新；`origin/main` 仍指向 `5bb0079 comment`。
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - 不要提交、回滚或覆盖用户自己的未提交改动；继续工作前先检查工作区。
 
@@ -27,7 +27,8 @@
 b251ad6 Update homepage sidebar handoff notes
 └─ 1a2f29b Add article statistics APIs
    └─ 7f683c9 Add threaded comment interactions
-      └─ 5bb0079 comment  (main, origin/main, codex/comment-thread-interactions)
+      └─ 5bb0079 comment  (origin/main, origin/HEAD)
+         └─ ee60ec2 Update handoff after merging comment interactions  (main, codex/newuser-ui, codex/newadmin-ui, codex/articleedit-ui)
 
 codex/article-apiset -> 1a2f29b
 ```
@@ -37,7 +38,7 @@ codex/article-apiset -> 1a2f29b
 ```bash
 git status --short --branch
 git log --oneline --decorate -5
-git diff -- client/src/App.vue client/src/style.css server/src/routes/comments.js server/prisma/schema.prisma
+git diff -- client/src/App.vue client/src/style.css README.md handoff.md
 git diff -- README.md handoff.md
 ```
 
@@ -52,7 +53,79 @@ git diff -- README.md handoff.md
 
 ## 项目概况
 
-这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
+这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、普通用户面板新 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
+
+## 本次已完成：普通用户面板新 UI
+
+工作分支：`codex/newuser-ui`。
+
+改动文件：
+
+- `client/src/App.vue`
+- `client/src/style.css`
+- `README.md`
+- `handoff.md`
+
+### 范围与设计决策
+
+- 用户明确选择第一版只做 UI 外观和布局，功能先占位，不补后端 API。
+- 用户面板进入 `#dashboard` 后使用独立后台式布局，不再套公开首页的左侧筛选栏。
+- 顶部栏采用 `MyBlog Pro` 品牌 + 返回首页，位置参考文章详情页；右侧保留明暗模式切换、通知占位和用户胶囊；顶部退出按钮已删除。
+- 左侧栏保留底部退出登录按钮。
+- 侧边栏 Tab 为：数据看板、我的文章、我的收藏、社交互动、安全设置。
+- 移动端使用抽屉式侧边栏，内容区单列。
+- 视觉接近用户提供的 `C:\Users\27871\Desktop\myblog-pro_v6_user-panel.html`，但圆角、阴影和色彩收敛到现有 MyBlog Pro 新 UI。
+- 用户要求删除所有用户面板页头中的“用户中心”小标题，只保留主标题。
+
+### 数据与占位边界
+
+- 数据看板尽量接现有真实数据：站内文章数来自 `publishedArticles`，站内阅读/点赞/收藏来自 `siteSummary`。
+- 近 7 日阅读趋势和文章分类分布当前为 CSS 占位图，不引入 ECharts 依赖；`App.vue` 中已写 TODO，注明后续用 ECharts 接入真实数据。
+- “我的文章”是未来投稿中心的 UI 预演。用户已确认未来文章状态为：`草稿`、`待审核`、`已发布`、`未通过`。
+- 未来内容模型方向：注册用户可写文章，管理员审核通过后展示；管理员主要负责管理和审核，不再是唯一作者。
+- “我的收藏”“社交互动”“安全设置”目前是视觉与提示占位。点击相关操作统一通过 `showUserPanelPlaceholder()` 提示“后续接入”。
+- 社交互动未来方向是“我的评论 + 收到的互动通知”，不是粉丝/关注或私信体系。
+- 安全设置保留改密码、手机绑定、第三方账号绑定完整表单，点击按钮只提示后续接入。
+
+### 代码结构备注
+
+- 用户要求本轮继续留在 `App.vue`，不拆新组件。
+- 新增主要状态/计算：
+  - `userPanelActiveTab`
+  - `userPanelMobileNavOpen`
+  - `userPanelTabs`
+  - `userPanelArticleRows`
+  - `isUserPanelView`
+  - `currentUserInitial`
+  - `userPanelActiveTitle`
+  - `userPanelStats`
+  - `userPanelCategoryStats`
+- 新增主要方法：
+  - `setUserPanelTab`
+  - `toggleUserPanelMobileNav`
+  - `closeUserPanelMobileNav`
+  - `showUserPanelPlaceholder`
+  - `userPanelArticleStatusClass`
+- 新增 CSS 命名空间：`.user-panel-*`，避免继续扩大 `.legacy-ui`。
+
+### 验证
+
+本轮已执行：
+
+```bash
+npm run build
+git diff --check
+```
+
+结果均通过。`git diff --check` 只有 Windows 换行提示：`LF will be replaced by CRLF the next time Git touches it`。
+
+曾临时启动前端预览：
+
+- `npm run dev --workspace client -- --host 127.0.0.1 --port 5174`
+- `Invoke-WebRequest http://127.0.0.1:5174/` 返回 200
+- 临时 Vite 服务已停止，未占用用户的 `3000` 后端端口
+
+浏览器自动化备注：本轮尝试使用 in-app browser / node_repl 验收时连续遇到 Windows sandbox `spawn setup refresh` 错误，因此没有截图验收；这与此前 handoff 中记录的偶发问题一致。
 
 ## 本次已完成：评论区主评论点赞与一层回复
 
@@ -196,7 +269,7 @@ hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
 - 详情页点赞/收藏已由前端本地状态改为后端持久化状态。
 - 详情页评论区已支持主评论点赞、回复输入框、默认 2 条回复和展开/收起。
 - 移动端详情页优先正文，左侧内容折叠为抽屉。
-- 用户面板和管理后台仍为旧 UI，通过 `.legacy-ui` 隔离。
+- 普通用户面板已重构为新 UI，不再通过 `.legacy-ui` 渲染；管理后台仍为旧 UI，通过 `.legacy-ui` 隔离。
 
 ## 后端与数据状态
 
@@ -274,9 +347,9 @@ sc.exe config MySQL start= demand
 
 ## 后续建议
 
-- 可继续改造用户面板和管理后台旧 UI。
-- 可基于 `article_stats` 和 `site_visits` 做真实阅读趋势折线图；第一版目前只把趋势卡下方数字接真。
-- 可做“我的收藏列表”，本次只实现收藏状态和计数。
+- 可补用户面板后端能力：投稿/审核状态、我的文章真实列表、我的收藏列表、我的评论与互动通知、修改密码、手机绑定、第三方账号绑定。
+- 可继续改造管理后台旧 UI。
+- 可基于 `article_stats` 和 `site_visits` 做真实阅读趋势折线图；用户面板和首页趋势区域目前都仍有占位性质。
 - 可补充评论分页、评论审核。
 - 可修复安全审查中提到的评论删除边界：删除主评论时递归清理历史多层回复，或先迁移历史 `parent_id` 到一层结构。
 - 可给 `comment_likes` 增加 `(user_id, comment_id)` 复合索引，优化用户态 `likedByMe` 查询。
