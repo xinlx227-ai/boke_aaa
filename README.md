@@ -6,7 +6,7 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前工作分支 | `codex/comment-thread-interactions` |
+| 当前工作分支 | `main` |
 | 最新已合并 UI 工作 | `codex/article-detail-ui`、`codex/ui-layout`、`codex/index-layout` 均已合并到 `main` |
 | 最新功能工作 | 阅读量、点赞、收藏、今日阅读、热门排行等已接入真实后端统计 API；评论区已支持主评论点赞和抖音式一层回复 |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎 |
@@ -14,6 +14,7 @@
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes` |
 | 最近验证 | 2026-05-31：`npm test --workspace server`、`npm run build`、`git diff --check`、`prisma validate` 均通过 |
+| 合并状态 | `codex/article-apiset` 与 `codex/comment-thread-interactions` 均已 fast-forward 合并并推送到 `origin/main` |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明

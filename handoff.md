@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-用户已完成两轮功能开发：先将阅读量、点赞、收藏、热门排行等静态或本地展示接入真实后端统计 API；随后在其上继续开发评论区主评论点赞和抖音式一层回复。本文件用于让下一位 Agent 在当前分支继续工作。
+用户已完成两轮功能开发：先将阅读量、点赞、收藏、热门排行等静态或本地展示接入真实后端统计 API；随后在其上继续开发评论区主评论点赞和抖音式一层回复。两个功能分支均已 fast-forward 合并到 `main` 并推送到 `origin/main`。本文件用于让下一位 Agent 在当前 `main` 上继续工作。
 
 ## 建议下个 Agent 使用的技能
 
@@ -13,22 +13,23 @@
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前分支：`codex/comment-thread-interactions`
+- 当前分支：`main`
 - `main` 与 `origin/main` 在本次统计 API 开始前均指向 `b251ad6 Update homepage sidebar handoff notes`。
 - `codex/article-apiset` 指向 `1a2f29b Add article statistics APIs`，基于 `main`。
-- `codex/comment-thread-interactions` 指向 `7f683c9 Add threaded comment interactions`，基于 `codex/article-apiset`。
+- `codex/comment-thread-interactions` 指向 `5bb0079 comment`，基于 `codex/article-apiset`。
+- 当前 `main` / `origin/main` 已指向 `5bb0079 comment`，包含统计 API、评论区互动和上一轮文档更新。
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - 不要提交、回滚或覆盖用户自己的未提交改动；继续工作前先检查工作区。
 
 当前分支结构：
 
 ```text
-main / origin/main
-└─ b251ad6 Update homepage sidebar handoff notes
-   └─ codex/article-apiset
-      └─ 1a2f29b Add article statistics APIs
-         └─ codex/comment-thread-interactions
-            └─ 7f683c9 Add threaded comment interactions
+b251ad6 Update homepage sidebar handoff notes
+└─ 1a2f29b Add article statistics APIs
+   └─ 7f683c9 Add threaded comment interactions
+      └─ 5bb0079 comment  (main, origin/main, codex/comment-thread-interactions)
+
+codex/article-apiset -> 1a2f29b
 ```
 
 继续工作前建议先执行：
@@ -55,7 +56,7 @@ git diff -- README.md handoff.md
 
 ## 本次已完成：评论区主评论点赞与一层回复
 
-提交：`7f683c9 Add threaded comment interactions`
+提交：`7f683c9 Add threaded comment interactions`；随后文档更新提交 `5bb0079 comment` 已一并合入 `main` / `origin/main`。
 
 ### 数据库与迁移
 
@@ -211,6 +212,7 @@ hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
 
 ## 最近重要提交
 
+- `5bb0079 comment`：上一轮 README/handoff 文档更新，当前 `main` / `origin/main` / `codex/comment-thread-interactions`。
 - `7f683c9 Add threaded comment interactions`：当前 `codex/comment-thread-interactions`，新增评论区主评论点赞、评论回复树形结构、回复 UI、`comment_likes` 迁移和测试。
 - `1a2f29b Add article statistics APIs`：`codex/article-apiset`，新增阅读/点赞/收藏/热门排行真实统计 API 和前端接入。
 - `b251ad6 Update homepage sidebar handoff notes`：本次统计 API 开始前的 `HEAD` / `main` / `origin/main`。
@@ -245,6 +247,11 @@ node --env-file=.env.test ..\node_modules\prisma\build\index.js migrate deploy -
 ```
 
 上述命令已将 `20260531110000_comment_threads` 应用到测试库 `private_blog_test`。本轮未对开发库或线上库执行 `npm run prisma:deploy`；使用评论区新功能前需在对应环境执行迁移。
+
+分支合并与推送状态：
+
+- `codex/article-apiset` 已 fast-forward 合并到 `main`，并推送 `origin/main` 到 `1a2f29b`。
+- `codex/comment-thread-interactions` 已 fast-forward 合并到 `main`，并推送 `origin/main` 到 `5bb0079`。
 
 ## 本地 MySQL 备注
 
