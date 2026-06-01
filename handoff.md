@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-用户已完成两轮功能开发：先将阅读量、点赞、收藏、热门排行等静态或本地展示接入真实后端统计 API；随后在其上继续开发评论区主评论点赞和抖音式一层回复。两个功能分支均已 fast-forward 合并到 `main` 并推送到 `origin/main`。本文件用于让下一位 Agent 在当前 `main` 上继续工作。
+用户已完成多轮主要工作：先将阅读量、点赞、收藏、热门排行等静态或本地展示接入真实后端统计 API；随后开发评论区主评论点赞和抖音式一层回复；另有 `codex/newuser-ui` 分支完成普通用户面板新 UI；本轮在 `codex/newadmin-ui` 上重构管理员后台新 UI。统计 API 和评论互动分支已 fast-forward 合并到 `main` 并推送到 `origin/main`；普通用户面板新 UI 和管理员后台新 UI 仍分别在本地功能分支，后续需要按需合并。
 
 ## 建议下个 Agent 使用的技能
 
@@ -13,11 +13,13 @@
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前分支：`main`
+- 当前分支：`codex/newadmin-ui`
 - `main` 与 `origin/main` 在本次统计 API 开始前均指向 `b251ad6 Update homepage sidebar handoff notes`。
 - `codex/article-apiset` 指向 `1a2f29b Add article statistics APIs`，基于 `main`。
 - `codex/comment-thread-interactions` 指向 `5bb0079 comment`，基于 `codex/article-apiset`。
-- 当前 `main` / `origin/main` 已指向 `5bb0079 comment`，包含统计 API、评论区互动和上一轮文档更新。
+- 当前本地 `codex/newadmin-ui` 基于 `ee60ec2 Update handoff after merging comment interactions`，本轮包含管理员后台新 UI 和只读管理员概览统计接口。
+- `codex/newuser-ui` 指向 `2414be6 Refactor user panel UI`，包含普通用户面板新 UI；当前 `codex/newadmin-ui` 尚未合并该分支。
+- `origin/main` 仍指向 `5bb0079 comment`。
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - 不要提交、回滚或覆盖用户自己的未提交改动；继续工作前先检查工作区。
 
@@ -27,8 +29,10 @@
 b251ad6 Update homepage sidebar handoff notes
 └─ 1a2f29b Add article statistics APIs
    └─ 7f683c9 Add threaded comment interactions
-      └─ 5bb0079 comment  (main, origin/main, codex/comment-thread-interactions)
+      └─ 5bb0079 comment  (origin/main, origin/HEAD)
+         └─ ee60ec2 Update handoff after merging comment interactions  (main, codex/newadmin-ui, codex/articleedit-ui)
 
+codex/newuser-ui -> 2414be6 Refactor user panel UI
 codex/article-apiset -> 1a2f29b
 ```
 
@@ -37,7 +41,7 @@ codex/article-apiset -> 1a2f29b
 ```bash
 git status --short --branch
 git log --oneline --decorate -5
-git diff -- client/src/App.vue client/src/style.css server/src/routes/comments.js server/prisma/schema.prisma
+git diff -- client/src/App.vue client/src/style.css server/src/routes/articles.js README.md handoff.md
 git diff -- README.md handoff.md
 ```
 
@@ -52,7 +56,78 @@ git diff -- README.md handoff.md
 
 ## 项目概况
 
-这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
+这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、管理后台新 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
+
+## 本次已完成：管理员后台新 UI
+
+工作分支：`codex/newadmin-ui`。
+
+改动文件：
+
+- `client/src/App.vue`
+- `client/src/style.css`
+- `server/src/routes/articles.js`
+- `README.md`
+- `handoff.md`
+
+### 范围与设计决策
+
+- 用户要求管理员页面风格参考 `C:\Users\27871\Desktop\myblog-pro_v5_admin-panel.html`，顶部导航栏以首页新 UI 为准。
+- 管理后台进入 `#admin` 后使用独立后台布局，不再套公开首页的筛选栏和文章列表。
+- 顶部导航保留 `MyBlog Pro` 品牌、明暗模式切换、通知占位和用户胶囊；按用户要求删除管理员页面顶部搜索框。
+- 左侧侧边栏保留，包含站点概览、用户管理、内容审核、分类标签。
+- 默认进入站点概览。
+- 管理员当前定位为审核和管理，不再参与撰写文章；未来撰写文章功能规划放在普通用户投稿流程中。
+
+### 数据与占位边界
+
+- 新增只读管理员概览接口：`GET /api/articles/admin/overview`。
+- 概览统计卡尽量复用真实数据：注册账号数、文章数、评论数、今日访问。
+- 近 7 日访问趋势使用 `site_visits`，按 `Asia/Shanghai` 自然日统计，只统计首页和文章页访问；匿名用户按 `visitorId` 去重，登录用户按 `userId` 去重。
+- 近 7 日访问趋势横轴显示 `MM-DD`，例如 `05-31`、`06-01`，不是周一到周日。
+- 概览页图表使用 ECharts：访问趋势为柱状图，文章分类分布为环形图。
+- 文章分类分布基于已发布文章分类聚合；分类标签页读取现有 `categories` / `tags` 展示。
+- 用户管理页当前只做 UI：搜索、筛选、查看、禁用、删除按钮统一提示后续接入；未新增用户禁用状态字段或用户删除接口。
+- 内容审核页当前只做 UI：待审核文章使用静态示例数据，通过/驳回按钮只提示后续接入投稿审核流程。
+- “敏感评论”当前为 UI 示例，不是后端检测结果；忽略/删除按钮只提示后续接入。
+- 分类标签新增、编辑、删除当前为 UI 占位。
+
+### 图表切换修复
+
+- 曾发现从用户管理或内容审核切回站点概览时，两张 ECharts 图表空白。
+- 原因是概览内容通过 `v-if` 销毁 DOM 后，ECharts 实例仍绑定旧 DOM。
+- 已在离开概览时调用 `disposeAdminCharts()`，并在重新渲染前检查 `chart.getDom()` 是否仍为当前 ref；不一致时销毁并重新初始化。
+
+### 验证
+
+本轮已执行：
+
+```bash
+npm test --workspace server
+npm run build
+git diff --check
+```
+
+结果均通过。`git diff --check` 只有 Windows 换行提示：`LF will be replaced by CRLF the next time Git touches it`。
+
+曾在 sandbox 外临时启动前端预览：
+
+- `http://127.0.0.1:5174/`
+- `Invoke-WebRequest http://127.0.0.1:5174/` 返回 200
+- 未占用用户的 `3000` 后端端口
+
+## 相关分支：普通用户面板新 UI
+
+`codex/newuser-ui` 分支已完成普通用户面板新 UI，当前 `codex/newadmin-ui` 尚未合并该分支。该分支文档明确记录：
+
+- 用户面板第一版只做 UI 外观和布局，功能先占位，不补后端 API。
+- 用户面板进入 `#dashboard` 后使用独立工作台布局，不再套公开首页左侧筛选栏。
+- 侧边栏 Tab 为：数据看板、我的文章、我的收藏、社交互动、安全设置。
+- 数据看板尽量接现有真实数据；近 7 日阅读趋势和文章分类分布仍为占位。
+- “我的文章”是未来投稿中心 UI 预演，状态为 `草稿`、`待审核`、`已发布`、`未通过`。
+- “我的收藏”“社交互动”“安全设置”目前是视觉与提示占位。
+- 社交互动未来方向是“我的评论 + 收到的互动通知”，不是粉丝/关注或私信体系。
+- 安全设置保留改密码、手机绑定、第三方账号绑定表单，按钮只提示后续接入。
 
 ## 本次已完成：评论区主评论点赞与一层回复
 
@@ -196,7 +271,10 @@ hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
 - 详情页点赞/收藏已由前端本地状态改为后端持久化状态。
 - 详情页评论区已支持主评论点赞、回复输入框、默认 2 条回复和展开/收起。
 - 移动端详情页优先正文，左侧内容折叠为抽屉。
-- 用户面板和管理后台仍为旧 UI，通过 `.legacy-ui` 隔离。
+- 当前 `codex/newadmin-ui` 分支的管理后台已改为独立新 UI：顶部导航按首页新 UI，左侧保留站点概览、用户管理、内容审核、分类标签；管理员顶部搜索框已移除。
+- 管理后台站点概览已接入只读统计接口，近 7 日访问趋势为 ECharts 柱状图并显示 `MM-DD` 日期，文章分类分布为 ECharts 环形图；切换页面再回到概览时会重新初始化图表。
+- 管理后台用户管理、内容审核、敏感评论、分类标签管理当前先做 UI 和提示交互，不改数据库、不改审核流程。
+- 当前 `codex/newadmin-ui` 分支的普通用户面板仍是旧 UI，通过 `.legacy-ui` 隔离；普通用户面板新 UI 在 `codex/newuser-ui` 分支，尚未合并到当前分支。
 
 ## 后端与数据状态
 
@@ -222,6 +300,16 @@ hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
 - `c07cac4 Update article detail UI`：文章详情页 UI 调整。
 
 ## 最近验证
+
+管理员后台新 UI 工作已执行：
+
+```bash
+npm test --workspace server
+npm run build
+git diff --check
+```
+
+结果均通过；`git diff --check` 只保留仓库既有 Windows 换行提示。还用 `http://127.0.0.1:5174/` 做过临时前端预览并返回 200，未占用用户的 `3000` 后端端口。
 
 评论区互动工作已执行：
 
@@ -274,10 +362,10 @@ sc.exe config MySQL start= demand
 
 ## 后续建议
 
-- 可继续改造用户面板和管理后台旧 UI。
-- 可基于 `article_stats` 和 `site_visits` 做真实阅读趋势折线图；第一版目前只把趋势卡下方数字接真。
-- 可做“我的收藏列表”，本次只实现收藏状态和计数。
-- 可补充评论分页、评论审核。
+- 可按需合并 `codex/newuser-ui` 的普通用户面板新 UI，并补用户投稿/审核、我的文章真实列表、我的收藏、我的评论与互动通知、修改密码和账号绑定等后端能力。
+- 可将管理后台用户管理、内容审核、敏感评论、分类标签管理接入真实后端接口；当前分支只做 UI 和提示交互。
+- 可基于 `site_visits` 做公开首页和用户面板的真实趋势图；当前管理后台概览已用该数据做近 7 日访问柱状图。
+- 可补充评论分页、评论审核，以及敏感词/敏感话题检测流程。
 - 可修复安全审查中提到的评论删除边界：删除主评论时递归清理历史多层回复，或先迁移历史 `parent_id` 到一层结构。
 - 可给 `comment_likes` 增加 `(user_id, comment_id)` 复合索引，优化用户态 `likedByMe` 查询。
 - 可将粉丝数、作者关注等继续接入真实后端模型。

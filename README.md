@@ -1,20 +1,20 @@
 # Private Blog System - 私有博客系统
 
-一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
+一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、管理后台新 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
 
 ## 当前状态
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前工作分支 | `main` |
-| 最新已合并 UI 工作 | `codex/article-detail-ui`、`codex/ui-layout`、`codex/index-layout` 均已合并到 `main` |
-| 最新功能工作 | 阅读量、点赞、收藏、今日阅读、热门排行等已接入真实后端统计 API；评论区已支持主评论点赞和抖音式一层回复 |
+| 当前工作分支 | `codex/newadmin-ui` |
+| 最新 UI 工作 | `codex/newadmin-ui` 正在重构管理员后台；`codex/newuser-ui` 上已有普通用户面板新 UI，但当前分支尚未合并该工作 |
+| 最新功能工作 | 阅读量、点赞、收藏、今日阅读、热门排行等已接入真实后端统计 API；评论区已支持主评论点赞和抖音式一层回复；管理员后台新增只读概览统计 API |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes` |
-| 最近验证 | 2026-05-31：`npm test --workspace server`、`npm run build`、`git diff --check`、`prisma validate` 均通过 |
-| 合并状态 | `codex/article-apiset` 与 `codex/comment-thread-interactions` 均已 fast-forward 合并并推送到 `origin/main` |
+| 最近验证 | 2026-06-01：管理员后台新 UI 已执行 `npm run build`、`npm test --workspace server`、`git diff --check` |
+| 合并状态 | `codex/article-apiset` 与 `codex/comment-thread-interactions` 均已 fast-forward 合并并推送到 `origin/main`；`codex/newadmin-ui` 为本地工作分支 |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
@@ -37,7 +37,16 @@
 - 详情页目录只在当前文章存在 TOC 时显示，并位于作者卡和筛选文章之间。
 - 详情页右侧栏已移除，热门标签和相关推荐不在详情页显示，主内容区域向右扩展。
 - 移动端优先展示文章内容，左侧信息折叠为抽屉；抽屉内保留作者卡、目录、筛选和文章列表。
-- 用户面板和管理后台仍是旧 UI，通过 `.legacy-ui` 隔离。
+- 当前分支的普通用户面板仍是旧 UI，通过 `.legacy-ui` 隔离；普通用户面板新 UI 在 `codex/newuser-ui` 分支，当前分支尚未合并。
+- 管理后台已重构为独立后台 UI，顶部导航沿用首页的 `MyBlog Pro` 品牌、明暗切换、通知和用户胶囊；管理员页面顶部不显示搜索框。
+- 管理后台左侧导航包含站点概览、用户管理、内容审核、分类标签；移动端使用抽屉式导航。
+- 管理后台默认进入站点概览，统计卡尽量复用真实数据：注册账号数、文章数、评论数、今日访问。
+- 管理后台“近7日访问趋势”使用 ECharts 柱状图，按 `Asia/Shanghai` 自然日展示 `MM-DD` 日期；匿名用户按 `visitorId` 去重，登录用户按 `userId` 去重，只统计首页和文章页访问。
+- 管理后台“文章分类分布”使用 ECharts 环形图，基于已发布文章的真实分类聚合。
+- 管理后台用户管理当前为 UI 占位，搜索/筛选/查看/禁用/删除按钮只提示后续接入，未新增用户禁用或删除接口。
+- 管理后台内容审核当前为 UI 占位：待审核文章使用静态示例数据，通过/驳回按钮只提示后续接入投稿审核流程。
+- 管理后台敏感评论当前为 UI 示例，不是后端检测结果；忽略/删除按钮只提示后续接入。
+- 分类标签页读取现有真实分类和标签展示，但新增、编辑、删除操作仍是 UI 占位。
 
 ## 功能概览
 
@@ -98,6 +107,16 @@ hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
 - 导入结果包含成功、缺失图片、格式错误、失败文件日志
 - `chapterOrder` 自动编号和手动重排
 - 首次发布写入 `published_at`，再次发布不覆盖原首次发布时间
+
+### 管理员后台
+
+- `#admin` 显示独立后台工作台布局，不再使用公开首页左右栏。
+- 顶部导航沿用首页品牌风格，但管理员页不显示搜索框。
+- 站点概览展示真实注册账号数、文章数、评论数、今日访问。
+- 近 7 日访问趋势来自只读管理员概览接口，按日期展示柱状图。
+- 文章分类分布基于当前已发布文章分类聚合展示环形图。
+- 用户管理、内容审核、敏感评论处理、分类标签管理当前为 UI 占位和提示交互。
+- 管理员当前主要负责审核和管理；撰写文章能力后续规划放到普通用户投稿流程中。
 
 ### 评论
 
@@ -289,6 +308,7 @@ npm test --workspace server
 
 管理员接口：
 
+- `GET /api/articles/admin/overview`
 - `GET /api/articles/admin/list`
 - `POST /api/articles/admin`
 - `PATCH /api/articles/admin/:id`
@@ -385,6 +405,14 @@ git diff --check
 node --env-file=.env.test ..\node_modules\prisma\build\index.js validate --schema prisma\schema.prisma
 ```
 
+最近管理员后台新 UI 已验证：
+
+```bash
+npm test --workspace server
+npm run build
+git diff --check
+```
+
 ## 管理员账号说明
 
 新注册用户默认是 `USER`。如果需要立即测试文章发布，可在本地数据库中手动提升角色：
@@ -397,8 +425,9 @@ WHERE email = 'your-admin@example.com';
 
 ## 后续建议
 
-- 基于 `site_visits` 做真实阅读趋势折线图；当前第一版只把趋势卡下方数字接真。
-- 继续改造用户面板和管理后台旧 UI。
-- 增加“我的收藏列表”，本次只实现收藏状态和计数。
+- 可继续合并 `codex/newuser-ui` 的普通用户面板新 UI，并补用户投稿/审核、我的文章真实列表、我的收藏、我的评论与互动通知、修改密码和账号绑定等后端能力。
+- 可将管理后台用户管理、内容审核、敏感评论、分类标签管理接入真实后端接口。
+- 可基于 `site_visits` 做公开首页和用户面板的真实趋势图；当前公开首页阅读趋势图形仍有占位性质。
+- 增加“我的收藏列表”，当前只实现文章收藏状态和计数。
 - 补充评论分页、评论审核、删除主评论时递归清理历史多层回复。
 - 将粉丝数、作者关注等静态展示接入真实后端模型。

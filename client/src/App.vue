@@ -25,7 +25,11 @@ const showBackToTop = ref(false);
 const latestPage = ref(1);
 const message = ref("");
 const trafficChartRef = ref(null);
+const adminVisitChartRef = ref(null);
+const adminCategoryChartRef = ref(null);
 let messageTimer = null;
+let adminVisitChartInstance = null;
+let adminCategoryChartInstance = null;
 const currentUser = ref(null);
 const currentSession = ref(null);
 const publishedArticles = ref([]);
@@ -42,10 +46,136 @@ const siteSummary = ref({
   totalViews: 0,
   totalFavorites: 0
 });
+const adminActiveTab = ref("overview");
+const adminMobileNavOpen = ref(false);
+const adminOverviewLoading = ref(false);
+const adminOverview = ref({
+  summary: {
+    userCount: 0,
+    articleCount: 0,
+    commentCount: 0,
+    todayVisits: 0
+  },
+  visitTrend: []
+});
 const returnArticleSlugAfterLogin = ref("");
 const activeReplyTarget = ref(null);
 const expandedReplyCommentIds = ref(new Set());
 const DEFAULT_VISIBLE_REPLY_COUNT = 2;
+const ADMIN_CATEGORY_COLORS = ["#3b82f6", "#ff6b35", "#a855f7", "#22c55e", "#f59e0b", "#14b8a6"];
+
+const adminTabs = [
+  {
+    id: "overview",
+    label: "站点概览",
+    icon: "mdi:chart-box-outline"
+  },
+  {
+    id: "users",
+    label: "用户管理",
+    icon: "mdi:account-group-outline"
+  },
+  {
+    id: "review",
+    label: "内容审核",
+    icon: "mdi:shield-check-outline"
+  },
+  {
+    id: "taxonomy",
+    label: "分类标签",
+    icon: "mdi:tag-outline"
+  }
+];
+
+const adminUserRows = [
+  {
+    username: "fuck",
+    email: "fuck@example.com",
+    createdAt: "2024-01-15",
+    status: "正常",
+    color: "#f97316"
+  },
+  {
+    username: "张三",
+    email: "zhangsan@example.com",
+    createdAt: "2024-03-20",
+    status: "正常",
+    color: "#3b82f6"
+  },
+  {
+    username: "李四",
+    email: "lisi@example.com",
+    createdAt: "2024-05-10",
+    status: "已禁用",
+    color: "#a855f7"
+  },
+  {
+    username: "王五",
+    email: "wangwu@example.com",
+    createdAt: "2024-06-05",
+    status: "正常",
+    color: "#22c55e"
+  },
+  {
+    username: "赵六",
+    email: "zhaoliu@example.com",
+    createdAt: "2024-07-18",
+    status: "已禁用",
+    color: "#ef4444"
+  },
+  {
+    username: "孙七",
+    email: "sunqi@example.com",
+    createdAt: "2024-08-22",
+    status: "正常",
+    color: "#14b8a6"
+  }
+];
+
+const adminReviewArticles = [
+  {
+    title: "如何搭建个人博客网站",
+    author: "张三",
+    submittedAt: "2026-05-30 14:23"
+  },
+  {
+    title: "Vue3 vs React：2026 年前端框架对比",
+    author: "李四",
+    submittedAt: "2026-05-29 09:15"
+  },
+  {
+    title: "我的旅行日记：云南大理深度游",
+    author: "王五",
+    submittedAt: "2026-05-28 16:42"
+  }
+];
+
+const adminRiskComments = [
+  {
+    content: "加微信 xxx123 免费领取教程，限时分享内部资料，大家快来。",
+    author: "周八",
+    article: "2025年度总结",
+    createdAt: "2026-05-28 22:15",
+    reason: "疑似广告推广",
+    keywords: ["加微信", "免费领取"]
+  },
+  {
+    content: "这段评论引发了争议话题讨论，建议管理员先确认上下文后再放行。",
+    author: "孙七",
+    article: "Spring Boot 实战教程",
+    createdAt: "2026-05-29 11:30",
+    reason: "敏感话题",
+    keywords: ["争议话题"]
+  },
+  {
+    content: "内容里包含攻击性表达和不适合公开展示的词汇，需要人工复核。",
+    author: "赵六",
+    article: "React 入门指南",
+    createdAt: "2026-05-30 18:05",
+    reason: "敏感词汇",
+    keywords: ["攻击性表达"]
+  }
+];
 
 const filters = reactive({
   q: "",
@@ -118,6 +248,71 @@ const authorStats = computed(() => ({
       .reduce((total, article) => total + Number(article.stats?.likeCount || 0), 0)
   )
 }));
+const adminSummaryCards = computed(() => [
+  {
+    label: "注册账号",
+    value: adminOverview.value.summary.userCount,
+    icon: "mdi:account-group-outline",
+    tone: "blue"
+  },
+  {
+    label: "文章总数",
+    value: adminOverview.value.summary.articleCount || adminArticles.value.length || publishedArticles.value.length,
+    icon: "mdi:file-document-outline",
+    tone: "orange"
+  },
+  {
+    label: "评论总数",
+    value: adminOverview.value.summary.commentCount,
+    icon: "mdi:comment-text-outline",
+    tone: "green"
+  },
+  {
+    label: "今日访问",
+    value: adminOverview.value.summary.todayVisits || siteSummary.value.todayVisits,
+    icon: "mdi:eye-outline",
+    tone: "purple"
+  }
+]);
+const adminCategoryStats = computed(() => {
+  const categoryCounts = new Map();
+
+  for (const article of publishedArticles.value) {
+    const categoryName = article.category?.name || "未分类";
+    categoryCounts.set(categoryName, (categoryCounts.get(categoryName) || 0) + 1);
+  }
+
+  if (categoryCounts.size === 0) {
+    return categories.value.slice(0, 5).map((category, index) => ({
+      name: category.name,
+      value: 0,
+      color: ADMIN_CATEGORY_COLORS[index % ADMIN_CATEGORY_COLORS.length]
+    }));
+  }
+
+  return Array.from(categoryCounts.entries()).map(([name, value], index) => ({
+    name,
+    value,
+    color: ADMIN_CATEGORY_COLORS[index % ADMIN_CATEGORY_COLORS.length]
+  }));
+});
+const adminTagStats = computed(() =>
+  tags.value.map((tag, index) => ({
+    ...tag,
+    color: ADMIN_CATEGORY_COLORS[index % ADMIN_CATEGORY_COLORS.length]
+  }))
+);
+const adminPageTitle = computed(() => adminTabs.find((tab) => tab.id === adminActiveTab.value)?.label || "站点概览");
+const adminPageSubtitle = computed(() => {
+  const subtitles = {
+    overview: "博客运营数据一览",
+    users: "管理所有注册用户",
+    review: "审核用户提交的文章和风险评论",
+    taxonomy: "管理文章分类和标签"
+  };
+
+  return subtitles[adminActiveTab.value] || "";
+});
 
 function articleSortTime(article) {
   const time = new Date(article?.publishedAt || article?.createdAt || 0).getTime();
@@ -815,6 +1010,36 @@ async function loadAdminArticles() {
   }
 }
 
+async function loadAdminOverview() {
+  if (!isAdmin.value) {
+    adminOverview.value = {
+      summary: {
+        userCount: 0,
+        articleCount: 0,
+        commentCount: 0,
+        todayVisits: 0
+      },
+      visitTrend: []
+    };
+    return;
+  }
+
+  adminOverviewLoading.value = true;
+
+  try {
+    const payload = await apiFetch("/articles/admin/overview");
+    adminOverview.value = payload;
+    await nextTick();
+    renderAdminCharts();
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminOverviewLoading.value = false;
+  }
+}
+
 async function loadProfile() {
   if (!token.value) {
     return;
@@ -827,7 +1052,7 @@ async function loadProfile() {
     currentUser.value = payload.user;
     currentSession.value = payload.session;
     if (payload.user.role === "ADMIN") {
-      await loadAdminArticles();
+      await Promise.all([loadAdminArticles(), loadAdminOverview()]);
     }
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
@@ -974,12 +1199,39 @@ function openUserDashboard() {
 }
 
 function openAdminDashboard() {
+  if (!adminActiveTab.value) {
+    adminActiveTab.value = "overview";
+  }
   setHash("admin");
 }
 
 function openCreateArticle() {
   clearArticleForm();
   setHash("admin");
+}
+
+function setAdminTab(tabId) {
+  if (adminActiveTab.value === "overview" && tabId !== "overview") {
+    disposeAdminCharts();
+  }
+
+  adminActiveTab.value = tabId;
+  adminMobileNavOpen.value = false;
+  if (tabId === "overview") {
+    nextTick(renderAdminCharts);
+  }
+}
+
+function toggleAdminMobileNav() {
+  adminMobileNavOpen.value = !adminMobileNavOpen.value;
+}
+
+function closeAdminMobileNav() {
+  adminMobileNavOpen.value = false;
+}
+
+function showAdminPlaceholder(action) {
+  setMessage(`${action}将在后续接入。`);
 }
 
 function editArticle(article) {
@@ -1277,6 +1529,188 @@ function shouldRecordHomeVisit() {
   return viewName === "public" && !nextAuthMode;
 }
 
+function disposeAdminCharts() {
+  if (adminVisitChartInstance) {
+    adminVisitChartInstance.dispose();
+    adminVisitChartInstance = null;
+  }
+
+  if (adminCategoryChartInstance) {
+    adminCategoryChartInstance.dispose();
+    adminCategoryChartInstance = null;
+  }
+}
+
+function renderAdminCharts() {
+  nextTick(() => {
+    if (typeof echarts === "undefined" || view.value !== "admin" || adminActiveTab.value !== "overview") {
+      return;
+    }
+
+    const visitEl = adminVisitChartRef.value;
+    const categoryEl = adminCategoryChartRef.value;
+
+    if (visitEl) {
+      if (adminVisitChartInstance && adminVisitChartInstance.getDom() !== visitEl) {
+        adminVisitChartInstance.dispose();
+        adminVisitChartInstance = null;
+      }
+
+      if (!adminVisitChartInstance) {
+        adminVisitChartInstance = echarts.init(visitEl);
+      }
+
+      const trend = adminOverview.value.visitTrend?.length
+        ? adminOverview.value.visitTrend
+        : [
+            { label: "周一", value: 0 },
+            { label: "周二", value: 0 },
+            { label: "周三", value: 0 },
+            { label: "周四", value: 0 },
+            { label: "周五", value: 0 },
+            { label: "周六", value: 0 },
+            { label: "周日", value: 0 }
+          ];
+
+      adminVisitChartInstance.setOption({
+        tooltip: {
+          trigger: "axis",
+          backgroundColor: "#ffffff",
+          borderColor: "#ff6b35",
+          borderWidth: 1,
+          textStyle: {
+            color: "#111827"
+          }
+        },
+        grid: {
+          left: 44,
+          right: 20,
+          top: 16,
+          bottom: 34
+        },
+        xAxis: {
+          type: "category",
+          data: trend.map((item) => item.label),
+          axisTick: {
+            show: false
+          },
+          axisLine: {
+            lineStyle: {
+              color: "#e5e7eb"
+            }
+          },
+          axisLabel: {
+            color: "#9ca3af",
+            fontSize: 12
+          }
+        },
+        yAxis: {
+          type: "value",
+          minInterval: 1,
+          splitLine: {
+            lineStyle: {
+              color: "#f1f5f9",
+              type: "dashed"
+            }
+          },
+          axisLabel: {
+            color: "#9ca3af",
+            fontSize: 12
+          }
+        },
+        series: [
+          {
+            name: "访问设备",
+            type: "bar",
+            barWidth: "38%",
+            data: trend.map((item) => item.value),
+            itemStyle: {
+              borderRadius: [9, 9, 0, 0],
+              color: {
+                type: "linear",
+                x: 0,
+                y: 0,
+                x2: 0,
+                y2: 1,
+                colorStops: [
+                  { offset: 0, color: "#ff6b35" },
+                  { offset: 1, color: "#ff9a6b" }
+                ]
+              }
+            }
+          }
+        ]
+      });
+    }
+
+    if (categoryEl) {
+      if (adminCategoryChartInstance && adminCategoryChartInstance.getDom() !== categoryEl) {
+        adminCategoryChartInstance.dispose();
+        adminCategoryChartInstance = null;
+      }
+
+      if (!adminCategoryChartInstance) {
+        adminCategoryChartInstance = echarts.init(categoryEl);
+      }
+
+      const categoriesForChart = adminCategoryStats.value.length
+        ? adminCategoryStats.value
+        : [{ name: "暂无分类", value: 1, color: "#e5e7eb" }];
+
+      adminCategoryChartInstance.setOption({
+        tooltip: {
+          trigger: "item",
+          backgroundColor: "#ffffff",
+          borderColor: "#ff6b35",
+          borderWidth: 1,
+          textStyle: {
+            color: "#111827"
+          },
+          formatter: "{b}: {c} 篇 ({d}%)"
+        },
+        legend: {
+          bottom: 0,
+          left: "center",
+          itemWidth: 10,
+          itemHeight: 10,
+          textStyle: {
+            color: "#64748b",
+            fontSize: 12
+          }
+        },
+        series: [
+          {
+            type: "pie",
+            radius: ["48%", "72%"],
+            center: ["50%", "45%"],
+            avoidLabelOverlap: true,
+            itemStyle: {
+              borderRadius: 8,
+              borderColor: "#ffffff",
+              borderWidth: 4
+            },
+            label: {
+              show: false
+            },
+            data: categoriesForChart.map((item) => ({
+              value: item.value || 0,
+              name: item.name,
+              itemStyle: {
+                color: item.color
+              }
+            }))
+          }
+        ]
+      });
+    }
+  });
+}
+
+function resizeAdminCharts() {
+  adminVisitChartInstance?.resize();
+  adminCategoryChartInstance?.resize();
+}
+
 function initTrafficChart() {
   nextTick(() => {
     const el = trafficChartRef.value;
@@ -1315,12 +1749,25 @@ watch(view, (newVal) => {
       recordHomeVisit();
     }
   }
+
+  if (newVal === "admin") {
+    nextTick(renderAdminCharts);
+  } else {
+    closeAdminMobileNav();
+  }
+});
+
+watch([adminActiveTab, adminCategoryStats], () => {
+  if (view.value === "admin" && adminActiveTab.value === "overview") {
+    renderAdminCharts();
+  }
 });
 
 onMounted(async () => {
   applyThemeMode();
   window.addEventListener("hashchange", handleHashChange);
   window.addEventListener("scroll", handleScroll, { passive: true });
+  window.addEventListener("resize", resizeAdminCharts);
   await Promise.all([loadPublishedArticles(), loadArticleFilters(), refreshPublicStats()]);
   if (token.value) {
     await loadProfile();
@@ -1339,6 +1786,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener("hashchange", handleHashChange);
   window.removeEventListener("scroll", handleScroll);
+  window.removeEventListener("resize", resizeAdminCharts);
+  disposeAdminCharts();
   if (messageTimer) {
     clearTimeout(messageTimer);
   }
@@ -1449,7 +1898,7 @@ onBeforeUnmount(() => {
           <span class="brand-logo-text compact">MyBlog <span>Pro</span></span>
         </div>
 
-        <div class="hidden md:flex items-center bg-slate-100 rounded-full px-4 py-1.5 w-96 border border-transparent focus-within:border-orange-300 focus-within:bg-white transition-all">
+        <div v-if="view !== 'admin'" class="hidden md:flex items-center bg-slate-100 rounded-full px-4 py-1.5 w-96 border border-transparent focus-within:border-orange-300 focus-within:bg-white transition-all">
           <iconify-icon class="text-slate-400 mr-2 shrink-0" icon="mdi:magnify"></iconify-icon>
           <input
             v-model.trim="filters.q"
@@ -1501,7 +1950,284 @@ onBeforeUnmount(() => {
   </header>
 
   <!-- ===== 主内容区 ===== -->
+  <template v-if="view === 'admin' && isAdmin">
+    <button
+      v-if="adminMobileNavOpen"
+      class="admin-mobile-overlay"
+      type="button"
+      aria-label="关闭管理员导航"
+      @click="closeAdminMobileNav"
+    ></button>
+    <main class="admin-shell">
+      <button class="admin-mobile-menu-button" type="button" @click="toggleAdminMobileNav">
+        <iconify-icon icon="mdi:menu" width="22"></iconify-icon>
+        管理菜单
+      </button>
+
+      <aside class="admin-sidebar" :class="{ 'is-open': adminMobileNavOpen }">
+        <nav class="admin-nav-list" aria-label="管理员菜单">
+          <button
+            v-for="tab in adminTabs"
+            :key="tab.id"
+            class="admin-nav-item"
+            :class="{ 'is-active': adminActiveTab === tab.id }"
+            type="button"
+            @click="setAdminTab(tab.id)"
+          >
+            <iconify-icon :icon="tab.icon" width="22"></iconify-icon>
+            <span>{{ tab.label }}</span>
+          </button>
+        </nav>
+        <button class="admin-sidebar-home" type="button" @click="openPublicHome">
+          <iconify-icon icon="mdi:arrow-left" width="18"></iconify-icon>
+          返回博客首页
+        </button>
+      </aside>
+
+      <section class="admin-main">
+        <header class="admin-page-header">
+          <div>
+            <h1>{{ adminPageTitle }}</h1>
+            <p>{{ adminPageSubtitle }}</p>
+          </div>
+          <button class="admin-refresh-button" type="button" :disabled="adminOverviewLoading" @click="loadAdminOverview">
+            <iconify-icon icon="mdi:refresh" width="20"></iconify-icon>
+            {{ adminOverviewLoading ? "刷新中" : "刷新数据" }}
+          </button>
+        </header>
+
+        <template v-if="adminActiveTab === 'overview'">
+          <section class="admin-stat-grid">
+            <article
+              v-for="card in adminSummaryCards"
+              :key="card.label"
+              class="admin-stat-card"
+              :class="`tone-${card.tone}`"
+            >
+              <div class="admin-stat-icon">
+                <iconify-icon :icon="card.icon" width="24"></iconify-icon>
+              </div>
+              <div>
+                <p>{{ card.label }}</p>
+                <strong>{{ formatCompactNumber(card.value) }}</strong>
+              </div>
+            </article>
+          </section>
+
+          <section class="admin-chart-grid">
+            <article class="admin-card admin-chart-card admin-chart-card-wide">
+              <h2>近7日访问趋势</h2>
+              <div ref="adminVisitChartRef" class="admin-chart admin-visit-chart"></div>
+            </article>
+            <article class="admin-card admin-chart-card">
+              <h2>文章分类分布</h2>
+              <div ref="adminCategoryChartRef" class="admin-chart admin-category-chart"></div>
+            </article>
+          </section>
+
+          <section class="admin-card">
+            <div class="admin-card-header">
+              <h2>最新动态</h2>
+            </div>
+            <div class="admin-activity-list">
+              <div class="admin-activity-item">
+                <span class="admin-activity-icon blue"><iconify-icon icon="mdi:account-plus-outline" width="18"></iconify-icon></span>
+                <p>注册账号总数已更新为 <strong>{{ formatCompactNumber(adminOverview.summary.userCount) }}</strong></p>
+                <time>实时</time>
+              </div>
+              <div class="admin-activity-item">
+                <span class="admin-activity-icon orange"><iconify-icon icon="mdi:file-document-outline" width="18"></iconify-icon></span>
+                <p>当前站内共有 <strong>{{ formatCompactNumber(adminOverview.summary.articleCount || adminArticles.length) }}</strong> 篇文章</p>
+                <time>实时</time>
+              </div>
+              <div class="admin-activity-item">
+                <span class="admin-activity-icon green"><iconify-icon icon="mdi:comment-text-outline" width="18"></iconify-icon></span>
+                <p>敏感评论面板当前展示 <strong>{{ adminRiskComments.length }}</strong> 条待处理样例</p>
+                <time>占位</time>
+              </div>
+            </div>
+          </section>
+        </template>
+
+        <template v-else-if="adminActiveTab === 'users'">
+          <section class="admin-card admin-filter-card">
+            <div class="admin-filter-search">
+              <iconify-icon icon="mdi:magnify" width="20"></iconify-icon>
+              <input readonly placeholder="搜索用户名或邮箱..." type="text" />
+            </div>
+            <select aria-label="时间筛选">
+              <option>全部时间</option>
+              <option>近7天</option>
+              <option>近30天</option>
+            </select>
+            <select aria-label="状态筛选">
+              <option>全部状态</option>
+              <option>正常</option>
+              <option>已禁用</option>
+            </select>
+            <button type="button" @click="showAdminPlaceholder('用户筛选')">
+              <iconify-icon icon="mdi:filter-outline" width="18"></iconify-icon>
+              筛选
+            </button>
+          </section>
+
+          <section class="admin-card admin-table-card">
+            <div class="admin-user-table">
+              <div class="admin-user-row admin-user-head">
+                <span>用户</span>
+                <span>邮箱</span>
+                <span>注册时间</span>
+                <span>状态</span>
+                <span>操作</span>
+              </div>
+              <div v-for="user in adminUserRows" :key="user.email" class="admin-user-row">
+                <div class="admin-user-cell-main">
+                  <span class="admin-user-avatar" :style="{ backgroundColor: user.color }">{{ user.username[0]?.toUpperCase() }}</span>
+                  <strong>{{ user.username }}</strong>
+                </div>
+                <span>{{ user.email }}</span>
+                <span>{{ user.createdAt }}</span>
+                <span>
+                  <mark :class="{ 'is-disabled': user.status === '已禁用' }">{{ user.status }}</mark>
+                </span>
+                <div class="admin-user-actions">
+                  <button type="button" @click="showAdminPlaceholder('查看用户详情')">查看</button>
+                  <button
+                    class="toggle"
+                    type="button"
+                    @click="showAdminPlaceholder(user.status === '已禁用' ? '启用用户' : '禁用用户')"
+                  >
+                    {{ user.status === "已禁用" ? "启用" : "禁用" }}
+                  </button>
+                  <button class="danger" type="button" @click="showAdminPlaceholder('删除用户')">删除</button>
+                </div>
+              </div>
+            </div>
+            <footer class="admin-table-footer">
+              <span>显示 1 到 {{ adminUserRows.length }} 条，共 {{ formatCompactNumber(adminOverview.summary.userCount || adminUserRows.length) }} 条数据</span>
+              <div class="admin-pagination">
+                <button type="button" @click="showAdminPlaceholder('用户分页')">上一页</button>
+                <button class="is-active" type="button">1</button>
+                <button type="button" @click="showAdminPlaceholder('用户分页')">2</button>
+                <button type="button" @click="showAdminPlaceholder('用户分页')">3</button>
+                <button type="button" @click="showAdminPlaceholder('用户分页')">下一页</button>
+              </div>
+            </footer>
+          </section>
+        </template>
+
+        <template v-else-if="adminActiveTab === 'review'">
+          <section class="admin-card admin-review-card">
+            <div class="admin-card-header">
+              <h2>
+                <iconify-icon icon="mdi:file-document-check-outline" width="24"></iconify-icon>
+                待审核文章
+              </h2>
+              <span>{{ adminReviewArticles.length }} 条待审</span>
+            </div>
+            <div class="admin-review-list">
+              <article v-for="article in adminReviewArticles" :key="article.title" class="admin-review-item">
+                <div>
+                  <h3>{{ article.title }}</h3>
+                  <p>作者：{{ article.author }} · 提交时间：{{ article.submittedAt }}</p>
+                </div>
+                <div class="admin-review-actions">
+                  <button class="approve" type="button" @click="showAdminPlaceholder('通过文章审核')">通过</button>
+                  <button class="reject" type="button" @click="showAdminPlaceholder('驳回文章')">驳回</button>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="admin-card admin-review-card">
+            <div class="admin-card-header">
+              <h2>
+                <iconify-icon icon="mdi:comment-alert-outline" width="24"></iconify-icon>
+                敏感评论
+              </h2>
+              <span>{{ adminRiskComments.length }} 条待处理</span>
+            </div>
+            <div class="admin-review-list">
+              <article v-for="comment in adminRiskComments" :key="comment.content" class="admin-review-item admin-comment-risk-item">
+                <div>
+                  <p>{{ comment.content }}</p>
+                  <div class="admin-risk-meta">
+                    <strong>评论者：{{ comment.author }}</strong>
+                    <span>文章：{{ comment.article }}</span>
+                    <time>{{ comment.createdAt }}</time>
+                  </div>
+                  <div class="admin-risk-tags">
+                    <span class="reason">{{ comment.reason }}</span>
+                    <span v-for="keyword in comment.keywords" :key="keyword">{{ keyword }}</span>
+                  </div>
+                </div>
+                <div class="admin-review-actions">
+                  <button class="neutral" type="button" @click="showAdminPlaceholder('忽略风险提示')">忽略</button>
+                  <button class="delete" type="button" @click="showAdminPlaceholder('删除敏感评论')">删除</button>
+                </div>
+              </article>
+            </div>
+          </section>
+        </template>
+
+        <template v-else-if="adminActiveTab === 'taxonomy'">
+          <section class="admin-taxonomy-grid">
+            <article class="admin-card">
+              <div class="admin-card-header">
+                <h2>
+                  <iconify-icon icon="mdi:folder-outline" width="24"></iconify-icon>
+                  文章分类管理
+                </h2>
+              </div>
+              <div class="admin-taxonomy-list">
+                <div v-for="category in adminCategoryStats" :key="category.name" class="admin-taxonomy-item">
+                  <div>
+                    <span class="admin-taxonomy-dot" :style="{ backgroundColor: category.color }"></span>
+                    <strong>{{ category.name }}</strong>
+                    <small>{{ category.value }} 篇文章</small>
+                  </div>
+                  <div>
+                    <button type="button" @click="showAdminPlaceholder('编辑分类')"><iconify-icon icon="mdi:pencil-outline" width="18"></iconify-icon></button>
+                    <button type="button" @click="showAdminPlaceholder('删除分类')"><iconify-icon icon="mdi:trash-can-outline" width="18"></iconify-icon></button>
+                  </div>
+                </div>
+                <p v-if="adminCategoryStats.length === 0" class="admin-empty-text">暂无分类。</p>
+              </div>
+              <div class="admin-inline-create">
+                <input readonly placeholder="新增分类名称..." type="text" />
+                <button type="button" @click="showAdminPlaceholder('新增分类')">新增</button>
+              </div>
+            </article>
+
+            <article class="admin-card">
+              <div class="admin-card-header">
+                <h2>
+                  <iconify-icon icon="mdi:tag-outline" width="24"></iconify-icon>
+                  文章标签管理
+                </h2>
+              </div>
+              <div class="admin-tag-cloud">
+                <span v-for="tag in adminTagStats" :key="tag.id" :style="{ '--tag-color': tag.color }">
+                  {{ tag.name }}
+                  <button type="button" @click="showAdminPlaceholder('删除标签')">
+                    <iconify-icon icon="mdi:close" width="15"></iconify-icon>
+                  </button>
+                </span>
+                <p v-if="adminTagStats.length === 0" class="admin-empty-text">暂无标签。</p>
+              </div>
+              <div class="admin-inline-create">
+                <input readonly placeholder="输入新标签名称..." type="text" />
+                <button type="button" @click="showAdminPlaceholder('新增标签')">新增</button>
+              </div>
+            </article>
+          </section>
+        </template>
+      </section>
+    </main>
+  </template>
+
   <main
+    v-else
     class="max-w-[1440px] mx-auto px-6 py-8 grid grid-cols-1 gap-8 items-start"
     :class="view === 'article' ? 'article-detail-shell' : 'lg:grid-cols-[320px_minmax(0,1fr)]'"
   >
@@ -1877,74 +2603,6 @@ onBeforeUnmount(() => {
               <h2>你好，{{ currentUser?.username }}</h2>
               <p class="muted">当前身份是 {{ roleLabel }}，可以浏览已发布文章并发表评论。</p>
             </div>
-          </section>
-
-          <!-- 管理后台 -->
-          <section v-else-if="view === 'admin' && isAdmin" class="workspace-grid">
-            <article class="workspace-card editor-card">
-              <div class="section-header">
-                <div>
-                  <p class="eyebrow">文章编辑</p>
-                  <h2>{{ editorHeading }}</h2>
-                  <p class="muted">当前管理员：{{ currentUser?.username }}</p>
-                </div>
-                <div class="button-row">
-                  <button class="ghost-button" type="button" @click="clearArticleForm">清空</button>
-                  <button class="primary-button" :disabled="savingArticle" type="button" @click="saveArticle">
-                    {{ savingArticle ? "保存中..." : articleForm.id ? "保存修改" : "创建文章" }}
-                  </button>
-                  <button class="primary-button" :disabled="savingArticle || !articleForm.id" type="button" @click="publishCurrentArticle">发布</button>
-                </div>
-              </div>
-              <div class="stack-form editor-form">
-                <div class="form-field"><span>标题</span><input v-model.trim="articleForm.title" placeholder="文章标题" /></div>
-                <div class="inline-fields">
-                  <div class="form-field"><span>Slug</span><input v-model.trim="articleForm.slug" placeholder="例如：my-article" /></div>
-                  <div class="form-field"><span>排序</span><input v-model.number="articleForm.chapterOrder" min="1" step="1" type="number" /></div>
-                </div>
-                <div class="inline-fields">
-                  <div class="form-field"><span>分类</span><input v-model.trim="articleForm.categoryName" placeholder="例如：随笔" /></div>
-                  <div class="form-field"><span>标签</span><input v-model.trim="articleForm.tagNamesText" placeholder="逗号分隔，例如 Vue, Markdown" /></div>
-                </div>
-                <div class="form-field"><span>Markdown</span><textarea v-model="articleForm.contentMarkdown" class="markdown-editor" placeholder="# 文章正文" /></div>
-              </div>
-              <div class="upload-panel">
-                <div><h3>插入图片</h3><p class="muted">上传后会生成 Markdown 图片链接并追加到正文。</p></div>
-                <div class="inline-fields">
-                  <div class="form-field"><span>图片说明</span><input v-model.trim="imageForm.altText" placeholder="图片说明" /></div>
-                  <div class="form-field file-field"><span>选择图片</span><input :disabled="uploadingImage" accept="image/*" type="file" @change="uploadImage" /></div>
-                </div>
-              </div>
-              <div class="upload-panel">
-                <div><h3>批量导入文章</h3><p class="muted">上传 zip。系统会按 `.md` 文件名排序导入，并转换 `images/...` 图片引用。</p></div>
-                <div class="form-field file-field"><span>选择 zip 文件</span><input :disabled="importingArticles" accept=".zip,application/zip" type="file" @change="importArticles" /></div>
-                <div v-if="importResult" class="import-log">
-                  <h4>导入日志</h4>
-                  <p>成功 {{ importResult.summary.imported }} 篇，失败 {{ importResult.summary.failed }} 篇，缺失图片 {{ importResult.summary.missingImages }} 个，格式错误 {{ importResult.summary.formatErrors }} 个。</p>
-                </div>
-              </div>
-            </article>
-            <article class="workspace-card manager-card">
-              <div class="section-header">
-                <div><p class="eyebrow">文章管理</p><h2>草稿与已发布</h2></div>
-                <button class="ghost-button" type="button" @click="openCreateArticle">新建</button>
-              </div>
-              <p v-if="adminArticles.length === 0" class="muted">还没有文章。</p>
-              <ul v-else class="article-manager-list">
-                <li v-for="article in adminArticles" :key="article.id" class="manager-item">
-                  <div>
-                    <strong>{{ article.title }}</strong>
-                    <p>{{ article.slug }}</p>
-                    <small>第 {{ article.chapterOrder }} 篇 - {{ article.status }} - {{ article.category?.name || "未分类" }} - {{ article.tags.map((tag) => tag.name).join(", ") || "无标签" }}</small>
-                  </div>
-                  <div class="button-row compact-row">
-                    <button class="ghost-button" type="button" @click="editArticle(article)">编辑</button>
-                    <button class="ghost-button" type="button" :disabled="article.status !== 'PUBLISHED'" @click="openArticle(article.slug)">查看</button>
-                    <button class="ghost-button danger-button" type="button" @click="deleteArticle(article)">删除</button>
-                  </div>
-                </li>
-              </ul>
-            </article>
           </section>
 
           <section v-else class="workspace-card article-card">
