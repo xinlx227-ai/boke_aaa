@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-用户已完成三轮主要工作：先将阅读量、点赞、收藏、热门排行等静态或本地展示接入真实后端统计 API；随后继续开发评论区主评论点赞和抖音式一层回复；本轮在 `codex/newuser-ui` 上将普通用户面板重构为独立工作台 UI。统计 API 和评论互动分支已 fast-forward 合并到 `main` 并推送到 `origin/main`；用户面板新 UI 当前仍在本地分支，后续可合并/推送。
+用户已完成四轮主要工作：先将阅读量、点赞、收藏、热门排行等静态或本地展示接入真实后端统计 API；随后继续开发评论区主评论点赞和抖音式一层回复；随后在 `codex/newuser-ui` 上将普通用户面板重构为独立工作台 UI；当前在 `articleedit-ui` 上新增独立发布新文章页面 UI。当前工作已从 `codex/newuser-ui` 分出到 `articleedit-ui`，并完整继承用户面板新 UI。统计 API 和评论互动分支已 fast-forward 合并到 `main` 并推送到 `origin/main`；用户面板和发布页新 UI 当前仍在本地分支，后续可合并/推送。
 
 ## 建议下个 Agent 使用的技能
 
@@ -13,11 +13,11 @@
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前分支：`codex/newuser-ui`
+- 当前分支：`articleedit-ui`
 - `main` 与 `origin/main` 在本次统计 API 开始前均指向 `b251ad6 Update homepage sidebar handoff notes`。
 - `codex/article-apiset` 指向 `1a2f29b Add article statistics APIs`，基于 `main`。
 - `codex/comment-thread-interactions` 指向 `5bb0079 comment`，基于 `codex/article-apiset`。
-- 当前本地 `codex/newuser-ui` 基于 `ee60ec2 Update handoff after merging comment interactions`，包含统计 API、评论区互动和上一轮文档更新；`origin/main` 仍指向 `5bb0079 comment`。
+- 当前本地 `articleedit-ui` 基于 `2414be6 Refactor user panel UI`，从 `codex/newuser-ui` 分出，包含统计 API、评论区互动、上一轮文档更新、普通用户面板新 UI和独立发布新文章页面 UI；`origin/main` 仍指向 `5bb0079 comment`。
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - 不要提交、回滚或覆盖用户自己的未提交改动；继续工作前先检查工作区。
 
@@ -28,7 +28,9 @@ b251ad6 Update homepage sidebar handoff notes
 └─ 1a2f29b Add article statistics APIs
    └─ 7f683c9 Add threaded comment interactions
       └─ 5bb0079 comment  (origin/main, origin/HEAD)
-         └─ ee60ec2 Update handoff after merging comment interactions  (main, codex/newuser-ui, codex/newadmin-ui, codex/articleedit-ui)
+         └─ ee60ec2 Update handoff after merging comment interactions  (main)
+            ├─ 2414be6 Refactor user panel UI  (articleedit-ui, codex/newuser-ui)
+            └─ 02607fa Refactor admin dashboard UI  (codex/newadmin-ui)
 
 codex/article-apiset -> 1a2f29b
 ```
@@ -53,11 +55,80 @@ git diff -- README.md handoff.md
 
 ## 项目概况
 
-这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、普通用户面板新 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
+这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、普通用户面板新 UI、独立发布新文章页面 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
+
+## 本次已完成：独立发布新文章页面 UI
+
+工作分支：`articleedit-ui`。
+
+参考文件：`C:\Users\27871\Desktop\myblog-pro_articleeditpagev2.html`。
+
+改动文件：
+
+- `client/src/App.vue`
+- `client/src/style.css`
+- `README.md`
+- `handoff.md`
+
+### 范围与设计决策
+
+- 用户通过 `$grill-me` 确认发布新文章页做成独立页面，不作为用户面板 Tab。
+- 入口只保留用户面板顶部右侧“发布新文章”主按钮；左侧导航不新增发布项。
+- 页面路由为 `#article/new`，并兼容 `#article-edit/new`、`#articleedit/new`。
+- 页面仅允许普通登录用户进入；管理员不进入该投稿 UI。
+- 顶部栏沿用用户面板视觉：`MyBlog Pro` 品牌、返回用户面板、明暗模式、通知和用户胶囊。
+- 顶部右侧保留“预览”和“发布”按钮，但都只做占位提示，不接后端。
+- 背景使用用户面板同一套暖色浅底，避免从用户面板跳转时产生视觉冲突。
+
+### 页面结构
+
+- 桌面端：左侧文章设置面板 + 右侧 Markdown 编辑区 + 底部状态栏。
+- 移动端：默认显示编辑区，顶部设置按钮打开文章设置抽屉。
+- 左侧设置保留：文章封面、分类、标签、SEO 设置、高级设置。
+- 左侧设置面板已按参考图重新规划标签、SEO 设置、高级设置之间的布局：模块间使用分隔线与留白，SEO 标题为普通折叠标题，不再呈现输入框式黑边。
+- 底部状态栏已改为细白底工具栏：橙色描边“批量上传”、灰色“保存草稿”、轻量自动保存提示，避免厚重胶囊按钮。
+- 高级设置的“允许评论”“置顶文章”已改为按钮式开关控件，并按用户反馈缩小尺寸。
+- 编辑区采用“Markdown 编辑器外观 + 富文本工具栏占位”，不使用真实富文本存储。
+- 工具栏、封面上传、预览、发布、批量上传、保存草稿均通过 `showArticleEditorPlaceholder()` 提示后续接入。
+- 后续撰写 handoff 交接文档时需要提示的编辑器路线：先把当前 Markdown 工具栏做成真实插入语法；只有在用户明确要 Word/公众号式富文本写作时，再考虑接入 Tiptap / ProseMirror 一类富文本编辑器。
+
+### 代码结构备注
+
+- 新增视图：`articleEditor`。
+- 新增主要状态/计算：
+  - `articleEditorSettingsOpen`
+  - `articleEditorSeoOpen`
+  - `articleEditorCoverRatio`
+  - `articleEditorForm`
+  - `isArticleEditorView`
+  - `articleEditorTags`
+  - `articleEditorWordCount`
+  - `articleEditorLineCount`
+- 新增主要方法：
+  - `openArticleEditor`
+  - `openArticleEditorFromDashboard`
+  - `toggleArticleEditorSettings`
+  - `closeArticleEditorSettings`
+  - `toggleArticleEditorSeo`
+  - `setArticleEditorCoverRatio`
+  - `addArticleEditorTag`
+  - `removeArticleEditorTag`
+  - `showArticleEditorPlaceholder`
+- 新增 CSS 命名空间：`.article-editor-*`。
+
+### 验证
+
+本轮已执行：
+
+```bash
+npm run build
+```
+
+结果通过。
 
 ## 本次已完成：普通用户面板新 UI
 
-工作分支：`codex/newuser-ui`。
+工作分支：`articleedit-ui`，从 `codex/newuser-ui` 分出并继承该分支的普通用户面板新 UI。
 
 改动文件：
 
@@ -348,6 +419,7 @@ sc.exe config MySQL start= demand
 ## 后续建议
 
 - 可补用户面板后端能力：投稿/审核状态、我的文章真实列表、我的收藏列表、我的评论与互动通知、修改密码、手机绑定、第三方账号绑定。
+- 发布页编辑器建议先实现 Markdown 工具栏真实插入语法；确认需要富文本写作体验后再接 Tiptap / ProseMirror。
 - 可继续改造管理后台旧 UI。
 - 可基于 `article_stats` 和 `site_visits` 做真实阅读趋势折线图；用户面板和首页趋势区域目前都仍有占位性质。
 - 可补充评论分页、评论审核。

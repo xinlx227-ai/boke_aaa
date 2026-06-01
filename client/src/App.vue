@@ -48,6 +48,9 @@ const expandedReplyCommentIds = ref(new Set());
 const DEFAULT_VISIBLE_REPLY_COUNT = 2;
 const userPanelActiveTab = ref("overview");
 const userPanelMobileNavOpen = ref(false);
+const articleEditorSettingsOpen = ref(false);
+const articleEditorSeoOpen = ref(false);
+const articleEditorCoverRatio = ref("16:9");
 
 const userPanelTabs = [
   { id: "overview", label: "数据看板", icon: "mdi:view-dashboard-outline" },
@@ -91,6 +94,19 @@ const articleForm = reactive({
   contentMarkdown: ""
 });
 
+const articleEditorForm = reactive({
+  title: "",
+  categoryName: "",
+  tagNamesText: "Vue, Markdown",
+  tagInput: "",
+  seoTitle: "",
+  seoKeywords: "",
+  seoDescription: "",
+  allowComments: true,
+  pinned: false,
+  contentMarkdown: ""
+});
+
 const imageForm = reactive({
   altText: ""
 });
@@ -106,6 +122,7 @@ const isAdmin = computed(() => currentUser.value?.role === "ADMIN");
 const isDarkMode = computed(() => themeMode.value === "dark");
 const roleLabel = computed(() => (isAdmin.value ? "管理员" : "普通用户"));
 const isUserPanelView = computed(() => view.value === "dashboard" && isAuthenticated.value && !isAdmin.value);
+const isArticleEditorView = computed(() => view.value === "articleEditor" && isAuthenticated.value && !isAdmin.value);
 const currentUserInitial = computed(() => (currentUser.value?.username || "?")[0]?.toUpperCase() || "?");
 const userPanelActiveTitle = computed(() => userPanelTabs.find((tab) => tab.id === userPanelActiveTab.value)?.label || "用户面板");
 const userPanelStats = computed(() => [
@@ -150,6 +167,12 @@ const userPanelCategoryStats = computed(() => {
     name,
     count
   })).slice(0, 4);
+});
+const articleEditorTags = computed(() => tagTextToArray(articleEditorForm.tagNamesText));
+const articleEditorWordCount = computed(() => String(articleEditorForm.contentMarkdown || "").trim().length);
+const articleEditorLineCount = computed(() => {
+  const content = String(articleEditorForm.contentMarkdown || "");
+  return content ? content.split(/\r?\n/).length : 1;
 });
 const selectedArticleHtml = computed(() => mapAssetUrls(selectedArticle.value?.contentHtml || ""));
 const selectedToc = computed(() => selectedArticle.value?.toc || []);
@@ -553,6 +576,13 @@ function parseHash() {
     };
   }
 
+  if (["article/new", "article-edit/new", "articleedit/new"].includes(hash)) {
+    return {
+      viewName: "articleEditor",
+      slug: null
+    };
+  }
+
   if (hash.startsWith("article/")) {
     return {
       viewName: "article",
@@ -807,7 +837,12 @@ function syncViewToHash() {
     return;
   }
 
-  if (viewName === "dashboard" && !isAuthenticated.value) {
+  if ((viewName === "dashboard" || viewName === "articleEditor") && !isAuthenticated.value) {
+    view.value = "public";
+    return;
+  }
+
+  if (viewName === "articleEditor" && isAdmin.value) {
     view.value = "public";
     return;
   }
@@ -825,6 +860,10 @@ function syncViewToHash() {
 
   if (viewName !== "dashboard") {
     userPanelMobileNavOpen.value = false;
+  }
+
+  if (viewName !== "articleEditor") {
+    articleEditorSettingsOpen.value = false;
   }
 }
 
@@ -1037,6 +1076,49 @@ function showUserPanelPlaceholder(featureName) {
   setMessage(`${featureName}后续接入。`);
 }
 
+function showArticleEditorPlaceholder(featureName) {
+  setMessage(`${featureName}后续接入投稿审核流程。`);
+}
+
+function openArticleEditor() {
+  setHash("article/new");
+}
+
+function closeArticleEditorSettings() {
+  articleEditorSettingsOpen.value = false;
+}
+
+function toggleArticleEditorSettings() {
+  articleEditorSettingsOpen.value = !articleEditorSettingsOpen.value;
+}
+
+function toggleArticleEditorSeo() {
+  articleEditorSeoOpen.value = !articleEditorSeoOpen.value;
+}
+
+function setArticleEditorCoverRatio(ratio) {
+  articleEditorCoverRatio.value = ratio;
+}
+
+function addArticleEditorTag(tagName = articleEditorForm.tagInput) {
+  const nextTag = String(tagName || "").trim();
+
+  if (!nextTag) {
+    return;
+  }
+
+  const nextTags = new Set(articleEditorTags.value);
+  nextTags.add(nextTag);
+  articleEditorForm.tagNamesText = Array.from(nextTags).join(", ");
+  articleEditorForm.tagInput = "";
+}
+
+function removeArticleEditorTag(tagName) {
+  articleEditorForm.tagNamesText = articleEditorTags.value
+    .filter((tag) => tag !== tagName)
+    .join(", ");
+}
+
 function userPanelArticleStatusClass(status) {
   return {
     草稿: "is-draft",
@@ -1064,6 +1146,11 @@ function scrollToTop() {
 
 function openUserDashboard() {
   setHash("dashboard");
+}
+
+function openArticleEditorFromDashboard() {
+  closeUserPanelMobileNav();
+  openArticleEditor();
 }
 
 function openAdminDashboard() {
@@ -1456,10 +1543,17 @@ onBeforeUnmount(() => {
     aria-label="关闭用户面板导航"
     @click="closeUserPanelMobileNav"
   ></button>
+  <button
+    v-if="isArticleEditorView && articleEditorSettingsOpen"
+    class="article-editor-overlay"
+    type="button"
+    aria-label="关闭文章设置"
+    @click="closeArticleEditorSettings"
+  ></button>
 
   <!-- ===== 顶部导航栏 (新 UI) ===== -->
   <header
-    v-if="!isUserPanelView"
+    v-if="!isUserPanelView && !isArticleEditorView"
     class="sticky top-0 z-50 w-full border-b"
     :class="view === 'article' ? 'article-detail-header bg-white/95 border-slate-200 backdrop-blur' : 'glass-effect border-orange-100/50'"
   >
@@ -1675,7 +1769,7 @@ onBeforeUnmount(() => {
           <div>
             <h1>{{ userPanelActiveTitle }}</h1>
           </div>
-          <button class="user-panel-primary-action" type="button" @click="showUserPanelPlaceholder('投稿发布')">
+          <button class="user-panel-primary-action" type="button" @click="openArticleEditorFromDashboard">
             <iconify-icon icon="mdi:plus" width="20"></iconify-icon>
             <span>发布新文章</span>
           </button>
@@ -1905,6 +1999,264 @@ onBeforeUnmount(() => {
         </section>
       </main>
     </div>
+  </section>
+
+  <section v-else-if="isArticleEditorView" class="article-editor-shell">
+    <header class="user-panel-topbar article-editor-topbar">
+      <div class="user-panel-brand">
+        <button class="article-editor-settings-button" type="button" aria-label="打开文章设置" @click="toggleArticleEditorSettings">
+          <iconify-icon icon="mdi:tune-variant" width="22"></iconify-icon>
+        </button>
+        <button class="user-panel-logo" type="button" @click="openPublicHome">
+          <span class="brand-logo-mark compact">
+            <iconify-icon icon="mdi:feather" width="24"></iconify-icon>
+            <span class="brand-feather-fallback" aria-hidden="true"></span>
+          </span>
+          <span class="brand-logo-text compact">MyBlog <span>Pro</span></span>
+        </button>
+        <span class="user-panel-header-divider"></span>
+        <button class="user-panel-return-link" type="button" @click="openUserDashboard">
+          <iconify-icon icon="mdi:arrow-left" width="20"></iconify-icon>
+          <span>返回用户面板</span>
+        </button>
+      </div>
+      <div class="user-panel-topbar-actions article-editor-topbar-actions">
+        <button class="article-editor-preview-action" type="button" @click="showArticleEditorPlaceholder('文章预览')">
+          <iconify-icon icon="mdi:eye-outline" width="19"></iconify-icon>
+          <span>预览</span>
+        </button>
+        <button class="article-editor-publish-action" type="button" @click="showArticleEditorPlaceholder('投稿发布')">
+          <iconify-icon icon="mdi:send-outline" width="19"></iconify-icon>
+          <span>发布</span>
+        </button>
+        <button
+          class="user-panel-icon-action"
+          :title="isDarkMode ? '切换到亮色模式' : '切换到暗色模式'"
+          type="button"
+          @click="toggleThemeMode"
+        >
+          <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
+        </button>
+        <button class="user-panel-icon-action" type="button" title="通知" @click="showUserPanelPlaceholder('消息通知')">
+          <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
+          <span></span>
+        </button>
+        <div class="user-panel-account">
+          <span class="user-panel-avatar">{{ currentUserInitial }}</span>
+          <div>
+            <strong>{{ currentUser?.username }}</strong>
+            <small>{{ roleLabel }}</small>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="article-editor-frame">
+      <aside class="article-editor-settings-panel" :class="{ 'is-open': articleEditorSettingsOpen }">
+        <div class="article-editor-settings-head">
+          <div>
+            <h2>文章设置</h2>
+            <p>当前为投稿页面 UI，占位交互后续接入。</p>
+          </div>
+          <button type="button" aria-label="关闭文章设置" @click="closeArticleEditorSettings">
+            <iconify-icon icon="mdi:close" width="20"></iconify-icon>
+          </button>
+        </div>
+
+        <div class="article-editor-setting-group">
+          <div class="article-editor-setting-title">
+            <h3>文章封面</h3>
+            <span>建议 16:9</span>
+          </div>
+          <button class="article-editor-cover-dropzone" type="button" @click="showArticleEditorPlaceholder('封面上传')">
+            <iconify-icon icon="mdi:image-plus-outline" width="34"></iconify-icon>
+            <strong>点击或拖拽上传封面</strong>
+            <small>支持 JPG、PNG、WebP</small>
+          </button>
+          <div class="article-editor-ratio-group" aria-label="封面比例">
+            <button
+              v-for="ratio in ['16:9', '4:3', '1:1']"
+              :key="ratio"
+              :class="{ 'is-active': articleEditorCoverRatio === ratio }"
+              type="button"
+              @click="setArticleEditorCoverRatio(ratio)"
+            >
+              {{ ratio }}
+            </button>
+            <button type="button" title="重新上传" @click="showArticleEditorPlaceholder('重新上传封面')">
+              <iconify-icon icon="mdi:refresh" width="16"></iconify-icon>
+            </button>
+          </div>
+        </div>
+
+        <div class="article-editor-setting-group">
+          <h3>分类</h3>
+          <label class="article-editor-select">
+            <span class="sr-only">分类</span>
+            <select v-model="articleEditorForm.categoryName">
+              <option value="">全部分类</option>
+              <option v-for="category in categories" :key="category.id" :value="category.name">{{ category.name }}</option>
+              <option value="技术">技术</option>
+              <option value="生活">生活</option>
+              <option value="随笔">随笔</option>
+            </select>
+            <iconify-icon icon="mdi:chevron-down" width="20"></iconify-icon>
+          </label>
+        </div>
+
+        <div class="article-editor-setting-group article-editor-tags-section">
+          <h3>标签</h3>
+          <div class="article-editor-tag-list">
+            <span v-for="tag in articleEditorTags" :key="tag">
+              {{ tag }}
+              <button type="button" :aria-label="`移除 ${tag}`" @click="removeArticleEditorTag(tag)">
+                <iconify-icon icon="mdi:close" width="13"></iconify-icon>
+              </button>
+            </span>
+          </div>
+          <div class="article-editor-tag-input">
+            <input
+              v-model.trim="articleEditorForm.tagInput"
+              placeholder="输入标签并回车"
+              type="text"
+              @keydown.enter.prevent="addArticleEditorTag()"
+            />
+            <button type="button" @click="addArticleEditorTag()">
+              <iconify-icon icon="mdi:plus" width="18"></iconify-icon>
+            </button>
+          </div>
+          <div class="article-editor-preset-tags">
+            <small>常用标签：</small>
+            <button
+              v-for="tag in ['CSS', 'Vue', 'Python', 'TypeScript']"
+              :key="tag"
+              type="button"
+              @click="addArticleEditorTag(tag)"
+            >
+              {{ tag }}
+            </button>
+          </div>
+        </div>
+
+        <div class="article-editor-setting-group article-editor-seo-section">
+          <button class="article-editor-collapse-button" type="button" @click="toggleArticleEditorSeo">
+            <span>SEO 设置</span>
+            <iconify-icon :class="{ 'is-open': articleEditorSeoOpen }" icon="mdi:chevron-down" width="20"></iconify-icon>
+          </button>
+          <div v-if="articleEditorSeoOpen" class="article-editor-seo-fields">
+            <label>
+              <span>Meta 标题</span>
+              <input v-model.trim="articleEditorForm.seoTitle" placeholder="输入 Meta 标题" type="text" />
+            </label>
+            <label>
+              <span>Meta 关键词</span>
+              <input v-model.trim="articleEditorForm.seoKeywords" placeholder="关键词，用逗号分隔" type="text" />
+            </label>
+            <label>
+              <span>搜索预览描述</span>
+              <textarea v-model="articleEditorForm.seoDescription" placeholder="输入文章摘要，用于搜索引擎展示" rows="3"></textarea>
+            </label>
+          </div>
+        </div>
+
+        <div class="article-editor-setting-group article-editor-advanced-section">
+          <h3>高级设置</h3>
+          <label class="article-editor-toggle-row">
+            <span>允许评论</span>
+            <input v-model="articleEditorForm.allowComments" aria-label="允许评论" type="checkbox" />
+          </label>
+          <label class="article-editor-toggle-row">
+            <span>置顶文章</span>
+            <input v-model="articleEditorForm.pinned" aria-label="置顶文章" type="checkbox" />
+          </label>
+        </div>
+      </aside>
+
+      <main class="article-editor-main">
+        <div class="article-editor-workspace">
+          <input
+            v-model.trim="articleEditorForm.title"
+            class="article-editor-title-input"
+            placeholder="请输入文章标题..."
+            type="text"
+          />
+
+          <div class="article-editor-toolbar" aria-label="Markdown 工具栏">
+            <div class="article-editor-toolbar-row">
+              <button type="button" title="一级标题" @click="showArticleEditorPlaceholder('一级标题')">H1</button>
+              <button type="button" title="二级标题" @click="showArticleEditorPlaceholder('二级标题')">H2</button>
+              <button type="button" title="三级标题" @click="showArticleEditorPlaceholder('三级标题')">H3</button>
+              <span></span>
+              <button type="button" title="加粗" @click="showArticleEditorPlaceholder('加粗')">
+                <iconify-icon icon="mdi:format-bold" width="20"></iconify-icon>
+              </button>
+              <button type="button" title="斜体" @click="showArticleEditorPlaceholder('斜体')">
+                <iconify-icon icon="mdi:format-italic" width="20"></iconify-icon>
+              </button>
+              <button type="button" title="删除线" @click="showArticleEditorPlaceholder('删除线')">
+                <iconify-icon icon="mdi:format-strikethrough" width="20"></iconify-icon>
+              </button>
+              <span></span>
+              <button type="button" title="代码块" @click="showArticleEditorPlaceholder('代码块')">
+                <iconify-icon icon="mdi:code-tags" width="20"></iconify-icon>
+              </button>
+              <button type="button" title="引用" @click="showArticleEditorPlaceholder('引用')">
+                <iconify-icon icon="mdi:format-quote-open" width="20"></iconify-icon>
+              </button>
+            </div>
+            <div class="article-editor-toolbar-row">
+              <button type="button" title="无序列表" @click="showArticleEditorPlaceholder('无序列表')">
+                <iconify-icon icon="mdi:format-list-bulleted" width="20"></iconify-icon>
+              </button>
+              <button type="button" title="有序列表" @click="showArticleEditorPlaceholder('有序列表')">
+                <iconify-icon icon="mdi:format-list-numbered" width="20"></iconify-icon>
+              </button>
+              <span></span>
+              <button type="button" title="插入链接" @click="showArticleEditorPlaceholder('插入链接')">
+                <iconify-icon icon="mdi:link-variant" width="20"></iconify-icon>
+              </button>
+              <button type="button" title="插入图片" @click="showArticleEditorPlaceholder('插入图片')">
+                <iconify-icon icon="mdi:image-outline" width="20"></iconify-icon>
+              </button>
+              <button type="button" title="分隔线" @click="showArticleEditorPlaceholder('分隔线')">
+                <iconify-icon icon="mdi:minus" width="20"></iconify-icon>
+              </button>
+              <span></span>
+              <button type="button" title="表格" @click="showArticleEditorPlaceholder('表格')">
+                <iconify-icon icon="mdi:table" width="20"></iconify-icon>
+              </button>
+              <button type="button" title="数学公式" @click="showArticleEditorPlaceholder('数学公式')">
+                <iconify-icon icon="mdi:sigma" width="20"></iconify-icon>
+              </button>
+            </div>
+          </div>
+
+          <textarea
+            v-model="articleEditorForm.contentMarkdown"
+            class="article-editor-markdown-input"
+            placeholder="开始撰写 Markdown 正文..."
+          ></textarea>
+        </div>
+      </main>
+    </div>
+
+    <footer class="article-editor-footer">
+      <div class="article-editor-footer-actions">
+        <button class="article-editor-footer-upload" type="button" @click="showArticleEditorPlaceholder('批量上传')">
+          <iconify-icon icon="mdi:cloud-upload-outline" width="20"></iconify-icon>
+          <span>批量上传</span>
+        </button>
+        <button class="article-editor-footer-draft" type="button" @click="showArticleEditorPlaceholder('保存草稿')">
+          <iconify-icon icon="mdi:content-save-outline" width="20"></iconify-icon>
+          <span>保存草稿</span>
+        </button>
+        <small>已自动保存于 --:--:--</small>
+      </div>
+      <div class="article-editor-footer-meta">
+        <span>{{ articleEditorWordCount }} 字</span>
+        <span>{{ articleEditorLineCount }} 行</span>
+      </div>
+    </footer>
   </section>
 
   <!-- ===== 主内容区 ===== -->
