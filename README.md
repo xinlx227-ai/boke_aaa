@@ -7,13 +7,13 @@
 | 项目 | 状态 |
 | --- | --- |
 | 当前工作分支 | `articleedit-ui` |
-| 最新 UI 工作 | `articleedit-ui` 基于 `codex/newuser-ui`，已包含普通用户面板新 UI，并新增独立发布新文章页面 UI；`codex/article-detail-ui`、`codex/ui-layout`、`codex/index-layout` 均已合并到 `main` |
+| 最新 UI 工作 | `articleedit-ui` 基于 `codex/newuser-ui`，已包含普通用户面板新 UI，并新增独立发布新文章页面 UI；当前发布页已继续调整为专注写作布局、`textarea` 自动增高、单行轻量工具栏和整页一致暗色模式；`codex/article-detail-ui`、`codex/ui-layout`、`codex/index-layout` 均已合并到 `main` |
 | 最新功能工作 | 阅读量、点赞、收藏、今日阅读、热门排行等已接入真实后端统计 API；评论区已支持主评论点赞和抖音式一层回复 |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes` |
-| 最近验证 | 2026-06-01：发布新文章页面 UI 已执行 `npm run build`；2026-05-31：用户面板新 UI 已执行 `npm run build`、`git diff --check`；评论互动工作此前已执行 `npm test --workspace server`、`prisma validate` |
+| 最近验证 | 2026-06-03：发布页写作体验与暗色模式调整已执行 `npm run build`、`git diff --check -- client/src/style.css`；2026-06-01：发布新文章页面 UI 已执行 `npm run build`；2026-05-31：用户面板新 UI 已执行 `npm run build`、`git diff --check`；评论互动工作此前已执行 `npm test --workspace server`、`prisma validate` |
 | 合并状态 | `codex/article-apiset` 与 `codex/comment-thread-interactions` 均已 fast-forward 合并并推送到 `origin/main` |
 | 交接文档 | `handoff.md` |
 
@@ -45,9 +45,13 @@
 - “我的收藏”“社交互动”“安全设置”当前为 UI 占位和提示交互，后续需要补收藏列表、我的评论/互动通知、修改密码/绑定手机/第三方绑定等接口。
 - 普通用户面板顶部右侧“发布新文章”进入独立发布页面 `#article/new`，左侧导航不新增发布项。
 - 发布页面顶部沿用用户面板导航视觉，提供“返回用户面板”、预览、发布、明暗切换、通知和用户胶囊。
-- 发布页面采用桌面端左侧文章设置 + 右侧 Markdown 编辑区；移动端文章设置收进抽屉。
+- 发布页面采用桌面端左侧 sticky 文章设置栏 + 右侧 Markdown 专注写作区；移动端文章设置收进抽屉。
 - 发布页面左侧设置面板按参考图重排标签、SEO 设置和高级设置，模块之间用分隔线与留白组织。
-- 发布页面底部状态栏采用细白底工具栏：橙色描边“批量上传”、灰色“保存草稿”和轻量自动保存提示。
+- 发布页面左侧设置栏在桌面端保持独立滚动，正文区按页面自然滚动。
+- 发布页面写作区继续使用 `textarea`，正文输入区自动增高，不在正文框内部滚动。
+- 发布页面工具栏已压缩为一行轻量工具栏，次要功能放入“更多”菜单。
+- 发布页面底部状态栏保持原来的整页底部位置：橙色“批量上传”、灰色“保存草稿”和轻量自动保存提示。
+- 发布页面暗色模式已改为整页一致的深蓝灰写作主题，左侧设置区比正文区稍亮，主要依靠边框、轻阴影、层级色差和少量橘色强调保留纸张感。
 - 高级设置中的“允许评论”“置顶文章”使用按钮式开关控件。
 - 发布页面的封面、分类、标签、SEO、高级设置、工具栏、预览、发布、批量上传和保存草稿均为 UI 占位，不接真实后端。
 
