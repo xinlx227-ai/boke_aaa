@@ -13,7 +13,7 @@
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes` |
-| 最近验证 | 2026-06-04：修复文章编辑页旧版公共 UI 误渲染后执行 `npm run build`、`git diff --check`，均通过；合并 `codex/someting-recover` 后执行 `npm test --workspace server`、`npm run build`、`git diff --check`、`prisma validate`，均通过 |
+| 最近验证 | 2026-06-04：发布页 Markdown 工具栏真实插入语法、普通用户多图上传并插入 Markdown 后，执行 `npm test --workspace server`、`npm run build`、`git diff --check`，均通过；此前修复文章编辑页旧版公共 UI 误渲染后执行 `npm run build`、`git diff --check`，均通过 |
 | 合并状态 | `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover` 均已合并并推送到 `origin/main`；本地已合并分支已清理，仅保留 `main` |
 | 交接文档 | `handoff.md` |
 
@@ -52,11 +52,11 @@
 - 发布页面左侧设置面板按参考图重排标签、SEO 设置和高级设置，模块之间用分隔线与留白组织。
 - 发布页面左侧设置栏在桌面端保持独立滚动，正文区按页面自然滚动。
 - 发布页面写作区继续使用 `textarea`，正文输入区自动增高，不在正文框内部滚动。
-- 发布页面工具栏已压缩为一行轻量工具栏，次要功能放入“更多”菜单。
+- 发布页面工具栏已压缩为一行轻量工具栏，主工具栏支持 H1、加粗、斜体、引用、代码、列表、链接和图片插入；“更多”菜单支持 H1/H2/H3、分隔线、表格、数学公式模板和清除选区格式。
 - 发布页面底部状态栏保持原来的整页底部位置：橙色“批量上传”、灰色“保存草稿”和轻量自动保存提示。
 - 发布页面暗色模式已改为整页一致的深蓝灰写作主题，左侧设置区比正文区稍亮，主要依靠边框、轻阴影、层级色差和少量橘色强调保留纸张感。
 - 高级设置中的“允许评论”“置顶文章”使用按钮式开关控件。
-- 发布页面的封面、分类、标签、SEO、高级设置、工具栏、预览、发布、批量上传和保存草稿均为 UI 占位，不接真实后端。
+- 发布页面的图片按钮已接普通用户草稿图片上传接口，支持多图上传并按光标位置插入 Markdown；封面、分类、标签、SEO、高级设置、预览、发布、批量上传和保存草稿仍为 UI 占位，不接真实投稿后端。
 - 文章编辑页主路由已阻止公开首页主内容链路继续渲染，不会在编辑器下方再出现旧版用户页面 UI。
 - 管理后台已重构为独立后台 UI，顶部导航沿用首页的 `MyBlog Pro` 品牌、明暗切换、通知和用户胶囊；管理员页面顶部不显示搜索框，布局宽度、左侧栏色彩和顶部栏图标/账号区已向用户面板对齐。
 - 管理后台左侧导航包含站点概览、用户管理、内容审核、分类标签；移动端使用抽屉式导航。
@@ -130,12 +130,12 @@ hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
 - 普通用户从用户面板顶部“发布新文章”按钮进入 `#article/new`
 - 页面独立于用户面板 Tab，不在左侧导航新增入口
 - 顶部导航沿用用户面板视觉，并提供返回用户面板、预览和发布按钮
-- 主体为 Markdown 编辑器外观 + 富文本工具栏占位
+- 主体为 Markdown 编辑器外观 + 真实 Markdown 语法插入工具栏
 - 左侧设置包含文章封面、分类、标签、SEO 设置和高级设置
 - 标签、SEO 设置和高级设置按参考图重新规划模块间距；SEO 标题为普通折叠标题，不再呈现输入框式边框
 - 底部状态栏为细白底工具栏，高级设置使用按钮式开关
 - 移动端默认显示编辑区，文章设置通过顶部设置按钮打开抽屉
-- 当前只做 UI 与占位提示，不调用管理员文章接口，也不新增投稿后端 API
+- 当前不调用管理员文章接口；本轮仅新增普通用户草稿图片上传 API，真实投稿/草稿/审核后端仍未接入。
 
 ### 管理员文章能力
 
@@ -347,6 +347,7 @@ npm test --workspace server
 - `DELETE /api/articles/:slug/likes`
 - `POST /api/articles/:slug/favorites`
 - `DELETE /api/articles/:slug/favorites`
+- `POST /api/articles/uploads/images`（普通用户发布页草稿图片上传，支持多图，返回可插入的 Markdown）
 
 管理员接口：
 
@@ -356,7 +357,7 @@ npm test --workspace server
 - `PATCH /api/articles/admin/:id`
 - `POST /api/articles/admin/:id/publish`
 - `DELETE /api/articles/admin/:id`
-- `POST /api/articles/admin/:id/images`
+- `POST /api/articles/admin/:id/images`（旧管理端写作图片链路，当前新发布页不再使用）
 - `POST /api/articles/admin/import`
 
 文章接口返回的统计字段：
@@ -485,6 +486,6 @@ WHERE email = 'your-admin@example.com';
 - 可将管理后台用户管理、内容审核、敏感评论、分类标签管理接入真实后端接口。
 - 可基于 `site_visits` 做公开首页和用户面板的真实趋势图；当前公开首页阅读趋势图形仍有占位性质。
 - 给用户面板补后端能力：用户投稿/审核状态、我的文章真实列表、我的收藏列表、我的评论与互动通知、修改密码和账号绑定。
-- 发布页编辑器可先实现 Markdown 工具栏真实插入语法；确认需要富文本写作体验后再接 Tiptap / ProseMirror。
+- 发布页编辑器下一步可接真实草稿、投稿、预览和审核流程；是否需要富文本体验可等 Markdown 投稿链路稳定后再评估 Tiptap / ProseMirror。
 - 补充评论分页、评论审核、删除主评论时递归清理历史多层回复。
 - 将粉丝数、作者关注等静态展示接入真实后端模型。
