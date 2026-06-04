@@ -1,19 +1,19 @@
 # Private Blog System - 私有博客系统
 
-一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、用户/管理员工作台视觉统一与暗色模式补齐，以及真实阅读/点赞/收藏/热门排行统计能力。
+一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、用户/管理员工作台视觉统一与暗色模式补齐、文章编辑页旧版公共 UI 误渲染修复，以及真实阅读/点赞/收藏/热门排行统计能力。
 
 ## 当前状态
 
 | 项目 | 状态 |
 | --- | --- |
 | 当前工作分支 | `main` |
-| 最新 UI 工作 | 普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和暗色模式补齐均已合并到 `main`；发布页为专注写作布局，管理后台为独立后台布局 |
+| 最新 UI 工作 | 普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和暗色模式补齐均已合并到 `main`；发布页为专注写作布局，管理后台为独立后台布局；文章编辑页下方旧版公共 UI 误渲染已修复 |
 | 最新功能工作 | 阅读量、点赞、收藏、今日阅读、热门排行等已接入真实后端统计 API；评论区已支持主评论点赞和抖音式一层回复；管理员后台新增只读概览统计 API |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes` |
-| 最近验证 | 2026-06-04：合并 `codex/someting-recover` 后执行 `npm test --workspace server`、`npm run build`、`git diff --check`、`prisma validate`，均通过 |
+| 最近验证 | 2026-06-04：修复文章编辑页旧版公共 UI 误渲染后执行 `npm run build`、`git diff --check`，均通过；合并 `codex/someting-recover` 后执行 `npm test --workspace server`、`npm run build`、`git diff --check`、`prisma validate`，均通过 |
 | 合并状态 | `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover` 均已合并并推送到 `origin/main`；本地已合并分支已清理，仅保留 `main` |
 | 交接文档 | `handoff.md` |
 
@@ -57,6 +57,7 @@
 - 发布页面暗色模式已改为整页一致的深蓝灰写作主题，左侧设置区比正文区稍亮，主要依靠边框、轻阴影、层级色差和少量橘色强调保留纸张感。
 - 高级设置中的“允许评论”“置顶文章”使用按钮式开关控件。
 - 发布页面的封面、分类、标签、SEO、高级设置、工具栏、预览、发布、批量上传和保存草稿均为 UI 占位，不接真实后端。
+- 文章编辑页主路由已阻止公开首页主内容链路继续渲染，不会在编辑器下方再出现旧版用户页面 UI。
 - 管理后台已重构为独立后台 UI，顶部导航沿用首页的 `MyBlog Pro` 品牌、明暗切换、通知和用户胶囊；管理员页面顶部不显示搜索框，布局宽度、左侧栏色彩和顶部栏图标/账号区已向用户面板对齐。
 - 管理后台左侧导航包含站点概览、用户管理、内容审核、分类标签；移动端使用抽屉式导航。
 - 管理后台默认进入站点概览，统计卡尽量复用真实数据：注册账号数、文章数、评论数、今日访问。

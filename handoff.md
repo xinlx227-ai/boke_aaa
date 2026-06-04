@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI，以及用户/管理员工作台视觉统一和暗色模式补齐。`codex/someting-recover` 已 fast-forward 合并到 `main`，验证已通过，`main` 已推送到 `origin/main`，本地已合并功能分支已清理。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和暗色模式补齐，以及文章编辑页旧版公共 UI 误渲染修复。`codex/someting-recover` 已 fast-forward 合并到 `main`，验证已通过，`main` 已推送到 `origin/main`，本地已合并功能分支已清理。
 
 ## 建议下个 Agent 使用的技能
 
@@ -16,7 +16,7 @@
 - 当前主线分支：`main`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover` 已合并进 `main` 并推送到 `origin/main`。
-- 当前 `main` 与 `origin/main` 对齐，最新提交为 `d96d90f Polish dashboard and admin dark UI`。
+- 当前 `main` 与 `origin/main` 对齐，最新提交为 `3e0fe4d Fix article editor route rendering`。
 - 本地已合并功能分支已清理，当前只保留 `main`。
 
 继续工作前建议先执行：
@@ -39,7 +39,28 @@ git diff --check
 
 ## 项目概况
 
-这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、普通用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
+这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、普通用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、文章编辑页路由隔离修复，以及真实阅读/点赞/收藏/热门排行统计能力。
+
+## 本次完成：文章编辑页旧版公共 UI 误渲染修复
+
+工作分支：`main`，已提交并推送到 `origin/main`。
+
+改动文件：
+
+- `client/src/App.vue`
+
+### 原因与修复
+
+- 文章编辑页由 `isArticleEditorView` 分支渲染后，后面的主内容区又开启了另一套独立条件链。
+- 当 `isArticleEditorView` 为 true 时，管理后台分支为 false，随后的公开首页 `v-else` 仍会命中，导致编辑器下方出现旧版用户页面 UI。
+- 修复方式是在管理后台模板和公开首页主内容入口都排除 `isUserPanelView` 与 `isArticleEditorView`，保证用户面板和文章编辑页是完整独立页面，不再继续渲染公开首页主内容链路。
+
+### 验证
+
+```bash
+npm run build
+git diff --check
+```
 
 ## 本次完成：用户/管理员工作台视觉统一与暗色模式补齐
 
@@ -164,6 +185,7 @@ git diff --check
 
 ## 最近重要提交
 
+- `3e0fe4d Fix article editor route rendering`：修复文章编辑页下方误渲染旧版公共首页/用户页面 UI。
 - `d96d90f Polish dashboard and admin dark UI`：用户/管理员工作台视觉统一、用户面板暗色模式补齐、首页/后台品牌暗色可读性修复。
 - `02607fa Refactor admin dashboard UI`：管理员后台新 UI 和只读管理员概览统计接口。
 - `83da31d 文章编辑页面`：发布页专注写作体验与文档更新，已合并进 `main`。
@@ -174,6 +196,13 @@ git diff --check
 - `1a2f29b Add article statistics APIs`：真实统计 API 和前端接入。
 
 ## 最近验证
+
+最近文章编辑页路由修复已执行：
+
+```bash
+npm run build
+git diff --check
+```
 
 最近 `codex/someting-recover` 合并完成后已执行：
 
