@@ -13,8 +13,8 @@
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes` |
-| 最近验证 | 2026-06-04：合并管理员后台新 UI 后执行 `npm test --workspace server`、`npm run build`、`git diff --check` |
-| 合并状态 | `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui` 均已合并并推送到 `origin/main`；`codex/newadmin-ui` 本轮合并到 `main` |
+| 最近验证 | 2026-06-04：合并管理员后台新 UI 后执行 `npm test --workspace server`、`npm run build`、`git diff --check`、`prisma validate`，均通过 |
+| 合并状态 | `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui` 均已合并并推送到 `origin/main`；本地已合并分支已清理，仅保留 `main` |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
@@ -37,7 +37,7 @@
 - 详情页目录只在当前文章存在 TOC 时显示，并位于作者卡和筛选文章之间。
 - 详情页右侧栏已移除，热门标签和相关推荐不在详情页显示，主内容区域向右扩展。
 - 移动端优先展示文章内容，左侧信息折叠为抽屉；抽屉内保留作者卡、目录、筛选和文章列表。
-- 普通用户面板已重构为独立工作台 UI，不再使用公开首页左右栏；管理后台仍是旧 UI，通过 `.legacy-ui` 隔离。
+- 普通用户面板已重构为独立工作台 UI，不再使用公开首页左右栏；管理后台也已重构为独立后台 UI，不再通过 `.legacy-ui` 渲染。
 - 用户面板顶部导航采用 `MyBlog Pro` 品牌、返回首页、明暗模式切换、通知占位和用户胶囊；退出登录保留在左侧栏底部。
 - 用户面板左侧导航包含数据看板、我的文章、我的收藏、社交互动、安全设置；移动端使用抽屉式导航。
 - 用户面板数据看板尽量复用现有真实统计：站内文章、阅读、点赞、收藏；近 7 日阅读趋势和文章分类分布暂用 CSS 占位，并在代码中保留后续接入 ECharts 的 TODO。

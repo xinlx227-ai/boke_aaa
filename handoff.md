@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI，以及管理员后台新 UI。当前合并目标是把 `codex/newadmin-ui` 的管理员后台 UI 和只读管理员概览统计接口合入 `main`，并在合并后完成后端测试、前端构建和空白检查。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI，以及管理员后台新 UI。`codex/newadmin-ui` 已合并到 `main`，合并冲突已解决，验证已通过，`main` 已推送到 `origin/main`，本地已合并功能分支已清理。
 
 ## 建议下个 Agent 使用的技能
 
@@ -15,9 +15,9 @@
 - 仓库路径：`D:\project\codex-project-boke`
 - 当前主线分支：`main`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
-- `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui` 已合并进 `main` 并推送到 `origin/main`。
-- `codex/newadmin-ui` 从 `ee60ec2 Update handoff after merging comment interactions` 分出，本轮合并到已包含用户面板和发布页工作的 `main`。
-- 本轮合并不是 fast-forward，会产生 merge commit；合并完成并验证通过后，可用 `git branch -d codex/newadmin-ui` 删除本地已合并分支。
+- `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui` 已合并进 `main` 并推送到 `origin/main`。
+- 当前 `main` 与 `origin/main` 对齐，最新提交为 `dce4263 Merge admin dashboard UI`。
+- 本地已合并功能分支已清理，当前只保留 `main`。
 
 继续工作前建议先执行：
 
@@ -146,7 +146,7 @@ git diff --check
 
 ## 最近验证
 
-本轮合并完成后建议执行：
+本轮合并完成后已执行：
 
 ```bash
 npm test --workspace server
