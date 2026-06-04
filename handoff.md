@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI，以及管理员后台新 UI。`codex/newadmin-ui` 已合并到 `main`，合并冲突已解决，验证已通过，`main` 已推送到 `origin/main`，本地已合并功能分支已清理。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI，以及用户/管理员工作台视觉统一和暗色模式补齐。`codex/someting-recover` 已 fast-forward 合并到 `main`，验证已通过，`main` 已推送到 `origin/main`，本地已合并功能分支已清理。
 
 ## 建议下个 Agent 使用的技能
 
@@ -15,8 +15,8 @@
 - 仓库路径：`D:\project\codex-project-boke`
 - 当前主线分支：`main`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
-- `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui` 已合并进 `main` 并推送到 `origin/main`。
-- 当前 `main` 与 `origin/main` 对齐，最新提交为 `dce4263 Merge admin dashboard UI`。
+- `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover` 已合并进 `main` 并推送到 `origin/main`。
+- 当前 `main` 与 `origin/main` 对齐，最新提交为 `d96d90f Polish dashboard and admin dark UI`。
 - 本地已合并功能分支已清理，当前只保留 `main`。
 
 继续工作前建议先执行：
@@ -40,6 +40,32 @@ git diff --check
 ## 项目概况
 
 这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、普通用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
+
+## 本次完成：用户/管理员工作台视觉统一与暗色模式补齐
+
+工作分支：`codex/someting-recover`，已合并进 `main` 并推送到 `origin/main`。
+
+改动文件：
+
+- `client/src/App.vue`
+- `client/src/style.css`
+- `README.md`
+- `handoff.md`
+
+### 范围与设计决策
+
+- 管理后台整体宽度从居中 1440px 容器调整为全宽工作台，视觉比例向普通用户面板对齐。
+- 管理后台左侧栏、选中态、主内容留白、卡片圆角、阴影和按钮圆角向用户面板统一。
+- 管理员顶部导航栏新增专属 `admin-topbar` 样式，右侧明暗切换、通知、分隔线和账号区改为与用户面板一致的圆形浅底图标和头像/文字结构。
+- 管理员登录后，公开首页左侧用户信息卡片不再显示“用户面板”，只显示“管理后台”和“退出”；“管理后台”占用普通用户“用户面板”的主按钮位置。
+- 普通用户面板 `#dashboard` 暗色模式已补齐，并与管理后台暗色风格统一为深蓝灰工作台：顶部栏、左侧栏、导航、统计卡片、占位图、表格、空状态、社交互动卡片、安全表单和绑定按钮都有暗色覆盖。
+- 公开首页和管理员顶部栏的 `MyBlog Pro` 品牌文字补齐暗色可读性：暗色下 `MyBlog` 使用浅色，`Pro` 保持橙色强调。
+
+### 边界
+
+- 本轮只改前端 UI 和文档，不新增后端接口、不改数据库、不改权限模型。
+- 用户面板中的“我的文章”“我的收藏”“社交互动”“安全设置”仍是 UI 占位和提示交互。
+- 管理后台用户管理、内容审核、敏感评论、分类标签管理仍是 UI 占位和提示交互。
 
 ## 本次完成：管理员后台新 UI
 
@@ -100,6 +126,7 @@ git diff --check
 - 用户面板进入 `#dashboard` 后使用独立工作台布局，不再套公开首页的左侧筛选栏。
 - 顶部栏采用 `MyBlog Pro` 品牌 + 返回首页；右侧保留明暗模式切换、通知占位和用户胶囊。
 - 侧边栏 Tab 为：数据看板、我的文章、我的收藏、社交互动、安全设置。
+- 暗色模式已补齐，视觉与管理后台暗色风格对齐。
 - 数据看板尽量接现有真实数据：站内文章数来自 `publishedArticles`，站内阅读/点赞/收藏来自 `siteSummary`。
 - 近 7 日阅读趋势和文章分类分布当前为 CSS 占位图，代码中保留后续用 ECharts 接入真实数据的 TODO。
 - “我的文章”是未来投稿中心 UI 预演，状态为 `草稿`、`待审核`、`已发布`、`未通过`。
@@ -116,8 +143,9 @@ git diff --check
 - 详情页点赞/收藏已由前端本地状态改为后端持久化状态。
 - 详情页评论区已支持主评论点赞、回复输入框、默认 2 条回复和展开/收起。
 - 普通用户面板已重构为新 UI，不再通过 `.legacy-ui` 渲染。
+- 普通用户面板暗色模式已补齐为深蓝灰工作台风格。
 - 发布新文章页面已重构为独立专注写作 UI。
-- 管理后台已改为独立新 UI：顶部导航按首页新 UI，左侧保留站点概览、用户管理、内容审核、分类标签；管理员顶部搜索框已移除。
+- 管理后台已改为独立新 UI：顶部导航按首页/用户面板新 UI，左侧保留站点概览、用户管理、内容审核、分类标签；管理员顶部搜索框已移除，布局宽度和侧栏色彩已向用户面板对齐。
 - 管理后台站点概览已接入只读统计接口，近 7 日访问趋势为 ECharts 柱状图并显示 `MM-DD` 日期，文章分类分布为 ECharts 环形图。
 - 管理后台用户管理、内容审核、敏感评论、分类标签管理当前先做 UI 和提示交互，不改数据库、不改审核流程。
 
@@ -136,6 +164,7 @@ git diff --check
 
 ## 最近重要提交
 
+- `d96d90f Polish dashboard and admin dark UI`：用户/管理员工作台视觉统一、用户面板暗色模式补齐、首页/后台品牌暗色可读性修复。
 - `02607fa Refactor admin dashboard UI`：管理员后台新 UI 和只读管理员概览统计接口。
 - `83da31d 文章编辑页面`：发布页专注写作体验与文档更新，已合并进 `main`。
 - `2414be6 Refactor user panel UI`：普通用户面板新 UI，已合并进 `main`。
@@ -146,7 +175,7 @@ git diff --check
 
 ## 最近验证
 
-本轮合并完成后已执行：
+最近 `codex/someting-recover` 合并完成后已执行：
 
 ```bash
 npm test --workspace server
@@ -154,6 +183,8 @@ npm run build
 git diff --check
 node --env-file=.env.test ..\node_modules\prisma\build\index.js validate --schema prisma\schema.prisma
 ```
+
+说明：`prisma validate` 首次在沙箱内遇到 `EPERM: operation not permitted, lstat 'C:\Users\27871'`，按权限流程重跑后通过。`git push origin main` 首次遇到 gitee 443 连接失败，按权限流程重试后成功。
 
 此前评论区互动工作已执行上述命令并通过；管理员后台分支自身也已执行 `npm test --workspace server`、`npm run build`、`git diff --check` 并通过。
 
@@ -179,6 +210,7 @@ sc.exe config MySQL start= demand
 ## 后续建议
 
 - 给用户面板补后端能力：投稿/审核状态、我的文章真实列表、我的收藏列表、我的评论与互动通知、修改密码、手机绑定、第三方账号绑定。
+- 基于用户面板当前暗色 CSS 占位图，将近 7 日阅读趋势和分类分布接入真实 ECharts 数据。
 - 发布页编辑器建议先实现 Markdown 工具栏真实插入语法；确认需要富文本写作体验后再接 Tiptap / ProseMirror。
 - 将管理后台用户管理、内容审核、敏感评论、分类标签管理接入真实后端接口；当前只做 UI 和提示交互。
 - 基于 `site_visits` 做公开首页和用户面板的真实趋势图；当前管理后台概览已用该数据做近 7 日访问柱状图。
