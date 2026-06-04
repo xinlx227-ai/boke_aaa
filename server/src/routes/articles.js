@@ -257,6 +257,30 @@ function getShanghaiDayWindow(now = new Date()) {
   };
 }
 
+function formatShanghaiDayLabel(dayStart) {
+  const shanghaiDate = new Date(dayStart.getTime() + SHANGHAI_OFFSET_MS);
+  const month = String(shanghaiDate.getUTCMonth() + 1).padStart(2, "0");
+  const date = String(shanghaiDate.getUTCDate()).padStart(2, "0");
+
+  return `${month}-${date}`;
+}
+
+function formatShanghaiDateKey(dayStart) {
+  const shanghaiDate = new Date(dayStart.getTime() + SHANGHAI_OFFSET_MS);
+  const year = shanghaiDate.getUTCFullYear();
+  const month = String(shanghaiDate.getUTCMonth() + 1).padStart(2, "0");
+  const date = String(shanghaiDate.getUTCDate()).padStart(2, "0");
+
+  return `${year}-${month}-${date}`;
+}
+
+function getRecentShanghaiDayWindows(dayCount = 7, now = new Date()) {
+  return Array.from({ length: dayCount }, (_item, index) => {
+    const dayOffset = dayCount - index - 1;
+    return getShanghaiDayWindow(new Date(now.getTime() - dayOffset * 24 * 60 * 60 * 1000));
+  });
+}
+
 function normalizeVisitorId(value) {
   const visitorId = String(value || "").trim();
 
@@ -1137,6 +1161,85 @@ router.get("/admin/list", requireAuth, requireRole("ADMIN"), async (_req, res, n
 
     return res.json({
       articles: articles.map(formatArticle)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/admin/overview", requireAuth, requireRole("ADMIN"), async (_req, res, next) => {
+  try {
+    const recentWindows = getRecentShanghaiDayWindows(7);
+    const firstWindow = recentWindows[0];
+    const lastWindow = recentWindows[recentWindows.length - 1];
+    const todayWindow = getShanghaiDayWindow();
+
+    const [userCount, articleCount, commentCount, todayVisitRows, visitRows] = await Promise.all([
+      prisma.user.count(),
+      prisma.article.count(),
+      prisma.comment.count(),
+      prisma.$queryRaw`
+        SELECT COUNT(*) AS count
+        FROM site_visits sv
+        LEFT JOIN articles a ON a.id = sv.article_id
+        WHERE sv.visited_at >= ${todayWindow.start}
+          AND sv.visited_at < ${todayWindow.end}
+          AND (
+            sv.page_type = 'home'
+            OR (sv.page_type = 'article' AND a.status = ${ArticleStatus.PUBLISHED})
+          )
+      `,
+      prisma.$queryRaw`
+        SELECT
+          sv.user_id AS userId,
+          sv.visitor_id AS visitorId,
+          sv.visited_at AS visitedAt
+        FROM site_visits sv
+        LEFT JOIN articles a ON a.id = sv.article_id
+        WHERE sv.visited_at >= ${firstWindow.start}
+          AND sv.visited_at < ${lastWindow.end}
+          AND (
+            sv.page_type = 'home'
+            OR (sv.page_type = 'article' AND a.status = ${ArticleStatus.PUBLISHED})
+          )
+      `
+    ]);
+
+    const visitorsByDay = recentWindows.map(() => new Set());
+
+    for (const row of visitRows) {
+      const visitedAt = new Date(row.visitedAt);
+      const dayIndex = recentWindows.findIndex(
+        (window) => visitedAt >= window.start && visitedAt < window.end
+      );
+
+      if (dayIndex < 0) {
+        continue;
+      }
+
+      const visitorKey = row.userId
+        ? `user:${Number(row.userId)}`
+        : row.visitorId
+          ? `visitor:${row.visitorId}`
+          : null;
+
+      if (visitorKey) {
+        visitorsByDay[dayIndex].add(visitorKey);
+      }
+    }
+
+    return res.json({
+      summary: {
+        userCount,
+        articleCount,
+        commentCount,
+        todayVisits: Number(todayVisitRows[0]?.count || 0)
+      },
+      visitTrend: recentWindows.map((window, index) => ({
+        date: formatShanghaiDateKey(window.start),
+        label: formatShanghaiDayLabel(window.start),
+        value: visitorsByDay[index].size
+      }))
     });
   } catch (error) {
     return next(error);

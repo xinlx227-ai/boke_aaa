@@ -1,20 +1,20 @@
 # Private Blog System - 私有博客系统
 
-一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、用户面板新 UI、独立发布新文章页面 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
+一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI，以及真实阅读/点赞/收藏/热门排行统计能力。
 
 ## 当前状态
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前工作分支 | `articleedit-ui` |
-| 最新 UI 工作 | `articleedit-ui` 基于 `codex/newuser-ui`，已包含普通用户面板新 UI，并新增独立发布新文章页面 UI；当前发布页已继续调整为专注写作布局、`textarea` 自动增高、单行轻量工具栏和整页一致暗色模式；`codex/article-detail-ui`、`codex/ui-layout`、`codex/index-layout` 均已合并到 `main` |
-| 最新功能工作 | 阅读量、点赞、收藏、今日阅读、热门排行等已接入真实后端统计 API；评论区已支持主评论点赞和抖音式一层回复 |
+| 当前工作分支 | `main` |
+| 最新 UI 工作 | 普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI均已合并到 `main`；发布页为专注写作布局，管理后台为独立后台布局 |
+| 最新功能工作 | 阅读量、点赞、收藏、今日阅读、热门排行等已接入真实后端统计 API；评论区已支持主评论点赞和抖音式一层回复；管理员后台新增只读概览统计 API |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes` |
-| 最近验证 | 2026-06-03：发布页写作体验与暗色模式调整已执行 `npm run build`、`git diff --check -- client/src/style.css`；2026-06-01：发布新文章页面 UI 已执行 `npm run build`；2026-05-31：用户面板新 UI 已执行 `npm run build`、`git diff --check`；评论互动工作此前已执行 `npm test --workspace server`、`prisma validate` |
-| 合并状态 | `codex/article-apiset` 与 `codex/comment-thread-interactions` 均已 fast-forward 合并并推送到 `origin/main` |
+| 最近验证 | 2026-06-04：合并管理员后台新 UI 后执行 `npm test --workspace server`、`npm run build`、`git diff --check` |
+| 合并状态 | `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui` 均已合并并推送到 `origin/main`；`codex/newadmin-ui` 本轮合并到 `main` |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
@@ -54,6 +54,15 @@
 - 发布页面暗色模式已改为整页一致的深蓝灰写作主题，左侧设置区比正文区稍亮，主要依靠边框、轻阴影、层级色差和少量橘色强调保留纸张感。
 - 高级设置中的“允许评论”“置顶文章”使用按钮式开关控件。
 - 发布页面的封面、分类、标签、SEO、高级设置、工具栏、预览、发布、批量上传和保存草稿均为 UI 占位，不接真实后端。
+- 管理后台已重构为独立后台 UI，顶部导航沿用首页的 `MyBlog Pro` 品牌、明暗切换、通知和用户胶囊；管理员页面顶部不显示搜索框。
+- 管理后台左侧导航包含站点概览、用户管理、内容审核、分类标签；移动端使用抽屉式导航。
+- 管理后台默认进入站点概览，统计卡尽量复用真实数据：注册账号数、文章数、评论数、今日访问。
+- 管理后台“近7日访问趋势”使用 ECharts 柱状图，按 `Asia/Shanghai` 自然日展示 `MM-DD` 日期；匿名用户按 `visitorId` 去重，登录用户按 `userId` 去重，只统计首页和文章页访问。
+- 管理后台“文章分类分布”使用 ECharts 环形图，基于已发布文章的真实分类聚合。
+- 管理后台用户管理当前为 UI 占位，搜索/筛选/查看/禁用/删除按钮只提示后续接入，未新增用户禁用或删除接口。
+- 管理后台内容审核当前为 UI 占位：待审核文章使用静态示例数据，通过/驳回按钮只提示后续接入投稿审核流程。
+- 管理后台敏感评论当前为 UI 示例，不是后端检测结果；忽略/删除按钮只提示后续接入。
+- 分类标签页读取现有真实分类和标签展示，但新增、编辑、删除操作仍是 UI 占位。
 
 ## 功能概览
 
@@ -136,6 +145,16 @@ hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
 - 导入结果包含成功、缺失图片、格式错误、失败文件日志
 - `chapterOrder` 自动编号和手动重排
 - 首次发布写入 `published_at`，再次发布不覆盖原首次发布时间
+
+### 管理员后台
+
+- `#admin` 显示独立后台工作台布局，不再使用公开首页左右栏。
+- 顶部导航沿用首页品牌风格，但管理员页不显示搜索框。
+- 站点概览展示真实注册账号数、文章数、评论数、今日访问。
+- 近 7 日访问趋势来自只读管理员概览接口，按日期展示柱状图。
+- 文章分类分布基于当前已发布文章分类聚合展示环形图。
+- 用户管理、内容审核、敏感评论处理、分类标签管理当前为 UI 占位和提示交互。
+- 管理员当前主要负责审核和管理；撰写文章能力后续规划放到普通用户投稿流程中。
 
 ### 评论
 
@@ -327,6 +346,7 @@ npm test --workspace server
 
 管理员接口：
 
+- `GET /api/articles/admin/overview`
 - `GET /api/articles/admin/list`
 - `POST /api/articles/admin`
 - `PATCH /api/articles/admin/:id`
@@ -438,6 +458,14 @@ git diff --check
 node --env-file=.env.test ..\node_modules\prisma\build\index.js validate --schema prisma\schema.prisma
 ```
 
+最近管理员后台新 UI 已验证：
+
+```bash
+npm test --workspace server
+npm run build
+git diff --check
+```
+
 ## 管理员账号说明
 
 新注册用户默认是 `USER`。如果需要立即测试文章发布，可在本地数据库中手动提升角色：
@@ -450,8 +478,9 @@ WHERE email = 'your-admin@example.com';
 
 ## 后续建议
 
-- 基于 `site_visits` 做真实阅读趋势折线图；当前第一版只把趋势卡下方数字接真。
-- 给用户面板补后端能力：用户投稿/审核状态、我的收藏列表、我的评论与互动通知、修改密码和账号绑定。
-- 继续改造管理后台旧 UI。
+- 可将管理后台用户管理、内容审核、敏感评论、分类标签管理接入真实后端接口。
+- 可基于 `site_visits` 做公开首页和用户面板的真实趋势图；当前公开首页阅读趋势图形仍有占位性质。
+- 给用户面板补后端能力：用户投稿/审核状态、我的文章真实列表、我的收藏列表、我的评论与互动通知、修改密码和账号绑定。
+- 发布页编辑器可先实现 Markdown 工具栏真实插入语法；确认需要富文本写作体验后再接 Tiptap / ProseMirror。
 - 补充评论分页、评论审核、删除主评论时递归清理历史多层回复。
 - 将粉丝数、作者关注等静态展示接入真实后端模型。
