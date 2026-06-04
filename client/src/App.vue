@@ -2772,7 +2772,7 @@ onBeforeUnmount(() => {
   </section>
 
   <!-- ===== 主内容区 ===== -->
-  <template v-if="view === 'admin' && isAdmin">
+  <template v-if="!isUserPanelView && !isArticleEditorView && view === 'admin' && isAdmin">
     <button
       v-if="adminMobileNavOpen"
       class="admin-mobile-overlay"
@@ -3049,7 +3049,7 @@ onBeforeUnmount(() => {
   </template>
 
   <main
-    v-else
+    v-else-if="!isUserPanelView && !isArticleEditorView"
     class="max-w-[1440px] mx-auto px-6 py-8 grid grid-cols-1 gap-8 items-start"
     :class="view === 'article' ? 'article-detail-shell' : 'lg:grid-cols-[320px_minmax(0,1fr)]'"
   >
