@@ -70,6 +70,11 @@ const articleEditorMoreMenuOpen = ref(false);
 const articleEditorSeoOpen = ref(false);
 const articleEditorCoverRatio = ref("16:9");
 const articleEditorMarkdownRef = ref(null);
+const articleEditorImageInputRef = ref(null);
+const articleEditorImageModalOpen = ref(false);
+const articleEditorImageFiles = ref([]);
+const articleEditorImageSelection = ref({ start: 0, end: 0 });
+const articleEditorImageDragActive = ref(false);
 
 const userPanelTabs = [
   { id: "overview", label: "数据看板", icon: "mdi:view-dashboard-outline" },
@@ -308,6 +313,7 @@ const articleEditorLineCount = computed(() => {
   const content = String(articleEditorForm.contentMarkdown || "");
   return content ? content.split(/\r?\n/).length : 1;
 });
+const articleEditorImageUploadDisabled = computed(() => uploadingImage.value || articleEditorImageFiles.value.length === 0);
 const selectedArticleHtml = computed(() => mapAssetUrls(selectedArticle.value?.contentHtml || ""));
 const selectedToc = computed(() => selectedArticle.value?.toc || []);
 const editorHeading = computed(() => (articleForm.id ? `编辑：${articleForm.title || "未命名文章"}` : "新建文章"));
@@ -1312,6 +1318,286 @@ function showArticleEditorPlaceholder(featureName) {
   setMessage(`${featureName}后续接入投稿审核流程。`);
 }
 
+function focusArticleEditorTextarea(selectionStart = null, selectionEnd = null) {
+  nextTick(() => {
+    const textarea = articleEditorMarkdownRef.value;
+
+    if (!textarea) {
+      return;
+    }
+
+    textarea.focus();
+    if (selectionStart !== null && selectionEnd !== null) {
+      textarea.setSelectionRange(selectionStart, selectionEnd);
+    }
+    syncArticleEditorTextareaHeight();
+  });
+}
+
+function replaceArticleEditorSelection(text, selectionStart = null, selectionEnd = null) {
+  const textarea = articleEditorMarkdownRef.value;
+  const currentValue = articleEditorForm.contentMarkdown || "";
+  const start = textarea?.selectionStart ?? articleEditorImageSelection.value.start ?? currentValue.length;
+  const end = textarea?.selectionEnd ?? articleEditorImageSelection.value.end ?? start;
+  const nextText = String(text || "");
+
+  articleEditorForm.contentMarkdown = `${currentValue.slice(0, start)}${nextText}${currentValue.slice(end)}`;
+  const nextSelectionStart = selectionStart === null ? start + nextText.length : start + selectionStart;
+  const nextSelectionEnd = selectionEnd === null ? nextSelectionStart : start + selectionEnd;
+  focusArticleEditorTextarea(nextSelectionStart, nextSelectionEnd);
+}
+
+function selectedArticleEditorText(fallback = "") {
+  const textarea = articleEditorMarkdownRef.value;
+  const currentValue = articleEditorForm.contentMarkdown || "";
+
+  if (!textarea) {
+    return fallback;
+  }
+
+  const selectedText = currentValue.slice(textarea.selectionStart, textarea.selectionEnd);
+  return selectedText || fallback;
+}
+
+function normalizeMarkdownBlockInsertion(markdown) {
+  const textarea = articleEditorMarkdownRef.value;
+  const currentValue = articleEditorForm.contentMarkdown || "";
+  const start = textarea?.selectionStart ?? articleEditorImageSelection.value.start ?? currentValue.length;
+  const before = currentValue.slice(0, start);
+  const after = currentValue.slice(textarea?.selectionEnd ?? articleEditorImageSelection.value.end ?? start);
+  const prefix = before && !before.endsWith("\n") ? "\n\n" : before.endsWith("\n\n") || !before ? "" : "\n";
+  const suffix = after && !after.startsWith("\n") ? "\n\n" : "";
+
+  return {
+    text: `${prefix}${markdown}${suffix}`,
+    contentOffset: prefix.length
+  };
+}
+
+function insertArticleEditorInline({ before = "", after = "", placeholder = "文本" }) {
+  articleEditorMoreMenuOpen.value = false;
+  const selection = selectedArticleEditorText(placeholder);
+  const text = `${before}${selection}${after}`;
+  const selectedStart = before.length;
+  const selectedEnd = before.length + selection.length;
+  replaceArticleEditorSelection(text, selectedStart, selectedEnd);
+}
+
+function insertArticleEditorBlock(markdown, selectStart = null, selectEnd = null) {
+  articleEditorMoreMenuOpen.value = false;
+  const block = normalizeMarkdownBlockInsertion(markdown);
+  replaceArticleEditorSelection(
+    block.text,
+    selectStart === null ? null : block.contentOffset + selectStart,
+    selectEnd === null ? null : block.contentOffset + selectEnd
+  );
+}
+
+function insertArticleEditorHeading(level = 1) {
+  const headingLevel = Math.min(Math.max(Number(level) || 1, 1), 6);
+  const selection = selectedArticleEditorText("标题");
+  const markdown = `${"#".repeat(headingLevel)} ${selection}`;
+  insertArticleEditorBlock(markdown, headingLevel + 1, headingLevel + 1 + selection.length);
+}
+
+function insertArticleEditorQuote() {
+  const selection = selectedArticleEditorText("引用内容");
+  const markdown = selection
+    .split(/\r?\n/)
+    .map((line) => `> ${line || " "}`)
+    .join("\n");
+  insertArticleEditorBlock(markdown, 2, 2 + selection.length);
+}
+
+function insertArticleEditorCode() {
+  const selection = selectedArticleEditorText("code");
+
+  if (selection.includes("\n")) {
+    insertArticleEditorBlock(`\`\`\`\n${selection}\n\`\`\``, 4, 4 + selection.length);
+    return;
+  }
+
+  insertArticleEditorInline({ before: "`", after: "`", placeholder: "code" });
+}
+
+function insertArticleEditorList(ordered = false) {
+  const selection = selectedArticleEditorText(ordered ? "第一项\n第二项" : "列表项\n列表项");
+  const lines = selection.split(/\r?\n/);
+  const markdown = lines
+    .map((line, index) => `${ordered ? `${index + 1}.` : "-"} ${line || "列表项"}`)
+    .join("\n");
+  const firstMarkerLength = ordered ? 3 : 2;
+  insertArticleEditorBlock(markdown, firstMarkerLength, firstMarkerLength + (lines[0] || "列表项").length);
+}
+
+function insertArticleEditorLink() {
+  const selection = selectedArticleEditorText("链接文本");
+  const url = "https://example.com";
+  const markdown = `[${selection}](${url})`;
+  replaceArticleEditorSelection(markdown, selection.length + 3, selection.length + 3 + url.length);
+}
+
+function insertArticleEditorDivider() {
+  insertArticleEditorBlock("---");
+}
+
+function insertArticleEditorTable() {
+  const markdown = [
+    "| 列 1 | 列 2 |",
+    "| --- | --- |",
+    "| 内容 | 内容 |"
+  ].join("\n");
+  insertArticleEditorBlock(markdown, 2, 5);
+}
+
+function insertArticleEditorMath() {
+  const formula = "E = mc^2";
+  insertArticleEditorBlock(`$$\n${formula}\n$$`, 3, 3 + formula.length);
+}
+
+function clearArticleEditorFormatting() {
+  articleEditorMoreMenuOpen.value = false;
+  const textarea = articleEditorMarkdownRef.value;
+  const currentValue = articleEditorForm.contentMarkdown || "";
+
+  if (!textarea || textarea.selectionStart === textarea.selectionEnd) {
+    setMessage("请先选择要清除格式的文字。");
+    focusArticleEditorTextarea();
+    return;
+  }
+
+  const selectedText = currentValue.slice(textarea.selectionStart, textarea.selectionEnd);
+  const plainText = selectedText
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^>\s?/gm, "")
+    .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, "")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/(`{1,3})([\s\S]*?)\1/g, "$2")
+    .replace(/(\*\*|__)([\s\S]*?)\1/g, "$2")
+    .replace(/(\*|_)([\s\S]*?)\1/g, "$2")
+    .replace(/~~([\s\S]*?)~~/g, "$1");
+
+  replaceArticleEditorSelection(plainText, 0, plainText.length);
+}
+
+function formatArticleEditorFileSize(size) {
+  const bytes = Number(size) || 0;
+
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / 1024 / 1024).toFixed(1).replace(/\.0$/, "")} MB`;
+  }
+
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function rememberArticleEditorSelection() {
+  const textarea = articleEditorMarkdownRef.value;
+  const length = (articleEditorForm.contentMarkdown || "").length;
+
+  articleEditorImageSelection.value = {
+    start: textarea?.selectionStart ?? length,
+    end: textarea?.selectionEnd ?? textarea?.selectionStart ?? length
+  };
+}
+
+function openArticleEditorImageModal() {
+  articleEditorMoreMenuOpen.value = false;
+  rememberArticleEditorSelection();
+  articleEditorImageModalOpen.value = true;
+}
+
+function closeArticleEditorImageModal() {
+  if (uploadingImage.value) {
+    return;
+  }
+
+  articleEditorImageModalOpen.value = false;
+  articleEditorImageDragActive.value = false;
+  articleEditorImageFiles.value = [];
+}
+
+function chooseArticleEditorImages() {
+  articleEditorImageInputRef.value?.click();
+}
+
+function addArticleEditorImageFiles(fileList) {
+  const nextFiles = Array.from(fileList || []).filter((file) => file.type.startsWith("image/"));
+
+  if (nextFiles.length === 0) {
+    setMessage("请选择图片文件。");
+    return;
+  }
+
+  articleEditorImageFiles.value = [...articleEditorImageFiles.value, ...nextFiles].slice(0, 20);
+}
+
+function handleArticleEditorImageInput(event) {
+  addArticleEditorImageFiles(event.target.files);
+  event.target.value = "";
+}
+
+function handleArticleEditorImageDrop(event) {
+  articleEditorImageDragActive.value = false;
+  addArticleEditorImageFiles(event.dataTransfer?.files);
+}
+
+function removeArticleEditorImageFile(index) {
+  articleEditorImageFiles.value = articleEditorImageFiles.value.filter((_file, fileIndex) => fileIndex !== index);
+}
+
+function insertArticleEditorImageMarkdown(markdownItems) {
+  const markdown = markdownItems.filter(Boolean).join("\n");
+
+  if (!markdown) {
+    return;
+  }
+
+  const currentValue = articleEditorForm.contentMarkdown || "";
+  const start = articleEditorImageSelection.value.start ?? currentValue.length;
+  const end = articleEditorImageSelection.value.end ?? start;
+  const before = currentValue.slice(0, start);
+  const after = currentValue.slice(end);
+  const prefix = before && !before.endsWith("\n") ? "\n\n" : before.endsWith("\n\n") || !before ? "" : "\n";
+  const suffix = after && !after.startsWith("\n") ? "\n\n" : "";
+  const insertedText = `${prefix}${markdown}${suffix}`;
+
+  articleEditorForm.contentMarkdown = `${before}${insertedText}${after}`;
+  articleEditorImageModalOpen.value = false;
+  articleEditorImageFiles.value = [];
+  focusArticleEditorTextarea(start + insertedText.length, start + insertedText.length);
+}
+
+async function uploadArticleEditorImages() {
+  if (articleEditorImageUploadDisabled.value) {
+    return;
+  }
+
+  uploadingImage.value = true;
+  setMessage("");
+
+  try {
+    const formData = new FormData();
+
+    for (const file of articleEditorImageFiles.value) {
+      formData.append("images", file);
+    }
+
+    const payload = await apiFetch("/articles/uploads/images", {
+      method: "POST",
+      body: formData
+    });
+    insertArticleEditorImageMarkdown((payload.images || []).map((image) => image.markdown));
+    setMessage(`已上传 ${payload.images?.length || 0} 张图片并插入 Markdown。`);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    uploadingImage.value = false;
+  }
+}
+
 function openArticleEditor() {
   setHash("article/new");
 }
@@ -2047,6 +2333,76 @@ onBeforeUnmount(() => {
     aria-label="关闭文章设置"
     @click="closeArticleEditorSettings"
   ></button>
+  <div
+    v-if="isArticleEditorView && articleEditorImageModalOpen"
+    class="article-editor-upload-overlay"
+    role="presentation"
+    @click.self="closeArticleEditorImageModal"
+  >
+    <section
+      class="article-editor-upload-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="article-editor-upload-title"
+    >
+      <header>
+        <h2 id="article-editor-upload-title">插入图片</h2>
+        <button type="button" aria-label="关闭插入图片" @click="closeArticleEditorImageModal">
+          <iconify-icon icon="mdi:close" width="32"></iconify-icon>
+        </button>
+      </header>
+      <div class="article-editor-upload-body">
+        <button
+          class="article-editor-upload-dropzone"
+          :class="{ 'is-dragging': articleEditorImageDragActive }"
+          type="button"
+          @click="chooseArticleEditorImages"
+          @dragenter.prevent="articleEditorImageDragActive = true"
+          @dragover.prevent="articleEditorImageDragActive = true"
+          @dragleave.prevent="articleEditorImageDragActive = false"
+          @drop.prevent="handleArticleEditorImageDrop"
+        >
+          <span>
+            <iconify-icon icon="mdi:file-upload-outline" width="34"></iconify-icon>
+          </span>
+          <strong>选择或拖拽图片到此处</strong>
+          <small>支持 JPG、PNG、GIF、WebP，单次最多 20 张</small>
+        </button>
+        <input
+          ref="articleEditorImageInputRef"
+          class="sr-only"
+          type="file"
+          accept="image/*"
+          multiple
+          @change="handleArticleEditorImageInput"
+        />
+        <div v-if="articleEditorImageFiles.length" class="article-editor-upload-list" aria-label="待上传图片">
+          <article v-for="(file, index) in articleEditorImageFiles" :key="`${file.name}-${file.size}-${index}`">
+            <iconify-icon icon="mdi:image-outline" width="24"></iconify-icon>
+            <div>
+              <strong>{{ file.name }}</strong>
+              <small>{{ formatArticleEditorFileSize(file.size) }}</small>
+            </div>
+            <span>等待上传</span>
+            <button type="button" aria-label="移除图片" @click="removeArticleEditorImageFile(index)">
+              <iconify-icon icon="mdi:close" width="18"></iconify-icon>
+            </button>
+          </article>
+        </div>
+      </div>
+      <footer>
+        <button type="button" @click="closeArticleEditorImageModal">取消</button>
+        <button
+          class="article-editor-upload-submit"
+          type="button"
+          :disabled="articleEditorImageUploadDisabled"
+          @click="uploadArticleEditorImages"
+        >
+          {{ uploadingImage ? "上传中..." : "上传并插入" }}
+        </button>
+      </footer>
+    </section>
+  </div>
 
   <!-- ===== 顶部导航栏 (新 UI) ===== -->
   <header
@@ -2682,31 +3038,31 @@ onBeforeUnmount(() => {
           />
 
           <div class="article-editor-toolbar" aria-label="Markdown 工具栏">
-            <button type="button" title="标题" @click="showArticleEditorPlaceholder('标题')">H</button>
+            <button type="button" title="一级标题" @click="insertArticleEditorHeading(1)">H</button>
             <span></span>
-            <button type="button" title="加粗" @click="showArticleEditorPlaceholder('加粗')">
+            <button type="button" title="加粗" @click="insertArticleEditorInline({ before: '**', after: '**', placeholder: '加粗文本' })">
               <iconify-icon icon="mdi:format-bold" width="20"></iconify-icon>
             </button>
-            <button type="button" title="斜体" @click="showArticleEditorPlaceholder('斜体')">
+            <button type="button" title="斜体" @click="insertArticleEditorInline({ before: '*', after: '*', placeholder: '斜体文本' })">
               <iconify-icon icon="mdi:format-italic" width="20"></iconify-icon>
             </button>
-            <button type="button" title="引用" @click="showArticleEditorPlaceholder('引用')">
+            <button type="button" title="引用" @click="insertArticleEditorQuote">
               <iconify-icon icon="mdi:format-quote-open" width="20"></iconify-icon>
             </button>
-            <button type="button" title="代码" @click="showArticleEditorPlaceholder('代码')">
+            <button type="button" title="代码" @click="insertArticleEditorCode">
               <iconify-icon icon="mdi:code-tags" width="20"></iconify-icon>
             </button>
             <span></span>
-            <button type="button" title="无序列表" @click="showArticleEditorPlaceholder('无序列表')">
+            <button type="button" title="无序列表" @click="insertArticleEditorList(false)">
               <iconify-icon icon="mdi:format-list-bulleted" width="20"></iconify-icon>
             </button>
-            <button type="button" title="有序列表" @click="showArticleEditorPlaceholder('有序列表')">
+            <button type="button" title="有序列表" @click="insertArticleEditorList(true)">
               <iconify-icon icon="mdi:format-list-numbered" width="20"></iconify-icon>
             </button>
-            <button type="button" title="插入链接" @click="showArticleEditorPlaceholder('插入链接')">
+            <button type="button" title="插入链接" @click="insertArticleEditorLink">
               <iconify-icon icon="mdi:link-variant" width="20"></iconify-icon>
             </button>
-            <button type="button" title="插入图片" @click="showArticleEditorPlaceholder('插入图片')">
+            <button type="button" title="插入图片" @click="openArticleEditorImageModal">
               <iconify-icon icon="mdi:image-outline" width="20"></iconify-icon>
             </button>
             <div class="article-editor-more">
@@ -2720,19 +3076,31 @@ onBeforeUnmount(() => {
                 <iconify-icon icon="mdi:dots-horizontal" width="22"></iconify-icon>
               </button>
               <div v-if="articleEditorMoreMenuOpen" class="article-editor-more-menu" role="menu">
-                <button type="button" role="menuitem" @click="showArticleEditorPlaceholder('分隔线')">
+                <button type="button" role="menuitem" @click="insertArticleEditorHeading(1)">
+                  <span>H1</span>
+                  <span>一级标题</span>
+                </button>
+                <button type="button" role="menuitem" @click="insertArticleEditorHeading(2)">
+                  <span>H2</span>
+                  <span>二级标题</span>
+                </button>
+                <button type="button" role="menuitem" @click="insertArticleEditorHeading(3)">
+                  <span>H3</span>
+                  <span>三级标题</span>
+                </button>
+                <button type="button" role="menuitem" @click="insertArticleEditorDivider">
                   <iconify-icon icon="mdi:minus" width="18"></iconify-icon>
                   <span>分隔线</span>
                 </button>
-                <button type="button" role="menuitem" @click="showArticleEditorPlaceholder('表格')">
+                <button type="button" role="menuitem" @click="insertArticleEditorTable">
                   <iconify-icon icon="mdi:table" width="18"></iconify-icon>
                   <span>表格</span>
                 </button>
-                <button type="button" role="menuitem" @click="showArticleEditorPlaceholder('数学公式')">
+                <button type="button" role="menuitem" @click="insertArticleEditorMath">
                   <iconify-icon icon="mdi:sigma" width="18"></iconify-icon>
                   <span>数学公式</span>
                 </button>
-                <button type="button" role="menuitem" @click="showArticleEditorPlaceholder('清除格式')">
+                <button type="button" role="menuitem" @click="clearArticleEditorFormatting">
                   <iconify-icon icon="mdi:format-clear" width="18"></iconify-icon>
                   <span>清除格式</span>
                 </button>

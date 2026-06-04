@@ -12,6 +12,7 @@ let prisma;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsRoot = path.resolve(__dirname, "../uploads/articles");
+const draftUploadsRoot = path.resolve(__dirname, "../uploads/article-drafts");
 
 before(async () => {
   const [{ default: app }, prismaModule] = await Promise.all([
@@ -391,6 +392,69 @@ test("admin article publishing flow stores markdown, sanitizes HTML, uploads ima
   await prisma.user.delete({
     where: {
       email
+    }
+  });
+});
+
+test("regular users can upload draft editor images while admins are blocked from the user upload path", async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const userAccount = await createRegisteredUser({
+    username: `draft_image_${suffix}`,
+    email: `draft_image_${suffix}@example.com`
+  });
+  const adminAccount = await createRegisteredUser({
+    username: `draft_image_admin_${suffix}`,
+    email: `draft_image_admin_${suffix}@example.com`,
+    role: "ADMIN"
+  });
+  const imageBuffer = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO6s9WQAAAAASUVORK5CYII=",
+    "base64"
+  );
+
+  const form = new FormData();
+  form.append("images", new Blob([imageBuffer], { type: "image/png" }), "draft-one.png");
+  form.append("images", new Blob([imageBuffer], { type: "image/png" }), "draft-two.png");
+
+  const uploadResult = await apiRequest("/articles/uploads/images", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`
+    },
+    body: form
+  });
+
+  assert.equal(uploadResult.status, 201);
+  assert.equal(uploadResult.body.images.length, 2);
+  assert.match(uploadResult.body.images[0].imageUrl, new RegExp(`/uploads/article-drafts/${userAccount.user.id}/`));
+  assert.match(uploadResult.body.images[0].markdown, /^!\[draft-one\]\(\/uploads\/article-drafts\//);
+
+  const userDraftDirectory = path.join(draftUploadsRoot, String(userAccount.user.id));
+  const uploadedFiles = await fs.readdir(userDraftDirectory);
+  assert.equal(uploadedFiles.length, 2);
+
+  const adminForm = new FormData();
+  adminForm.append("images", new Blob([imageBuffer], { type: "image/png" }), "admin-draft.png");
+
+  const adminUploadResult = await apiRequest("/articles/uploads/images", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${adminAccount.token}`
+    },
+    body: adminForm
+  });
+
+  assert.equal(adminUploadResult.status, 403);
+
+  await fs.rm(userDraftDirectory, {
+    recursive: true,
+    force: true
+  });
+  await prisma.user.deleteMany({
+    where: {
+      email: {
+        in: [`draft_image_${suffix}@example.com`, `draft_image_admin_${suffix}@example.com`]
+      }
     }
   });
 });

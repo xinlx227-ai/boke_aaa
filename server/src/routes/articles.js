@@ -16,6 +16,7 @@ const router = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsRoot = path.resolve(__dirname, "../../uploads/articles");
+const draftUploadsRoot = path.resolve(__dirname, "../../uploads/article-drafts");
 const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
 const HOT_SCORE_WEIGHTS = {
   views: 1,
@@ -158,6 +159,14 @@ function sanitizeFilename(name) {
     .toLowerCase()
     .replace(/[^a-z0-9.-]+/g, "-")
     .replace(/^-+|-+$/g, "") || "image";
+}
+
+function escapeMarkdownAltText(value) {
+  return String(value || "图片")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/]/g, "\\]")
+    .trim() || "图片";
 }
 
 function emptyArticleStats() {
@@ -833,6 +842,34 @@ const upload = multer({
     callback(null, true);
   },
   limits: {
+    fileSize: 5 * 1024 * 1024
+  }
+});
+
+const draftImageUpload = multer({
+  storage: multer.diskStorage({
+    destination(req, _file, callback) {
+      const userId = Number(req.auth?.userId);
+      const destination = path.join(draftUploadsRoot, String(userId || "unknown"));
+      fs.mkdirSync(destination, { recursive: true });
+      callback(null, destination);
+    },
+    filename(_req, file, callback) {
+      const extension = path.extname(file.originalname) || ".png";
+      const baseName = sanitizeFilename(path.basename(file.originalname, extension));
+      callback(null, `${Date.now()}-${Math.random().toString(16).slice(2, 8)}-${baseName}${extension.toLowerCase()}`);
+    }
+  }),
+  fileFilter(_req, file, callback) {
+    if (!file.mimetype.startsWith("image/")) {
+      callback(new Error("只支持上传图片文件。"));
+      return;
+    }
+
+    callback(null, true);
+  },
+  limits: {
+    files: 20,
     fileSize: 5 * 1024 * 1024
   }
 });
@@ -1593,6 +1630,51 @@ router.post(
   }
 );
 
+router.post(
+  "/uploads/images",
+  requireAuth,
+  (req, res, next) => {
+    if (req.user?.role === "ADMIN") {
+      return res.status(403).json({
+        message: "管理员不再使用投稿图片上传入口。"
+      });
+    }
+
+    return next();
+  },
+  draftImageUpload.array("images", 20),
+  async (req, res, next) => {
+    try {
+      const files = Array.isArray(req.files) ? req.files : [];
+
+      if (files.length === 0) {
+        return res.status(400).json({
+          message: "请选择要上传的图片文件。"
+        });
+      }
+
+      const userId = Number(req.auth.userId);
+      const images = files.map((file) => {
+        const imageUrl = `/uploads/article-drafts/${userId}/${file.filename}`;
+        const altText = escapeMarkdownAltText(path.basename(file.originalname, path.extname(file.originalname)));
+
+        return {
+          imageUrl,
+          originalName: file.originalname,
+          size: file.size,
+          markdown: `![${altText}](${imageUrl})`
+        };
+      });
+
+      return res.status(201).json({
+        images
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
+
 router.post("/admin", requireAuth, requireRole("ADMIN"), async (req, res, next) => {
   try {
     const built = buildArticleData(req.body);
@@ -1795,6 +1877,7 @@ router.post(
   requireRole("ADMIN"),
   upload.single("image"),
   async (req, res, next) => {
+    // Legacy admin authoring path. The new user submission editor uses /articles/uploads/images.
     try {
       const articleId = Number(req.params.id);
 
