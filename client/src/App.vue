@@ -2052,9 +2052,9 @@ onBeforeUnmount(() => {
   <header
     v-if="!isUserPanelView && !isArticleEditorView"
     class="sticky top-0 z-50 w-full border-b"
-    :class="view === 'article' ? 'article-detail-header bg-white/95 border-slate-200 backdrop-blur' : 'glass-effect border-orange-100/50'"
+    :class="view === 'article' ? 'article-detail-header bg-white/95 border-slate-200 backdrop-blur' : view === 'admin' ? 'admin-topbar' : 'glass-effect border-orange-100/50'"
   >
-    <div class="max-w-[1440px] mx-auto px-6 h-16 flex items-center justify-between">
+    <div :class="view === 'admin' ? 'admin-topbar-inner' : 'max-w-[1440px] mx-auto px-6 h-16 flex items-center justify-between'">
       <template v-if="view === 'article'">
         <div class="article-header-left">
           <button class="flex items-center gap-2 cursor-pointer" type="button" @click="openPublicHome">
@@ -2153,35 +2153,35 @@ onBeforeUnmount(() => {
           <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 bg-white border border-slate-200 rounded ml-2">⌘K</kbd>
         </div>
 
-        <div class="flex items-center gap-4">
+        <div :class="view === 'admin' ? 'admin-topbar-actions' : 'flex items-center gap-4'">
           <button
-            class="p-2 text-slate-500 hover:text-orange-500 dark:text-slate-300 dark:hover:text-orange-300 transition-colors"
+            :class="view === 'admin' ? 'admin-topbar-icon-action' : 'p-2 text-slate-500 hover:text-orange-500 dark:text-slate-300 dark:hover:text-orange-300 transition-colors'"
             :title="isDarkMode ? '切换到亮色模式' : '切换到暗色模式'"
             type="button"
             @click="toggleThemeMode"
           >
             <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
           </button>
-          <button v-if="isAuthenticated" class="p-2 text-slate-500 hover:text-orange-500 transition-colors relative" title="通知" type="button">
+          <button v-if="isAuthenticated" :class="view === 'admin' ? 'admin-topbar-icon-action' : 'p-2 text-slate-500 hover:text-orange-500 transition-colors relative'" title="通知" type="button">
             <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
-            <span class="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white"></span>
+            <span :class="view === 'admin' ? 'admin-topbar-notice-dot' : 'absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white'"></span>
           </button>
-          <div class="h-8 w-[1px] bg-slate-200 mx-1"></div>
+          <div :class="view === 'admin' ? 'admin-topbar-divider' : 'h-8 w-[1px] bg-slate-200 mx-1'"></div>
 
           <!-- 未登录：显示登录/注册按钮 -->
           <template v-if="!isAuthenticated">
-            <button class="w-10 h-10 rounded-full bg-slate-100 hover:bg-orange-50 text-slate-500 hover:text-orange-500 flex items-center justify-center transition-all" title="账户" type="button" @click="showLoginForm">
+            <button :class="view === 'admin' ? 'admin-topbar-icon-action' : 'w-10 h-10 rounded-full bg-slate-100 hover:bg-orange-50 text-slate-500 hover:text-orange-500 flex items-center justify-center transition-all'" title="账户" type="button" @click="showLoginForm">
               <iconify-icon icon="mdi:account-outline" width="24"></iconify-icon>
             </button>
           </template>
 
           <!-- 已登录：显示用户头像 -->
           <template v-else>
-            <div class="flex items-center gap-3 px-2 py-1.5 rounded-full bg-white border border-slate-100 shadow-sm cursor-pointer group relative hover:border-orange-200 hover:shadow-md transition-all" @click="isAdmin ? openAdminDashboard() : openUserDashboard()">
-              <div class="w-9 h-9 rounded-full bg-orange-100 overflow-hidden flex items-center justify-center text-orange-600 text-sm font-bold">
+            <div :class="view === 'admin' ? 'admin-topbar-account' : 'flex items-center gap-3 px-2 py-1.5 rounded-full bg-white border border-slate-100 shadow-sm cursor-pointer group relative hover:border-orange-200 hover:shadow-md transition-all'" @click="isAdmin ? openAdminDashboard() : openUserDashboard()">
+              <div :class="view === 'admin' ? 'admin-topbar-avatar' : 'w-9 h-9 rounded-full bg-orange-100 overflow-hidden flex items-center justify-center text-orange-600 text-sm font-bold'">
                 {{ (currentUser?.username || '?')[0].toUpperCase() }}
               </div>
-              <div class="hidden sm:block pr-2 leading-tight">
+              <div :class="view === 'admin' ? 'admin-topbar-account-text' : 'hidden sm:block pr-2 leading-tight'">
                 <p class="text-sm font-bold text-slate-800 group-hover:text-orange-500 transition-colors">{{ currentUser?.username || '用户' }}</p>
                 <p class="text-[10px] text-slate-400">{{ roleLabel }}</p>
               </div>
@@ -3127,8 +3127,8 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div class="flex gap-2">
-            <button class="flex-1 py-2 text-sm font-semibold text-slate-600 bg-slate-50 rounded-xl hover:bg-slate-100 transition-all" type="button" @click="openUserDashboard">用户面板</button>
             <button v-if="isAdmin" class="flex-1 py-2 text-sm font-semibold text-white bg-orange-500 rounded-xl hover:bg-orange-600 transition-all" type="button" @click="openAdminDashboard">管理后台</button>
+            <button v-else class="flex-1 py-2 text-sm font-semibold text-slate-600 bg-slate-50 rounded-xl hover:bg-slate-100 transition-all" type="button" @click="openUserDashboard">用户面板</button>
             <button class="px-3 py-2 text-sm font-semibold text-red-500 bg-red-50 rounded-xl hover:bg-red-100 transition-all" type="button" @click="logout" :disabled="submitLoading">退出</button>
           </div>
         </template>
