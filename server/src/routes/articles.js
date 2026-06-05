@@ -24,6 +24,15 @@ const HOT_SCORE_WEIGHTS = {
   favorites: 8,
   comments: 3
 };
+const SUBMISSION_STATUS = {
+  DRAFT: "DRAFT",
+  PENDING_REVIEW: "PENDING_REVIEW",
+  REJECTED: "REJECTED",
+  PUBLISHED: "PUBLISHED",
+  ARCHIVED: "ARCHIVED"
+};
+const USER_EDITABLE_STATUSES = new Set([SUBMISSION_STATUS.DRAFT, SUBMISSION_STATUS.REJECTED]);
+const USER_DELETABLE_STATUSES = new Set([SUBMISSION_STATUS.DRAFT, SUBMISSION_STATUS.REJECTED]);
 
 function slugify(value) {
   return String(value || "")
@@ -195,6 +204,9 @@ function formatArticle(article) {
     chapterOrder: article.chapterOrder,
     status: article.status,
     publishedAt: article.publishedAt,
+    submittedAt: article.submittedAt,
+    reviewedAt: article.reviewedAt,
+    reviewNote: article.reviewNote,
     createdAt: article.createdAt,
     updatedAt: article.updatedAt,
     category: article.category
@@ -218,6 +230,14 @@ function formatArticle(article) {
           username: article.author.username,
           email: article.author.email,
           role: article.author.role
+        }
+      : null,
+    reviewer: article.reviewer
+      ? {
+          id: article.reviewer.id,
+          username: article.reviewer.username,
+          email: article.reviewer.email,
+          role: article.reviewer.role
         }
       : null,
     images: Array.isArray(article.images)
@@ -669,6 +689,91 @@ function buildArticleData(input) {
   };
 }
 
+async function uniqueArticleSlug(baseSlug, excludeArticleId = null) {
+  const normalizedBase = slugify(baseSlug) || "article";
+  const base = normalizedBase.slice(0, 210).replace(/-+$/g, "") || "article";
+
+  for (let index = 0; index < 1000; index += 1) {
+    const suffix = index === 0 ? "" : `-${index + 1}`;
+    const slug = `${base.slice(0, 220 - suffix.length)}${suffix}`;
+    const existingArticle = await prisma.article.findUnique({
+      where: {
+        slug
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!existingArticle || existingArticle.id === excludeArticleId) {
+      return slug;
+    }
+  }
+
+  return `${base.slice(0, 205)}-${Date.now().toString(36)}`;
+}
+
+function isGeneratedDraftSlug(slug) {
+  return /^draft-\d+-[a-z0-9]+$/i.test(String(slug || ""));
+}
+
+async function buildUserArticleData(input, options = {}) {
+  const strict = Boolean(options.strict);
+  const existingArticle = options.existingArticle || null;
+  const userId = Number(options.userId);
+  const title = String(input?.title || "").trim();
+  const contentMarkdown = String(input?.contentMarkdown || "");
+  const rendered = renderMarkdownToSafeHtmlWithToc(contentMarkdown);
+  const categoryName = normalizeName(input?.categoryName);
+  const tagNames = normalizeTagNames(input?.tagNames ?? input?.tags);
+
+  if (title.length > 200) {
+    return {
+      error: "文章标题不能超过 200 个字符。"
+    };
+  }
+
+  if (strict) {
+    if (!title) {
+      return {
+        error: "提交审核前请输入文章标题。"
+      };
+    }
+
+    if (!contentMarkdown.trim()) {
+      return {
+        error: "提交审核前请输入文章正文。"
+      };
+    }
+
+    if (!categoryName) {
+      return {
+        error: "提交审核前请选择文章分类。"
+      };
+    }
+  }
+
+  const normalizedTitle = title || "未命名草稿";
+  const shouldRegenerateSlug =
+    !existingArticle ||
+    (strict && isGeneratedDraftSlug(existingArticle.slug) && title);
+  const slug = shouldRegenerateSlug
+    ? await uniqueArticleSlug(title || `draft-${userId}-${Date.now().toString(36)}`, existingArticle?.id)
+    : existingArticle.slug;
+
+  return {
+    data: {
+      title: normalizedTitle,
+      slug,
+      contentMarkdown,
+      contentHtml: rendered.html,
+      categoryName,
+      tagNames
+    },
+    toc: rendered.toc
+  };
+}
+
 async function upsertCategoryByName(name) {
   const categoryName = normalizeName(name);
 
@@ -748,6 +853,7 @@ async function replaceArticleTags(articleId, tagIds) {
 function articleInclude() {
   return {
     author: true,
+    reviewer: true,
     category: true,
     tags: {
       include: {
@@ -1182,6 +1288,421 @@ router.get("/filters", async (_req, res, next) => {
   }
 });
 
+router.get("/me", requireAuth, async (req, res, next) => {
+  try {
+    if (req.user?.role === "ADMIN") {
+      return res.status(403).json({
+        message: "管理员不使用普通用户投稿列表。"
+      });
+    }
+
+    const articles = await prisma.article.findMany({
+      where: {
+        authorId: req.auth.userId,
+        status: {
+          in: [
+            SUBMISSION_STATUS.DRAFT,
+            SUBMISSION_STATUS.PENDING_REVIEW,
+            SUBMISSION_STATUS.REJECTED,
+            SUBMISSION_STATUS.PUBLISHED
+          ]
+        }
+      },
+      orderBy: [
+        {
+          updatedAt: "desc"
+        },
+        {
+          id: "desc"
+        }
+      ],
+      include: articleInclude()
+    });
+    const articlesWithStats = await withArticleStats(articles, req.auth.userId);
+
+    return res.json({
+      articles: articlesWithStats.map(formatArticle)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/preview", requireAuth, async (req, res, next) => {
+  try {
+    const title = String(req.body?.title || "").trim() || "未命名草稿";
+    const contentMarkdown = String(req.body?.contentMarkdown || "");
+    const categoryName = normalizeName(req.body?.categoryName);
+    const tagNames = normalizeTagNames(req.body?.tagNames ?? req.body?.tags);
+    const rendered = renderMarkdownToSafeHtmlWithToc(contentMarkdown);
+
+    return res.json({
+      preview: {
+        title: title.slice(0, 200),
+        contentMarkdown,
+        contentHtml: rendered.html,
+        toc: rendered.toc,
+        category: categoryName
+          ? {
+              name: categoryName,
+              slug: slugify(categoryName)
+            }
+          : null,
+        tags: tagNames.map((name) => ({
+          name,
+          slug: slugify(name)
+        }))
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/drafts/:id", requireAuth, async (req, res, next) => {
+  try {
+    if (req.user?.role === "ADMIN") {
+      return res.status(403).json({
+        message: "管理员不使用普通用户投稿编辑入口。"
+      });
+    }
+
+    const articleId = Number(req.params.id);
+
+    if (!articleId) {
+      return res.status(400).json({
+        message: "文章 ID 无效。"
+      });
+    }
+
+    const article = await prisma.article.findFirst({
+      where: {
+        id: articleId,
+        authorId: req.auth.userId
+      },
+      include: articleInclude()
+    });
+
+    if (!article) {
+      return res.status(404).json({
+        message: "文章不存在。"
+      });
+    }
+
+    return res.json({
+      article: formatArticle(article)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/drafts", requireAuth, async (req, res, next) => {
+  try {
+    if (req.user?.role === "ADMIN") {
+      return res.status(403).json({
+        message: "管理员不使用普通用户投稿草稿入口。"
+      });
+    }
+
+    const shouldSubmit = Boolean(req.body?.submit);
+    const built = await buildUserArticleData(req.body, {
+      strict: shouldSubmit,
+      userId: req.auth.userId
+    });
+
+    if (built.error) {
+      return res.status(400).json({
+        message: built.error
+      });
+    }
+
+    const { categoryName, tagNames, ...articleData } = built.data;
+    const relations = await buildArticleRelations({
+      categoryName,
+      tagNames
+    });
+    const article = await prisma.article.create({
+      data: {
+        ...articleData,
+        chapterOrder: await nextArticleChapterOrder(),
+        categoryId: relations.categoryId,
+        authorId: req.auth.userId,
+        status: shouldSubmit ? SUBMISSION_STATUS.PENDING_REVIEW : SUBMISSION_STATUS.DRAFT,
+        submittedAt: shouldSubmit ? new Date() : null
+      },
+      include: articleInclude()
+    });
+
+    await replaceArticleTags(article.id, relations.tagIds);
+
+    const articleWithTags = await prisma.article.findUnique({
+      where: {
+        id: article.id
+      },
+      include: articleInclude()
+    });
+
+    return res.status(201).json({
+      article: formatArticle(articleWithTags)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/drafts/:id", requireAuth, async (req, res, next) => {
+  try {
+    if (req.user?.role === "ADMIN") {
+      return res.status(403).json({
+        message: "管理员不使用普通用户投稿草稿入口。"
+      });
+    }
+
+    const articleId = Number(req.params.id);
+
+    if (!articleId) {
+      return res.status(400).json({
+        message: "文章 ID 无效。"
+      });
+    }
+
+    const existingArticle = await prisma.article.findFirst({
+      where: {
+        id: articleId,
+        authorId: req.auth.userId
+      }
+    });
+
+    if (!existingArticle) {
+      return res.status(404).json({
+        message: "文章不存在。"
+      });
+    }
+
+    if (!USER_EDITABLE_STATUSES.has(existingArticle.status)) {
+      return res.status(409).json({
+        message: "文章已提交审核，修改前请先撤回到草稿。"
+      });
+    }
+
+    const built = await buildUserArticleData(req.body, {
+      existingArticle,
+      userId: req.auth.userId
+    });
+
+    if (built.error) {
+      return res.status(400).json({
+        message: built.error
+      });
+    }
+
+    const { categoryName, tagNames, ...articleData } = built.data;
+    const relations = await buildArticleRelations({
+      categoryName,
+      tagNames
+    });
+
+    await replaceArticleTags(articleId, relations.tagIds);
+
+    const article = await prisma.article.update({
+      where: {
+        id: articleId
+      },
+      data: {
+        ...articleData,
+        categoryId: relations.categoryId,
+        status: SUBMISSION_STATUS.DRAFT
+      },
+      include: articleInclude()
+    });
+
+    return res.json({
+      article: formatArticle(article)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/drafts/:id/submit", requireAuth, async (req, res, next) => {
+  try {
+    if (req.user?.role === "ADMIN") {
+      return res.status(403).json({
+        message: "管理员不使用普通用户投稿提交入口。"
+      });
+    }
+
+    const articleId = Number(req.params.id);
+
+    if (!articleId) {
+      return res.status(400).json({
+        message: "文章 ID 无效。"
+      });
+    }
+
+    const existingArticle = await prisma.article.findFirst({
+      where: {
+        id: articleId,
+        authorId: req.auth.userId
+      }
+    });
+
+    if (!existingArticle) {
+      return res.status(404).json({
+        message: "文章不存在。"
+      });
+    }
+
+    if (!USER_EDITABLE_STATUSES.has(existingArticle.status)) {
+      return res.status(409).json({
+        message: "文章已经提交审核。"
+      });
+    }
+
+    const built = await buildUserArticleData(req.body, {
+      strict: true,
+      existingArticle,
+      userId: req.auth.userId
+    });
+
+    if (built.error) {
+      return res.status(400).json({
+        message: built.error
+      });
+    }
+
+    const { categoryName, tagNames, ...articleData } = built.data;
+    const relations = await buildArticleRelations({
+      categoryName,
+      tagNames
+    });
+
+    await replaceArticleTags(articleId, relations.tagIds);
+
+    const article = await prisma.article.update({
+      where: {
+        id: articleId
+      },
+      data: {
+        ...articleData,
+        categoryId: relations.categoryId,
+        status: SUBMISSION_STATUS.PENDING_REVIEW,
+        submittedAt: new Date()
+      },
+      include: articleInclude()
+    });
+
+    return res.json({
+      article: formatArticle(article)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/drafts/:id/withdraw", requireAuth, async (req, res, next) => {
+  try {
+    if (req.user?.role === "ADMIN") {
+      return res.status(403).json({
+        message: "管理员不使用普通用户投稿撤回入口。"
+      });
+    }
+
+    const articleId = Number(req.params.id);
+
+    if (!articleId) {
+      return res.status(400).json({
+        message: "文章 ID 无效。"
+      });
+    }
+
+    const existingArticle = await prisma.article.findFirst({
+      where: {
+        id: articleId,
+        authorId: req.auth.userId
+      }
+    });
+
+    if (!existingArticle) {
+      return res.status(404).json({
+        message: "文章不存在。"
+      });
+    }
+
+    if (existingArticle.status !== SUBMISSION_STATUS.PENDING_REVIEW) {
+      return res.status(409).json({
+        message: "只有待审核文章可以撤回。"
+      });
+    }
+
+    const article = await prisma.article.update({
+      where: {
+        id: articleId
+      },
+      data: {
+        status: SUBMISSION_STATUS.DRAFT
+      },
+      include: articleInclude()
+    });
+
+    return res.json({
+      article: formatArticle(article)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete("/drafts/:id", requireAuth, async (req, res, next) => {
+  try {
+    if (req.user?.role === "ADMIN") {
+      return res.status(403).json({
+        message: "管理员不使用普通用户投稿删除入口。"
+      });
+    }
+
+    const articleId = Number(req.params.id);
+
+    if (!articleId) {
+      return res.status(400).json({
+        message: "文章 ID 无效。"
+      });
+    }
+
+    const existingArticle = await prisma.article.findFirst({
+      where: {
+        id: articleId,
+        authorId: req.auth.userId
+      }
+    });
+
+    if (!existingArticle) {
+      return res.status(404).json({
+        message: "文章不存在。"
+      });
+    }
+
+    if (!USER_DELETABLE_STATUSES.has(existingArticle.status)) {
+      return res.status(409).json({
+        message: "只能删除草稿或未通过文章。"
+      });
+    }
+
+    await prisma.article.delete({
+      where: {
+        id: articleId
+      }
+    });
+
+    return res.json({
+      ok: true
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get("/admin/list", requireAuth, requireRole("ADMIN"), async (_req, res, next) => {
   try {
     const articles = await prisma.article.findMany({
@@ -1277,6 +1798,140 @@ router.get("/admin/overview", requireAuth, requireRole("ADMIN"), async (_req, re
         label: formatShanghaiDayLabel(window.start),
         value: visitorsByDay[index].size
       }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/admin/reviews", requireAuth, requireRole("ADMIN"), async (_req, res, next) => {
+  try {
+    const articles = await prisma.article.findMany({
+      where: {
+        status: SUBMISSION_STATUS.PENDING_REVIEW
+      },
+      orderBy: [
+        {
+          submittedAt: "asc"
+        },
+        {
+          updatedAt: "asc"
+        },
+        {
+          id: "asc"
+        }
+      ],
+      include: articleInclude()
+    });
+
+    return res.json({
+      articles: articles.map(formatArticle)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/admin/reviews/:id/approve", requireAuth, requireRole("ADMIN"), async (req, res, next) => {
+  try {
+    const articleId = Number(req.params.id);
+
+    if (!articleId) {
+      return res.status(400).json({
+        message: "文章 ID 无效。"
+      });
+    }
+
+    const existingArticle = await ensureArticleExists(articleId);
+
+    if (!existingArticle) {
+      return res.status(404).json({
+        message: "文章不存在。"
+      });
+    }
+
+    if (existingArticle.status !== SUBMISSION_STATUS.PENDING_REVIEW) {
+      return res.status(409).json({
+        message: "只有待审核文章可以通过审核。"
+      });
+    }
+
+    const reviewedAt = new Date();
+    const article = await prisma.article.update({
+      where: {
+        id: articleId
+      },
+      data: {
+        status: SUBMISSION_STATUS.PUBLISHED,
+        reviewedAt,
+        reviewerId: req.auth.userId,
+        reviewNote: null
+      },
+      include: articleInclude()
+    });
+    await setPublishedAtIfMissing(articleId);
+    const [articleWithPublishTime] = await withArticlePublishTimes([article]);
+
+    return res.json({
+      article: formatArticle(articleWithPublishTime)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/admin/reviews/:id/reject", requireAuth, requireRole("ADMIN"), async (req, res, next) => {
+  try {
+    const articleId = Number(req.params.id);
+    const reviewNote = String(req.body?.reviewNote || "").trim();
+
+    if (!articleId) {
+      return res.status(400).json({
+        message: "文章 ID 无效。"
+      });
+    }
+
+    if (!reviewNote) {
+      return res.status(400).json({
+        message: "请填写驳回原因。"
+      });
+    }
+
+    if (reviewNote.length > 500) {
+      return res.status(400).json({
+        message: "驳回原因不能超过 500 个字符。"
+      });
+    }
+
+    const existingArticle = await ensureArticleExists(articleId);
+
+    if (!existingArticle) {
+      return res.status(404).json({
+        message: "文章不存在。"
+      });
+    }
+
+    if (existingArticle.status !== SUBMISSION_STATUS.PENDING_REVIEW) {
+      return res.status(409).json({
+        message: "只有待审核文章可以驳回。"
+      });
+    }
+
+    const article = await prisma.article.update({
+      where: {
+        id: articleId
+      },
+      data: {
+        status: SUBMISSION_STATUS.REJECTED,
+        reviewedAt: new Date(),
+        reviewerId: req.auth.userId,
+        reviewNote
+      },
+      include: articleInclude()
+    });
+
+    return res.json({
+      article: formatArticle(article)
     });
   } catch (error) {
     return next(error);

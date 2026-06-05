@@ -34,6 +34,8 @@ const currentUser = ref(null);
 const currentSession = ref(null);
 const publishedArticles = ref([]);
 const adminArticles = ref([]);
+const adminReviewArticles = ref([]);
+const userArticles = ref([]);
 const popularArticles = ref([]);
 const selectedArticle = ref(null);
 const comments = ref([]);
@@ -49,6 +51,12 @@ const siteSummary = ref({
 const adminActiveTab = ref("overview");
 const adminMobileNavOpen = ref(false);
 const adminOverviewLoading = ref(false);
+const adminReviewLoading = ref(false);
+const adminReviewActionId = ref(null);
+const adminRejectTarget = ref(null);
+const adminRejectNote = ref("");
+const adminReviewPreviewOpen = ref(false);
+const adminReviewPreviewArticle = ref(null);
 const adminOverview = ref({
   summary: {
     userCount: 0,
@@ -75,6 +83,19 @@ const articleEditorImageModalOpen = ref(false);
 const articleEditorImageFiles = ref([]);
 const articleEditorImageSelection = ref({ start: 0, end: 0 });
 const articleEditorImageDragActive = ref(false);
+const articleEditorArticleId = ref(null);
+const articleEditorLoaded = ref(false);
+const articleEditorSaving = ref(false);
+const articleEditorSubmitting = ref(false);
+const articleEditorWithdrawing = ref(false);
+const articleEditorDeleting = ref(false);
+const articleEditorPreviewLoading = ref(false);
+const articleEditorPreviewOpen = ref(false);
+const articleEditorPreview = ref(null);
+const articleEditorSnapshot = ref("");
+const articleEditorStatus = ref("DRAFT");
+const articleEditorSubmittedAt = ref(null);
+const articleEditorReviewNote = ref("");
 
 const userPanelTabs = [
   { id: "overview", label: "数据看板", icon: "mdi:view-dashboard-outline" },
@@ -82,13 +103,6 @@ const userPanelTabs = [
   { id: "favorites", label: "我的收藏", icon: "mdi:bookmark-outline" },
   { id: "social", label: "社交互动", icon: "mdi:comment-account-outline" },
   { id: "security", label: "安全设置", icon: "mdi:shield-check-outline" }
-];
-
-const userPanelArticleRows = [
-  { title: "投稿功能接入后显示文章标题", category: "未选择", status: "草稿", views: "--", date: "--" },
-  { title: "提交审核后显示审核进度", category: "分类", status: "待审核", views: "--", date: "--" },
-  { title: "审核通过后进入公开阅读页", category: "分类", status: "已发布", views: "--", date: "--" },
-  { title: "未通过文章可修改后重新提交", category: "分类", status: "未通过", views: "--", date: "--" }
 ];
 
 const ADMIN_CATEGORY_COLORS = ["#3b82f6", "#ff6b35", "#a855f7", "#22c55e", "#f59e0b", "#14b8a6"];
@@ -158,24 +172,6 @@ const adminUserRows = [
     createdAt: "2024-08-22",
     status: "正常",
     color: "#14b8a6"
-  }
-];
-
-const adminReviewArticles = [
-  {
-    title: "如何搭建个人博客网站",
-    author: "张三",
-    submittedAt: "2026-05-30 14:23"
-  },
-  {
-    title: "Vue3 vs React：2026 年前端框架对比",
-    author: "李四",
-    submittedAt: "2026-05-29 09:15"
-  },
-  {
-    title: "我的旅行日记：云南大理深度游",
-    author: "王五",
-    submittedAt: "2026-05-28 16:42"
   }
 ];
 
@@ -307,7 +303,33 @@ const userPanelCategoryStats = computed(() => {
     count
   })).slice(0, 4);
 });
+const userPanelArticleRows = computed(() =>
+  userArticles.value.map((article) => ({
+    ...article,
+    displayTitle: article.title || "未命名草稿",
+    categoryLabel: article.category?.name || "未分类",
+    statusLabel: articleStatusLabel(article.status),
+    viewsLabel: formatCompactNumber(article.stats?.viewCount || 0),
+    dateLabel: formatDate(article.updatedAt || article.createdAt)
+  }))
+);
 const articleEditorTags = computed(() => tagTextToArray(articleEditorForm.tagNamesText));
+const articleEditorSnapshotValue = computed(() =>
+  JSON.stringify({
+    title: articleEditorForm.title,
+    categoryName: articleEditorForm.categoryName,
+    tagNamesText: articleEditorForm.tagNamesText,
+    contentMarkdown: articleEditorForm.contentMarkdown
+  })
+);
+const articleEditorHasUnsavedChanges = computed(
+  () => isArticleEditorView.value && articleEditorLoaded.value && articleEditorSnapshotValue.value !== articleEditorSnapshot.value
+);
+const articleEditorIsLocked = computed(() => articleEditorStatus.value === "PENDING_REVIEW");
+const articleEditorCanDelete = computed(() => ["DRAFT", "REJECTED"].includes(articleEditorStatus.value) && articleEditorArticleId.value);
+const articleEditorStatusText = computed(() => articleStatusLabel(articleEditorStatus.value));
+const articleEditorPreviewHtml = computed(() => mapAssetUrls(articleEditorPreview.value?.contentHtml || ""));
+const adminReviewPreviewHtml = computed(() => mapAssetUrls(adminReviewPreviewArticle.value?.contentHtml || ""));
 const articleEditorWordCount = computed(() => String(articleEditorForm.contentMarkdown || "").trim().length);
 const articleEditorLineCount = computed(() => {
   const content = String(articleEditorForm.contentMarkdown || "");
@@ -784,7 +806,16 @@ function parseHash() {
   if (["article/new", "article-edit/new", "articleedit/new"].includes(hash)) {
     return {
       viewName: "articleEditor",
-      slug: null
+      slug: null,
+      articleId: null
+    };
+  }
+
+  if (hash.startsWith("article/edit/")) {
+    return {
+      viewName: "articleEditor",
+      slug: null,
+      articleId: Number(decodeURIComponent(hash.slice("article/edit/".length))) || null
     };
   }
 
@@ -802,6 +833,12 @@ function parseHash() {
 }
 
 function setHash(nextHash) {
+  if (view.value === "articleEditor" && articleEditorHasUnsavedChanges.value) {
+    if (!confirmLeaveArticleEditor()) {
+      return;
+    }
+  }
+
   window.location.hash = nextHash ? `#${nextHash}` : "";
   mobileMenuOpen.value = false;
 }
@@ -843,11 +880,74 @@ function setMessage(nextMessage) {
   }
 }
 
+function articleStatusLabel(status) {
+  return {
+    DRAFT: "草稿",
+    PENDING_REVIEW: "待审核",
+    REJECTED: "未通过",
+    PUBLISHED: "已发布",
+    ARCHIVED: "已归档"
+  }[status] || "草稿";
+}
+
+function resetArticleEditorForm() {
+  articleEditorArticleId.value = null;
+  articleEditorStatus.value = "DRAFT";
+  articleEditorSubmittedAt.value = null;
+  articleEditorReviewNote.value = "";
+  articleEditorForm.title = "";
+  articleEditorForm.categoryName = "";
+  articleEditorForm.tagNamesText = "";
+  articleEditorForm.tagInput = "";
+  articleEditorForm.seoTitle = "";
+  articleEditorForm.seoKeywords = "";
+  articleEditorForm.seoDescription = "";
+  articleEditorForm.allowComments = true;
+  articleEditorForm.pinned = false;
+  articleEditorForm.contentMarkdown = "";
+  articleEditorLoaded.value = true;
+  saveArticleEditorSnapshot();
+}
+
+function fillArticleEditorForm(article) {
+  articleEditorArticleId.value = article?.id || null;
+  articleEditorStatus.value = article?.status || "DRAFT";
+  articleEditorSubmittedAt.value = article?.submittedAt || null;
+  articleEditorReviewNote.value = article?.reviewNote || "";
+  articleEditorForm.title = article?.title === "未命名草稿" ? "" : article?.title || "";
+  articleEditorForm.categoryName = article?.category?.name || "";
+  articleEditorForm.tagNamesText = (article?.tags || []).map((tag) => tag.name).join(", ");
+  articleEditorForm.tagInput = "";
+  articleEditorForm.contentMarkdown = article?.contentMarkdown || "";
+  articleEditorLoaded.value = true;
+  saveArticleEditorSnapshot();
+  syncArticleEditorTextareaHeight();
+}
+
+function saveArticleEditorSnapshot() {
+  articleEditorSnapshot.value = articleEditorSnapshotValue.value;
+}
+
+function confirmLeaveArticleEditor() {
+  if (!articleEditorHasUnsavedChanges.value) {
+    return true;
+  }
+
+  return window.confirm("当前文章有未保存改动，确定要离开吗？");
+}
+
+function requestNavigation(nextHash) {
+  setHash(nextHash);
+}
+
 function clearAuthState(nextMessage = "登录状态已失效，请重新登录。", nextHash = "") {
   token.value = "";
   currentUser.value = null;
   currentSession.value = null;
   adminArticles.value = [];
+  userArticles.value = [];
+  articleEditorLoaded.value = false;
+  articleEditorSnapshot.value = articleEditorSnapshotValue.value;
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   authMode.value = "login";
   setMessage(nextMessage);
@@ -1031,7 +1131,7 @@ async function loadArticleDetail(slug) {
 }
 
 function syncViewToHash() {
-  const { viewName, slug, authMode: nextAuthMode } = parseHash();
+  const { viewName, slug, articleId, authMode: nextAuthMode } = parseHash();
 
   if (nextAuthMode && !isAuthenticated.value) {
     authMode.value = nextAuthMode;
@@ -1053,6 +1153,20 @@ function syncViewToHash() {
   }
 
   view.value = viewName;
+
+  if (viewName === "dashboard") {
+    loadUserArticles();
+  }
+
+  if (viewName === "articleEditor") {
+    if (articleId && articleEditorArticleId.value !== articleId) {
+      loadArticleEditorDraft(articleId);
+    } else if (!articleId && articleEditorArticleId.value !== null) {
+      resetArticleEditorForm();
+    } else if (!articleId && !articleEditorLoaded.value) {
+      resetArticleEditorForm();
+    }
+  }
 
   if (viewName === "article" && slug) {
     loadArticleDetail(slug);
@@ -1128,6 +1242,22 @@ async function loadAdminArticles() {
   }
 }
 
+async function loadUserArticles() {
+  if (!isAuthenticated.value || isAdmin.value) {
+    userArticles.value = [];
+    return;
+  }
+
+  try {
+    const payload = await apiFetch("/articles/me");
+    userArticles.value = payload.articles || [];
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  }
+}
+
 async function loadAdminOverview() {
   if (!isAdmin.value) {
     adminOverview.value = {
@@ -1158,6 +1288,26 @@ async function loadAdminOverview() {
   }
 }
 
+async function loadAdminReviews() {
+  if (!isAdmin.value) {
+    adminReviewArticles.value = [];
+    return;
+  }
+
+  adminReviewLoading.value = true;
+
+  try {
+    const payload = await apiFetch("/articles/admin/reviews");
+    adminReviewArticles.value = payload.articles || [];
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminReviewLoading.value = false;
+  }
+}
+
 async function loadProfile() {
   if (!token.value) {
     return;
@@ -1170,7 +1320,7 @@ async function loadProfile() {
     currentUser.value = payload.user;
     currentSession.value = payload.session;
     if (payload.user.role === "ADMIN") {
-      await Promise.all([loadAdminArticles(), loadAdminOverview()]);
+      await Promise.all([loadAdminArticles(), loadAdminOverview(), loadAdminReviews()]);
     }
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
@@ -1244,7 +1394,7 @@ async function submitLogin() {
     const returnSlug = returnArticleSlugAfterLogin.value;
     setMessage(`欢迎回来，${payload.user.username}。`);
     await loadProfile();
-    await Promise.all([loadPublishedArticles(), loadPopularArticles()]);
+    await Promise.all([loadPublishedArticles(), loadPopularArticles(), loadUserArticles()]);
     if (returnSlug) {
       returnArticleSlugAfterLogin.value = "";
       setHash(`article/${encodeURIComponent(returnSlug)}`);
@@ -1335,6 +1485,10 @@ function focusArticleEditorTextarea(selectionStart = null, selectionEnd = null) 
 }
 
 function replaceArticleEditorSelection(text, selectionStart = null, selectionEnd = null) {
+  if (articleEditorIsLocked.value) {
+    return;
+  }
+
   const textarea = articleEditorMarkdownRef.value;
   const currentValue = articleEditorForm.contentMarkdown || "";
   const start = textarea?.selectionStart ?? articleEditorImageSelection.value.start ?? currentValue.length;
@@ -1502,6 +1656,10 @@ function rememberArticleEditorSelection() {
 }
 
 function openArticleEditorImageModal() {
+  if (articleEditorIsLocked.value) {
+    return;
+  }
+
   articleEditorMoreMenuOpen.value = false;
   rememberArticleEditorSelection();
   articleEditorImageModalOpen.value = true;
@@ -1598,8 +1756,205 @@ async function uploadArticleEditorImages() {
   }
 }
 
+function articleEditorRequestBody() {
+  return {
+    title: articleEditorForm.title,
+    categoryName: articleEditorForm.categoryName,
+    tagNames: tagTextToArray(articleEditorForm.tagNamesText),
+    contentMarkdown: articleEditorForm.contentMarkdown
+  };
+}
+
+async function loadArticleEditorDraft(articleId) {
+  if (!articleId) {
+    resetArticleEditorForm();
+    return;
+  }
+
+  articleEditorLoaded.value = false;
+
+  try {
+    const payload = await apiFetch(`/articles/drafts/${articleId}`);
+    fillArticleEditorForm(payload.article);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+      requestNavigation("dashboard");
+    }
+  }
+}
+
+async function saveArticleEditorDraft() {
+  if (articleEditorIsLocked.value) {
+    setMessage("文章已提交审核，修改前请先撤回到草稿。");
+    return;
+  }
+
+  articleEditorSaving.value = true;
+  setMessage("");
+
+  try {
+    const isNewDraft = !articleEditorArticleId.value;
+    const payload = await apiFetch(
+      articleEditorArticleId.value ? `/articles/drafts/${articleEditorArticleId.value}` : "/articles/drafts",
+      {
+        method: articleEditorArticleId.value ? "PATCH" : "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(articleEditorRequestBody())
+      }
+    );
+    fillArticleEditorForm(payload.article);
+    await loadUserArticles();
+    setMessage("草稿已保存。");
+
+    if (isNewDraft && payload.article?.id) {
+      setHash(`article/edit/${payload.article.id}`);
+    }
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    articleEditorSaving.value = false;
+  }
+}
+
+async function submitArticleEditorForReview() {
+  if (articleEditorIsLocked.value) {
+    setMessage("文章已经在审核中。");
+    return;
+  }
+
+  const confirmed = window.confirm("提交后文章将锁定，修改需要先撤回到草稿。确定提交审核吗？");
+
+  if (!confirmed) {
+    return;
+  }
+
+  articleEditorSubmitting.value = true;
+  setMessage("");
+
+  try {
+    const isNewDraft = !articleEditorArticleId.value;
+    const requestBody = articleEditorRequestBody();
+    const payload = await apiFetch(
+      articleEditorArticleId.value ? `/articles/drafts/${articleEditorArticleId.value}/submit` : "/articles/drafts",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(articleEditorArticleId.value ? requestBody : { ...requestBody, submit: true })
+      }
+    );
+    fillArticleEditorForm(payload.article);
+    await loadUserArticles();
+    setMessage("已提交审核，文章已锁定。");
+
+    if (isNewDraft && payload.article?.id) {
+      setHash(`article/edit/${payload.article.id}`);
+    }
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    articleEditorSubmitting.value = false;
+  }
+}
+
+async function withdrawArticleEditorSubmission() {
+  if (!articleEditorArticleId.value || articleEditorStatus.value !== "PENDING_REVIEW") {
+    return;
+  }
+
+  articleEditorWithdrawing.value = true;
+  setMessage("");
+
+  try {
+    const payload = await apiFetch(`/articles/drafts/${articleEditorArticleId.value}/withdraw`, {
+      method: "POST"
+    });
+    fillArticleEditorForm(payload.article);
+    await loadUserArticles();
+    setMessage("已撤回到草稿，可以继续修改。");
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    articleEditorWithdrawing.value = false;
+  }
+}
+
+async function openArticleEditorPreview() {
+  articleEditorPreviewLoading.value = true;
+  setMessage("");
+
+  try {
+    const payload = await apiFetch("/articles/preview", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(articleEditorRequestBody())
+    });
+    articleEditorPreview.value = payload.preview;
+    articleEditorPreviewOpen.value = true;
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    articleEditorPreviewLoading.value = false;
+  }
+}
+
+function closeArticleEditorPreview() {
+  articleEditorPreviewOpen.value = false;
+}
+
+async function deleteUserArticle(article) {
+  if (!article?.id) {
+    return;
+  }
+
+  if (!["DRAFT", "REJECTED"].includes(article.status)) {
+    setMessage("只能删除草稿或未通过文章。");
+    return;
+  }
+
+  const confirmed = window.confirm("确定删除这篇文章吗？删除后无法恢复。");
+
+  if (!confirmed) {
+    return;
+  }
+
+  articleEditorDeleting.value = true;
+
+  try {
+    await apiFetch(`/articles/drafts/${article.id}`, {
+      method: "DELETE"
+    });
+    await loadUserArticles();
+    if (articleEditorArticleId.value === article.id) {
+      resetArticleEditorForm();
+      requestNavigation("dashboard");
+    }
+    setMessage("文章已删除。");
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    articleEditorDeleting.value = false;
+  }
+}
+
 function openArticleEditor() {
-  setHash("article/new");
+  requestNavigation("article/new");
 }
 
 function closeArticleEditorSettings() {
@@ -1673,7 +2028,11 @@ function userPanelArticleStatusClass(status) {
     草稿: "is-draft",
     待审核: "is-review",
     已发布: "is-published",
-    未通过: "is-rejected"
+    未通过: "is-rejected",
+    DRAFT: "is-draft",
+    PENDING_REVIEW: "is-review",
+    PUBLISHED: "is-published",
+    REJECTED: "is-rejected"
   }[status] || "is-draft";
 }
 
@@ -1702,6 +2061,19 @@ function openArticleEditorFromDashboard() {
   openArticleEditor();
 }
 
+function openUserArticleEditor(article) {
+  if (!article?.id) {
+    return;
+  }
+
+  if (article.status === "PUBLISHED") {
+    openArticle(article.slug);
+    return;
+  }
+
+  requestNavigation(`article/edit/${article.id}`);
+}
+
 function openAdminDashboard() {
   if (!adminActiveTab.value) {
     adminActiveTab.value = "overview";
@@ -1723,7 +2095,18 @@ function setAdminTab(tabId) {
   adminMobileNavOpen.value = false;
   if (tabId === "overview") {
     nextTick(renderAdminCharts);
+  } else if (tabId === "review") {
+    loadAdminReviews();
   }
+}
+
+function refreshAdminCurrentTab() {
+  if (adminActiveTab.value === "review") {
+    loadAdminReviews();
+    return;
+  }
+
+  loadAdminOverview();
 }
 
 function toggleAdminMobileNav() {
@@ -1736,6 +2119,96 @@ function closeAdminMobileNav() {
 
 function showAdminPlaceholder(action) {
   setMessage(`${action}将在后续接入。`);
+}
+
+function openAdminReviewPreview(article) {
+  adminReviewPreviewArticle.value = article;
+  adminReviewPreviewOpen.value = true;
+}
+
+function closeAdminReviewPreview() {
+  adminReviewPreviewOpen.value = false;
+}
+
+async function approveAdminReviewArticle(article) {
+  if (!article?.id) {
+    return;
+  }
+
+  const confirmed = window.confirm("审核通过后文章将立即发布并公开可见，确定通过吗？");
+
+  if (!confirmed) {
+    return;
+  }
+
+  adminReviewActionId.value = article.id;
+  setMessage("");
+
+  try {
+    const payload = await apiFetch(`/articles/admin/reviews/${article.id}/approve`, {
+      method: "POST"
+    });
+    setMessage("文章已审核通过并发布。");
+    closeAdminReviewPreview();
+    await Promise.all([loadAdminReviews(), loadAdminArticles(), loadPublishedArticles(), refreshPublicStats()]);
+    if (payload.article?.slug) {
+      replaceArticleInList(payload.article);
+    }
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminReviewActionId.value = null;
+  }
+}
+
+function openAdminRejectDialog(article) {
+  adminRejectTarget.value = article;
+  adminRejectNote.value = "";
+}
+
+function closeAdminRejectDialog() {
+  adminRejectTarget.value = null;
+  adminRejectNote.value = "";
+}
+
+async function rejectAdminReviewArticle() {
+  if (!adminRejectTarget.value?.id) {
+    return;
+  }
+
+  const reviewNote = adminRejectNote.value.trim();
+
+  if (!reviewNote) {
+    setMessage("请填写驳回原因。");
+    return;
+  }
+
+  adminReviewActionId.value = adminRejectTarget.value.id;
+  setMessage("");
+
+  try {
+    await apiFetch(`/articles/admin/reviews/${adminRejectTarget.value.id}/reject`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        reviewNote
+      })
+    });
+    setMessage("文章已驳回，原因已同步给用户。");
+    closeAdminRejectDialog();
+    closeAdminReviewPreview();
+    await Promise.all([loadAdminReviews(), loadAdminArticles()]);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminReviewActionId.value = null;
+  }
 }
 
 function editArticle(article) {
@@ -2028,6 +2501,15 @@ function handleHashChange() {
   syncViewToHash();
 }
 
+function handleBeforeUnload(event) {
+  if (!articleEditorHasUnsavedChanges.value) {
+    return;
+  }
+
+  event.preventDefault();
+  event.returnValue = "";
+}
+
 function shouldRecordHomeVisit() {
   const { viewName, authMode: nextAuthMode } = parseHash();
   return viewName === "public" && !nextAuthMode;
@@ -2282,9 +2764,11 @@ onMounted(async () => {
   window.addEventListener("hashchange", handleHashChange);
   window.addEventListener("scroll", handleScroll, { passive: true });
   window.addEventListener("resize", resizeAdminCharts);
+  window.addEventListener("beforeunload", handleBeforeUnload);
   await Promise.all([loadPublishedArticles(), loadArticleFilters(), refreshPublicStats()]);
   if (token.value) {
     await loadProfile();
+    await loadUserArticles();
   }
   if (!articleForm.id && articleForm.chapterOrder === 0) {
     articleForm.chapterOrder = nextArticleOrder.value;
@@ -2301,6 +2785,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("hashchange", handleHashChange);
   window.removeEventListener("scroll", handleScroll);
   window.removeEventListener("resize", resizeAdminCharts);
+  window.removeEventListener("beforeunload", handleBeforeUnload);
   disposeAdminCharts();
   if (messageTimer) {
     clearTimeout(messageTimer);
@@ -2400,6 +2885,138 @@ onBeforeUnmount(() => {
         >
           {{ uploadingImage ? "上传中..." : "上传并插入" }}
         </button>
+      </footer>
+    </section>
+  </div>
+
+  <div
+    v-if="isArticleEditorView && articleEditorPreviewOpen"
+    class="article-editor-preview-overlay"
+    role="presentation"
+    @click.self="closeArticleEditorPreview"
+  >
+    <section
+      class="article-editor-preview-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="article-editor-preview-title"
+    >
+      <header>
+        <div>
+          <span>文章预览</span>
+          <h2 id="article-editor-preview-title">{{ articleEditorPreview?.title || '未命名草稿' }}</h2>
+          <p>
+            {{ articleEditorPreview?.category?.name || '未分类' }}
+            <template v-if="articleEditorPreview?.tags?.length">
+              · {{ articleEditorPreview.tags.map((tag) => tag.name).join(' / ') }}
+            </template>
+          </p>
+        </div>
+        <button type="button" aria-label="关闭预览" @click="closeArticleEditorPreview">
+          <iconify-icon icon="mdi:close" width="26"></iconify-icon>
+        </button>
+      </header>
+      <main>
+        <div
+          v-if="articleEditorPreviewHtml"
+          class="article-html article-detail-html article-editor-preview-html"
+          v-html="articleEditorPreviewHtml"
+        ></div>
+        <div v-else class="article-editor-preview-empty">
+          <iconify-icon icon="mdi:file-document-outline" width="44"></iconify-icon>
+          <strong>暂无正文内容</strong>
+          <p>继续在编辑器中撰写 Markdown 后再预览。</p>
+        </div>
+      </main>
+    </section>
+  </div>
+
+  <div
+    v-if="view === 'admin' && adminReviewPreviewOpen"
+    class="article-editor-preview-overlay"
+    role="presentation"
+    @click.self="closeAdminReviewPreview"
+  >
+    <section
+      class="article-editor-preview-modal admin-review-preview-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="admin-review-preview-title"
+    >
+      <header>
+        <div>
+          <span>审核预览</span>
+          <h2 id="admin-review-preview-title">{{ adminReviewPreviewArticle?.title || '未命名文章' }}</h2>
+          <p>
+            作者：{{ adminReviewPreviewArticle?.author?.username || '未知用户' }}
+            · {{ adminReviewPreviewArticle?.category?.name || '未分类' }}
+            <template v-if="adminReviewPreviewArticle?.tags?.length">
+              · {{ adminReviewPreviewArticle.tags.map((tag) => tag.name).join(' / ') }}
+            </template>
+          </p>
+        </div>
+        <button type="button" aria-label="关闭审核预览" @click="closeAdminReviewPreview">
+          <iconify-icon icon="mdi:close" width="26"></iconify-icon>
+        </button>
+      </header>
+      <main>
+        <div
+          v-if="adminReviewPreviewHtml"
+          class="article-html article-detail-html article-editor-preview-html"
+          v-html="adminReviewPreviewHtml"
+        ></div>
+        <div v-else class="article-editor-preview-empty">
+          <iconify-icon icon="mdi:file-document-outline" width="44"></iconify-icon>
+          <strong>暂无正文内容</strong>
+          <p>这篇投稿没有可预览的正文。</p>
+        </div>
+      </main>
+      <footer class="admin-review-preview-actions">
+        <button type="button" @click="closeAdminReviewPreview">关闭</button>
+        <button
+          class="reject"
+          type="button"
+          :disabled="adminReviewActionId === adminReviewPreviewArticle?.id"
+          @click="openAdminRejectDialog(adminReviewPreviewArticle)"
+        >驳回</button>
+        <button
+          class="approve"
+          type="button"
+          :disabled="adminReviewActionId === adminReviewPreviewArticle?.id"
+          @click="approveAdminReviewArticle(adminReviewPreviewArticle)"
+        >通过并发布</button>
+      </footer>
+    </section>
+  </div>
+
+  <div
+    v-if="adminRejectTarget"
+    class="article-editor-preview-overlay"
+    role="presentation"
+    @click.self="closeAdminRejectDialog"
+  >
+    <section class="admin-reject-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-reject-title">
+      <header>
+        <div>
+          <span>驳回文章</span>
+          <h2 id="admin-reject-title">{{ adminRejectTarget?.title || '未命名文章' }}</h2>
+        </div>
+        <button type="button" aria-label="关闭驳回弹窗" @click="closeAdminRejectDialog">
+          <iconify-icon icon="mdi:close" width="24"></iconify-icon>
+        </button>
+      </header>
+      <label>
+        <span>驳回原因</span>
+        <textarea v-model="adminRejectNote" maxlength="500" placeholder="请说明需要修改的具体原因..." rows="5"></textarea>
+      </label>
+      <footer>
+        <button type="button" @click="closeAdminRejectDialog">取消</button>
+        <button
+          class="reject"
+          type="button"
+          :disabled="adminReviewActionId === adminRejectTarget?.id"
+          @click="rejectAdminReviewArticle"
+        >确认驳回</button>
       </footer>
     </section>
   </div>
@@ -2687,10 +3304,10 @@ onBeforeUnmount(() => {
             <div class="user-panel-card-head">
               <div>
                 <h2>我的文章</h2>
-                <p>未来注册用户可写文章，状态流转为草稿、待审核、已发布、未通过。</p>
+                <p>草稿可继续编辑，提交审核后需撤回才能修改。</p>
               </div>
-              <button type="button" @click="showUserPanelPlaceholder('文章筛选')">
-                <iconify-icon icon="mdi:tune-variant" width="20"></iconify-icon>
+              <button type="button" @click="loadUserArticles">
+                <iconify-icon icon="mdi:refresh" width="20"></iconify-icon>
               </button>
             </div>
             <div class="user-panel-table-wrap">
@@ -2706,28 +3323,45 @@ onBeforeUnmount(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="article in userPanelArticleRows" :key="article.title">
+                  <tr v-for="article in userPanelArticleRows" :key="article.id">
                     <td>
                       <div class="user-panel-article-title">
                         <span><iconify-icon icon="mdi:file-document-outline" width="20"></iconify-icon></span>
-                        <strong>{{ article.title }}</strong>
+                        <strong>{{ article.displayTitle }}</strong>
                       </div>
+                      <small v-if="article.reviewNote && article.status === 'REJECTED'" class="user-panel-article-note">
+                        驳回原因：{{ article.reviewNote }}
+                      </small>
                     </td>
-                    <td>{{ article.category }}</td>
-                    <td><span class="user-panel-status" :class="userPanelArticleStatusClass(article.status)">{{ article.status }}</span></td>
-                    <td>{{ article.views }}</td>
-                    <td>{{ article.date }}</td>
+                    <td>{{ article.categoryLabel }}</td>
+                    <td><span class="user-panel-status" :class="userPanelArticleStatusClass(article.statusLabel)">{{ article.statusLabel }}</span></td>
+                    <td>{{ article.viewsLabel }}</td>
+                    <td>{{ article.dateLabel }}</td>
                     <td>
-                      <button type="button" title="编辑" @click="showUserPanelPlaceholder('文章编辑')">
+                      <button type="button" :title="article.status === 'PUBLISHED' ? '查看' : '编辑'" @click="openUserArticleEditor(article)">
                         <iconify-icon icon="mdi:pencil-outline" width="18"></iconify-icon>
                       </button>
-                      <button type="button" title="删除" @click="showUserPanelPlaceholder('文章删除')">
+                      <button
+                        v-if="article.status === 'PENDING_REVIEW'"
+                        type="button"
+                        title="撤回"
+                        @click="openUserArticleEditor(article)"
+                      >
+                        <iconify-icon icon="mdi:undo-variant" width="18"></iconify-icon>
+                      </button>
+                      <button
+                        v-if="['DRAFT', 'REJECTED'].includes(article.status)"
+                        type="button"
+                        title="删除"
+                        @click="deleteUserArticle(article)"
+                      >
                         <iconify-icon icon="mdi:trash-can-outline" width="18"></iconify-icon>
                       </button>
                     </td>
                   </tr>
                 </tbody>
               </table>
+              <p v-if="userPanelArticleRows.length === 0" class="admin-empty-text">暂无文章，点击右上角发布新文章开始写作。</p>
             </div>
           </div>
         </section>
@@ -2874,13 +3508,34 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <div class="user-panel-topbar-actions article-editor-topbar-actions">
-        <button class="article-editor-preview-action" type="button" @click="showArticleEditorPlaceholder('文章预览')">
+        <button
+          class="article-editor-preview-action"
+          type="button"
+          :disabled="articleEditorPreviewLoading"
+          @click="openArticleEditorPreview"
+        >
           <iconify-icon icon="mdi:eye-outline" width="19"></iconify-icon>
-          <span>预览</span>
+          <span>{{ articleEditorPreviewLoading ? "生成中" : "预览" }}</span>
         </button>
-        <button class="article-editor-publish-action" type="button" @click="showArticleEditorPlaceholder('投稿发布')">
+        <button
+          v-if="articleEditorStatus === 'PENDING_REVIEW'"
+          class="article-editor-preview-action"
+          type="button"
+          :disabled="articleEditorWithdrawing"
+          @click="withdrawArticleEditorSubmission"
+        >
+          <iconify-icon icon="mdi:undo-variant" width="19"></iconify-icon>
+          <span>{{ articleEditorWithdrawing ? "撤回中" : "撤回" }}</span>
+        </button>
+        <button
+          v-else
+          class="article-editor-publish-action"
+          type="button"
+          :disabled="articleEditorSubmitting"
+          @click="submitArticleEditorForReview"
+        >
           <iconify-icon icon="mdi:send-outline" width="19"></iconify-icon>
-          <span>发布</span>
+          <span>{{ articleEditorSubmitting ? "提交中" : "提交审核" }}</span>
         </button>
         <button
           class="user-panel-icon-action"
@@ -2909,7 +3564,7 @@ onBeforeUnmount(() => {
         <div class="article-editor-settings-head">
           <div>
             <h2>文章设置</h2>
-            <p>当前为投稿页面 UI，占位交互后续接入。</p>
+            <p>当前状态：{{ articleEditorStatusText }}。提交审核后需撤回才能修改。</p>
           </div>
           <button class="article-editor-settings-close" type="button" aria-label="关闭文章设置" @click="closeArticleEditorSettings">
             <iconify-icon icon="mdi:close" width="20"></iconify-icon>
@@ -2949,7 +3604,7 @@ onBeforeUnmount(() => {
           <h3>分类</h3>
           <label class="article-editor-select">
             <span class="sr-only">分类</span>
-            <select v-model="articleEditorForm.categoryName">
+            <select v-model="articleEditorForm.categoryName" :disabled="articleEditorIsLocked">
               <option value="">全部分类</option>
               <option v-for="category in categories" :key="category.id" :value="category.name">{{ category.name }}</option>
               <option value="技术">技术</option>
@@ -2965,7 +3620,7 @@ onBeforeUnmount(() => {
           <div class="article-editor-tag-list">
             <span v-for="tag in articleEditorTags" :key="tag">
               {{ tag }}
-              <button type="button" :aria-label="`移除 ${tag}`" @click="removeArticleEditorTag(tag)">
+              <button type="button" :aria-label="`移除 ${tag}`" :disabled="articleEditorIsLocked" @click="removeArticleEditorTag(tag)">
                 <iconify-icon icon="mdi:close" width="13"></iconify-icon>
               </button>
             </span>
@@ -2975,9 +3630,10 @@ onBeforeUnmount(() => {
               v-model.trim="articleEditorForm.tagInput"
               placeholder="输入标签并回车"
               type="text"
+              :disabled="articleEditorIsLocked"
               @keydown.enter.prevent="addArticleEditorTag()"
             />
-            <button type="button" @click="addArticleEditorTag()">
+            <button type="button" :disabled="articleEditorIsLocked" @click="addArticleEditorTag()">
               <iconify-icon icon="mdi:plus" width="18"></iconify-icon>
             </button>
           </div>
@@ -2987,6 +3643,7 @@ onBeforeUnmount(() => {
               v-for="tag in ['CSS', 'Vue', 'Python', 'TypeScript']"
               :key="tag"
               type="button"
+              :disabled="articleEditorIsLocked"
               @click="addArticleEditorTag(tag)"
             >
               {{ tag }}
@@ -3002,15 +3659,15 @@ onBeforeUnmount(() => {
           <div v-if="articleEditorSeoOpen" class="article-editor-seo-fields">
             <label>
               <span>Meta 标题</span>
-              <input v-model.trim="articleEditorForm.seoTitle" placeholder="输入 Meta 标题" type="text" />
+              <input v-model.trim="articleEditorForm.seoTitle" placeholder="输入 Meta 标题" type="text" :disabled="articleEditorIsLocked" />
             </label>
             <label>
               <span>Meta 关键词</span>
-              <input v-model.trim="articleEditorForm.seoKeywords" placeholder="关键词，用逗号分隔" type="text" />
+              <input v-model.trim="articleEditorForm.seoKeywords" placeholder="关键词，用逗号分隔" type="text" :disabled="articleEditorIsLocked" />
             </label>
             <label>
               <span>搜索预览描述</span>
-              <textarea v-model="articleEditorForm.seoDescription" placeholder="输入文章摘要，用于搜索引擎展示" rows="3"></textarea>
+              <textarea v-model="articleEditorForm.seoDescription" placeholder="输入文章摘要，用于搜索引擎展示" rows="3" :disabled="articleEditorIsLocked"></textarea>
             </label>
           </div>
         </div>
@@ -3019,11 +3676,11 @@ onBeforeUnmount(() => {
           <h3>高级设置</h3>
           <label class="article-editor-toggle-row">
             <span>允许评论</span>
-            <input v-model="articleEditorForm.allowComments" aria-label="允许评论" type="checkbox" />
+            <input v-model="articleEditorForm.allowComments" aria-label="允许评论" type="checkbox" :disabled="articleEditorIsLocked" />
           </label>
           <label class="article-editor-toggle-row">
             <span>置顶文章</span>
-            <input v-model="articleEditorForm.pinned" aria-label="置顶文章" type="checkbox" />
+            <input v-model="articleEditorForm.pinned" aria-label="置顶文章" type="checkbox" :disabled="articleEditorIsLocked" />
           </label>
         </div>
       </aside>
@@ -3035,34 +3692,44 @@ onBeforeUnmount(() => {
             class="article-editor-title-input"
             placeholder="请输入文章标题..."
             type="text"
+            :disabled="articleEditorIsLocked"
           />
 
+          <div v-if="articleEditorStatus === 'PENDING_REVIEW'" class="article-editor-state-banner">
+            <iconify-icon icon="mdi:lock-outline" width="20"></iconify-icon>
+            <span>文章已提交审核，当前为只读状态。需要修改时请先撤回到草稿。</span>
+          </div>
+          <div v-else-if="articleEditorStatus === 'REJECTED' && articleEditorReviewNote" class="article-editor-state-banner is-rejected">
+            <iconify-icon icon="mdi:alert-circle-outline" width="20"></iconify-icon>
+            <span>上次驳回原因：{{ articleEditorReviewNote }}</span>
+          </div>
+
           <div class="article-editor-toolbar" aria-label="Markdown 工具栏">
-            <button type="button" title="一级标题" @click="insertArticleEditorHeading(1)">H</button>
+            <button type="button" title="一级标题" :disabled="articleEditorIsLocked" @click="insertArticleEditorHeading(1)">H</button>
             <span></span>
-            <button type="button" title="加粗" @click="insertArticleEditorInline({ before: '**', after: '**', placeholder: '加粗文本' })">
+            <button type="button" title="加粗" :disabled="articleEditorIsLocked" @click="insertArticleEditorInline({ before: '**', after: '**', placeholder: '加粗文本' })">
               <iconify-icon icon="mdi:format-bold" width="20"></iconify-icon>
             </button>
-            <button type="button" title="斜体" @click="insertArticleEditorInline({ before: '*', after: '*', placeholder: '斜体文本' })">
+            <button type="button" title="斜体" :disabled="articleEditorIsLocked" @click="insertArticleEditorInline({ before: '*', after: '*', placeholder: '斜体文本' })">
               <iconify-icon icon="mdi:format-italic" width="20"></iconify-icon>
             </button>
-            <button type="button" title="引用" @click="insertArticleEditorQuote">
+            <button type="button" title="引用" :disabled="articleEditorIsLocked" @click="insertArticleEditorQuote">
               <iconify-icon icon="mdi:format-quote-open" width="20"></iconify-icon>
             </button>
-            <button type="button" title="代码" @click="insertArticleEditorCode">
+            <button type="button" title="代码" :disabled="articleEditorIsLocked" @click="insertArticleEditorCode">
               <iconify-icon icon="mdi:code-tags" width="20"></iconify-icon>
             </button>
             <span></span>
-            <button type="button" title="无序列表" @click="insertArticleEditorList(false)">
+            <button type="button" title="无序列表" :disabled="articleEditorIsLocked" @click="insertArticleEditorList(false)">
               <iconify-icon icon="mdi:format-list-bulleted" width="20"></iconify-icon>
             </button>
-            <button type="button" title="有序列表" @click="insertArticleEditorList(true)">
+            <button type="button" title="有序列表" :disabled="articleEditorIsLocked" @click="insertArticleEditorList(true)">
               <iconify-icon icon="mdi:format-list-numbered" width="20"></iconify-icon>
             </button>
-            <button type="button" title="插入链接" @click="insertArticleEditorLink">
+            <button type="button" title="插入链接" :disabled="articleEditorIsLocked" @click="insertArticleEditorLink">
               <iconify-icon icon="mdi:link-variant" width="20"></iconify-icon>
             </button>
-            <button type="button" title="插入图片" @click="openArticleEditorImageModal">
+            <button type="button" title="插入图片" :disabled="articleEditorIsLocked" @click="openArticleEditorImageModal">
               <iconify-icon icon="mdi:image-outline" width="20"></iconify-icon>
             </button>
             <div class="article-editor-more">
@@ -3071,6 +3738,7 @@ onBeforeUnmount(() => {
                 title="更多"
                 aria-haspopup="menu"
                 :aria-expanded="articleEditorMoreMenuOpen"
+                :disabled="articleEditorIsLocked"
                 @click="toggleArticleEditorMoreMenu"
               >
                 <iconify-icon icon="mdi:dots-horizontal" width="22"></iconify-icon>
@@ -3113,6 +3781,7 @@ onBeforeUnmount(() => {
             v-model="articleEditorForm.contentMarkdown"
             class="article-editor-markdown-input"
             placeholder="开始撰写 Markdown 正文..."
+            :disabled="articleEditorIsLocked"
             @input="syncArticleEditorTextareaHeight"
             @focus="closeArticleEditorMoreMenu"
           ></textarea>
@@ -3126,11 +3795,16 @@ onBeforeUnmount(() => {
           <iconify-icon icon="mdi:cloud-upload-outline" width="20"></iconify-icon>
           <span>批量上传</span>
         </button>
-        <button class="article-editor-footer-draft" type="button" @click="showArticleEditorPlaceholder('保存草稿')">
+        <button
+          class="article-editor-footer-draft"
+          type="button"
+          :disabled="articleEditorSaving || articleEditorIsLocked"
+          @click="saveArticleEditorDraft"
+        >
           <iconify-icon icon="mdi:content-save-outline" width="20"></iconify-icon>
-          <span>保存草稿</span>
+          <span>{{ articleEditorSaving ? "保存中" : "保存草稿" }}</span>
         </button>
-        <small>已自动保存于 --:--:--</small>
+        <small>{{ articleEditorHasUnsavedChanges ? "有未保存改动" : "当前内容已保存" }}</small>
       </div>
       <div class="article-editor-footer-meta">
         <span>{{ articleEditorWordCount }} 字</span>
@@ -3180,9 +3854,9 @@ onBeforeUnmount(() => {
             <h1>{{ adminPageTitle }}</h1>
             <p>{{ adminPageSubtitle }}</p>
           </div>
-          <button class="admin-refresh-button" type="button" :disabled="adminOverviewLoading" @click="loadAdminOverview">
+          <button class="admin-refresh-button" type="button" :disabled="adminOverviewLoading || adminReviewLoading" @click="refreshAdminCurrentTab">
             <iconify-icon icon="mdi:refresh" width="20"></iconify-icon>
-            {{ adminOverviewLoading ? "刷新中" : "刷新数据" }}
+            {{ adminOverviewLoading || adminReviewLoading ? "刷新中" : "刷新数据" }}
           </button>
         </header>
 
@@ -3316,16 +3990,33 @@ onBeforeUnmount(() => {
               <span>{{ adminReviewArticles.length }} 条待审</span>
             </div>
             <div class="admin-review-list">
-              <article v-for="article in adminReviewArticles" :key="article.title" class="admin-review-item">
+              <article v-for="article in adminReviewArticles" :key="article.id" class="admin-review-item">
                 <div>
                   <h3>{{ article.title }}</h3>
-                  <p>作者：{{ article.author }} · 提交时间：{{ article.submittedAt }}</p>
+                  <p>
+                    作者：{{ article.author?.username || '未知用户' }}
+                    · 分类：{{ article.category?.name || '未分类' }}
+                    · 提交时间：{{ formatDate(article.submittedAt || article.updatedAt) }}
+                  </p>
                 </div>
                 <div class="admin-review-actions">
-                  <button class="approve" type="button" @click="showAdminPlaceholder('通过文章审核')">通过</button>
-                  <button class="reject" type="button" @click="showAdminPlaceholder('驳回文章')">驳回</button>
+                  <button class="neutral" type="button" @click="openAdminReviewPreview(article)">预览</button>
+                  <button
+                    class="approve"
+                    type="button"
+                    :disabled="adminReviewActionId === article.id"
+                    @click="approveAdminReviewArticle(article)"
+                  >通过</button>
+                  <button
+                    class="reject"
+                    type="button"
+                    :disabled="adminReviewActionId === article.id"
+                    @click="openAdminRejectDialog(article)"
+                  >驳回</button>
                 </div>
               </article>
+              <p v-if="!adminReviewLoading && adminReviewArticles.length === 0" class="admin-empty-text">暂无待审核文章。</p>
+              <p v-if="adminReviewLoading" class="admin-empty-text">正在加载待审核文章...</p>
             </div>
           </section>
 

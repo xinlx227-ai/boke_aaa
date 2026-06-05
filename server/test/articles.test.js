@@ -459,6 +459,320 @@ test("regular users can upload draft editor images while admins are blocked from
   });
 });
 
+test("regular users can save drafts, submit for review, withdraw, and delete editable articles", async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const userAccount = await createRegisteredUser({
+    username: `submission_${suffix}`,
+    email: `submission_${suffix}@example.com`
+  });
+
+  const createDraftResult = await apiRequest("/articles/drafts", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      contentMarkdown: ""
+    })
+  });
+
+  assert.equal(createDraftResult.status, 201);
+  assert.equal(createDraftResult.body.article.status, "DRAFT");
+  assert.equal(createDraftResult.body.article.title, "未命名草稿");
+  assert.match(createDraftResult.body.article.slug, /^draft-/);
+  const draftId = createDraftResult.body.article.id;
+
+  const invalidSubmitResult = await apiRequest(`/articles/drafts/${draftId}/submit`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      title: "缺少分类的投稿",
+      contentMarkdown: "# 缺少分类的投稿"
+    })
+  });
+
+  assert.equal(invalidSubmitResult.status, 400);
+  assert.match(invalidSubmitResult.body.message, /分类/);
+
+  const submitResult = await apiRequest(`/articles/drafts/${draftId}/submit`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      title: "用户投稿文章",
+      categoryName: "投稿测试",
+      tagNames: ["投稿", "审核"],
+      contentMarkdown: "# 用户投稿文章\n\n等待管理员审核。"
+    })
+  });
+
+  assert.equal(submitResult.status, 200);
+  assert.equal(submitResult.body.article.status, "PENDING_REVIEW");
+  assert.equal(submitResult.body.article.category.slug, "投稿测试");
+  assert.ok(submitResult.body.article.submittedAt);
+  assert.equal(submitResult.body.article.slug, "用户投稿文章");
+
+  const publicListResult = await apiRequest("/articles");
+  assert.equal(publicListResult.status, 200);
+  assert.equal(publicListResult.body.articles.some((article) => article.id === draftId), false);
+
+  const editSubmittedResult = await apiRequest(`/articles/drafts/${draftId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      title: "用户投稿文章更新",
+      categoryName: "投稿测试",
+      contentMarkdown: "# 用户投稿文章更新"
+    })
+  });
+
+  assert.equal(editSubmittedResult.status, 409);
+
+  const deleteSubmittedResult = await apiRequest(`/articles/drafts/${draftId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`
+    }
+  });
+
+  assert.equal(deleteSubmittedResult.status, 409);
+
+  const withdrawResult = await apiRequest(`/articles/drafts/${draftId}/withdraw`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`
+    }
+  });
+
+  assert.equal(withdrawResult.status, 200);
+  assert.equal(withdrawResult.body.article.status, "DRAFT");
+
+  const updateDraftResult = await apiRequest(`/articles/drafts/${draftId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      title: "用户投稿文章第二版",
+      categoryName: "投稿测试",
+      tagNames: ["投稿"],
+      contentMarkdown: "# 用户投稿文章第二版"
+    })
+  });
+
+  assert.equal(updateDraftResult.status, 200);
+  assert.equal(updateDraftResult.body.article.status, "DRAFT");
+  assert.equal(updateDraftResult.body.article.slug, submitResult.body.article.slug);
+
+  const myArticlesResult = await apiRequest("/articles/me", {
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`
+    }
+  });
+
+  assert.equal(myArticlesResult.status, 200);
+  assert.ok(myArticlesResult.body.articles.some((article) => article.id === draftId));
+
+  const deleteDraftResult = await apiRequest(`/articles/drafts/${draftId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`
+    }
+  });
+
+  assert.equal(deleteDraftResult.status, 200);
+
+  const deletedArticle = await prisma.article.findUnique({
+    where: {
+      id: draftId
+    }
+  });
+  assert.equal(deletedArticle, null);
+
+  await prisma.user.delete({
+    where: {
+      email: `submission_${suffix}@example.com`
+    }
+  });
+});
+
+test("logged-in users can preview unsaved markdown without creating an article", async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const userAccount = await createRegisteredUser({
+    username: `preview_${suffix}`,
+    email: `preview_${suffix}@example.com`
+  });
+  const articleCountBeforePreview = await prisma.article.count();
+
+  const previewResult = await apiRequest("/articles/preview", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      title: "",
+      categoryName: "",
+      tagNames: ["预览", "Markdown"],
+      contentMarkdown: "# Preview Heading\n\n<script>alert('xss')</script>\n\n**正文**"
+    })
+  });
+
+  assert.equal(previewResult.status, 200);
+  assert.equal(previewResult.body.preview.title, "未命名草稿");
+  assert.match(previewResult.body.preview.contentHtml, /<h1 id="preview-heading">Preview Heading<\/h1>/);
+  assert.match(previewResult.body.preview.contentHtml, /<strong>正文<\/strong>/);
+  assert.doesNotMatch(previewResult.body.preview.contentHtml, /<script>/i);
+  assert.deepEqual(
+    previewResult.body.preview.tags.map((tag) => tag.slug),
+    ["预览", "markdown"]
+  );
+
+  const articleCountAfterPreview = await prisma.article.count();
+  assert.equal(articleCountAfterPreview, articleCountBeforePreview);
+
+  await prisma.user.delete({
+    where: {
+      email: `preview_${suffix}@example.com`
+    }
+  });
+});
+
+test("admins can approve or reject pending user submissions", async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const userAccount = await createRegisteredUser({
+    username: `review_user_${suffix}`,
+    email: `review_user_${suffix}@example.com`
+  });
+  const adminAccount = await createRegisteredUser({
+    username: `review_admin_${suffix}`,
+    email: `review_admin_${suffix}@example.com`,
+    role: "ADMIN"
+  });
+
+  async function submitArticle(title) {
+    const result = await apiRequest("/articles/drafts", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${userAccount.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        submit: true,
+        title,
+        categoryName: "审核测试",
+        tagNames: ["审核"],
+        contentMarkdown: `# ${title}\n\n等待审核。`
+      })
+    });
+
+    assert.equal(result.status, 201);
+    assert.equal(result.body.article.status, "PENDING_REVIEW");
+    return result.body.article;
+  }
+
+  const approveTarget = await submitArticle("审核通过文章");
+  const rejectTarget = await submitArticle("审核驳回文章");
+
+  const reviewListResult = await apiRequest("/articles/admin/reviews", {
+    headers: {
+      Authorization: `Bearer ${adminAccount.token}`
+    }
+  });
+
+  assert.equal(reviewListResult.status, 200);
+  assert.ok(reviewListResult.body.articles.some((article) => article.id === approveTarget.id));
+  assert.ok(reviewListResult.body.articles.some((article) => article.id === rejectTarget.id));
+
+  const approveResult = await apiRequest(`/articles/admin/reviews/${approveTarget.id}/approve`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${adminAccount.token}`
+    }
+  });
+
+  assert.equal(approveResult.status, 200);
+  assert.equal(approveResult.body.article.status, "PUBLISHED");
+  assert.ok(approveResult.body.article.publishedAt);
+  assert.ok(approveResult.body.article.reviewedAt);
+  assert.equal(approveResult.body.article.reviewer.id, adminAccount.user.id);
+
+  const publicDetailResult = await apiRequest(`/articles/${approveResult.body.article.slug}`);
+  assert.equal(publicDetailResult.status, 200);
+  assert.equal(publicDetailResult.body.article.id, approveTarget.id);
+
+  const missingReasonResult = await apiRequest(`/articles/admin/reviews/${rejectTarget.id}/reject`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${adminAccount.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      reviewNote: ""
+    })
+  });
+
+  assert.equal(missingReasonResult.status, 400);
+
+  const rejectResult = await apiRequest(`/articles/admin/reviews/${rejectTarget.id}/reject`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${adminAccount.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      reviewNote: "标题需要更具体。"
+    })
+  });
+
+  assert.equal(rejectResult.status, 200);
+  assert.equal(rejectResult.body.article.status, "REJECTED");
+  assert.equal(rejectResult.body.article.reviewNote, "标题需要更具体。");
+  assert.ok(rejectResult.body.article.reviewedAt);
+  assert.equal(rejectResult.body.article.reviewer.id, adminAccount.user.id);
+
+  const userArticlesResult = await apiRequest("/articles/me", {
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`
+    }
+  });
+
+  assert.equal(userArticlesResult.status, 200);
+  assert.ok(
+    userArticlesResult.body.articles.some(
+      (article) => article.id === rejectTarget.id && article.status === "REJECTED" && article.reviewNote === "标题需要更具体。"
+    )
+  );
+
+  const reviewListAfterResult = await apiRequest("/articles/admin/reviews", {
+    headers: {
+      Authorization: `Bearer ${adminAccount.token}`
+    }
+  });
+
+  assert.equal(reviewListAfterResult.status, 200);
+  assert.equal(reviewListAfterResult.body.articles.some((article) => article.id === approveTarget.id), false);
+  assert.equal(reviewListAfterResult.body.articles.some((article) => article.id === rejectTarget.id), false);
+
+  await prisma.user.deleteMany({
+    where: {
+      email: {
+        in: [`review_user_${suffix}@example.com`, `review_admin_${suffix}@example.com`]
+      }
+    }
+  });
+});
+
 test("admin can import markdown articles from a zip and receive detailed import logs", async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
   const username = `importer_${suffix}`;

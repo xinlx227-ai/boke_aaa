@@ -14,6 +14,8 @@ enum UserRole {
 
 enum ArticleStatus {
   DRAFT
+  PENDING_REVIEW
+  REJECTED
   PUBLISHED
   ARCHIVED
 }
@@ -39,6 +41,7 @@ model User {
   comments        Comment[]
   commentLikes    CommentLike[]
   editedVersions  ArticleVersion[] @relation("ArticleVersionEditor")
+  reviewedArticles Article[]        @relation("ArticleReviewer")
   sessions        UserSession[]
   siteVisits      SiteVisit[]
 
@@ -56,10 +59,15 @@ model Article {
   chapterOrder     Int              @default(0) @map("chapter_order")
   status           ArticleStatus    @default(DRAFT)
   publishedAt      DateTime?        @map("published_at")
+  submittedAt      DateTime?        @map("submitted_at")
+  reviewedAt       DateTime?        @map("reviewed_at")
+  reviewerId       Int?             @map("reviewer_id")
+  reviewNote       String?          @map("review_note") @db.VarChar(500)
   createdAt        DateTime         @default(now()) @map("created_at")
   updatedAt        DateTime         @updatedAt @map("updated_at")
   author           User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
   category         Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  reviewer         User?            @relation("ArticleReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
   comments         Comment[]
   favorites        ArticleFavorite[]
   images           ArticleImage[]
@@ -72,6 +80,7 @@ model Article {
 
   @@index([authorId])
   @@index([categoryId])
+  @@index([reviewerId])
   @@index([status, publishedAt])
   @@map("articles")
 }
