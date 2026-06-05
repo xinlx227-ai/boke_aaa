@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和暗色模式补齐，以及文章编辑页旧版公共 UI 误渲染修复。`codex/someting-recover` 已 fast-forward 合并到 `main`，验证已通过，`main` 已推送到 `origin/main`，本地已合并功能分支已清理。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和暗色模式补齐、文章编辑页旧版公共 UI 误渲染修复，以及普通用户草稿投稿和管理员待审核队列。当前功能分支为 `codex/article-drafts-submission`，已提交 `2207bab Add article submission review workflow`，尚未合并到 `main`。
 
 ## 建议下个 Agent 使用的技能
 
@@ -13,18 +13,19 @@
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前主线分支：`main`
+- 当前工作分支：`codex/article-drafts-submission`
+- 基线主线：`main` / `origin/main` 当前在 `b26de92 Implement markdown toolbar uploads`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover` 已合并进 `main` 并推送到 `origin/main`。
-- 当前 `main` 与 `origin/main` 对齐，最新提交为 `3e0fe4d Fix article editor route rendering`。
-- 本地已合并功能分支已清理，当前只保留 `main`。
+- 当前功能提交：`2207bab Add article submission review workflow`
+- 当前工作区在文档收尾前是干净状态；`README.md` / `handoff.md` 会在本次 `$work-end` 中追加文档提交。
 
 继续工作前建议先执行：
 
 ```bash
 git status --short --branch
 git log --oneline --decorate -6
-git diff -- client/src/App.vue client/src/style.css server/src/routes/articles.js README.md handoff.md
+git diff -- client/src/App.vue client/src/style.css server/src/routes/articles.js server/prisma/schema.prisma server/test/articles.test.js README.md handoff.md
 git diff --check
 ```
 
@@ -40,6 +41,67 @@ git diff --check
 ## 项目概况
 
 这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、普通用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、文章编辑页路由隔离修复，以及真实阅读/点赞/收藏/热门排行统计能力。
+
+## 本次完成：文章草稿投稿与管理员审核流程
+
+工作分支：`codex/article-drafts-submission`。
+
+功能提交：
+
+- `2207bab Add article submission review workflow`
+
+改动文件：
+
+- `client/src/App.vue`
+- `client/src/style.css`
+- `server/src/routes/articles.js`
+- `server/prisma/schema.prisma`
+- `server/prisma/migrations/20260605110000_article_submission_workflow/migration.sql`
+- `server/test/articles.test.js`
+
+### 阶段 1：用户草稿/投稿
+
+- 复用 `articles` 表，`ArticleStatus` 扩展为 `DRAFT`、`PENDING_REVIEW`、`REJECTED`、`PUBLISHED`、`ARCHIVED`。
+- `articles` 新增 `submitted_at`、`reviewed_at`、`reviewer_id`、`review_note`，并建立审核人外键。
+- 普通用户写作入口复用发布页，新增 `#article/edit/:id` 作为草稿/投稿编辑入口。
+- 不自动创建空草稿；只有手动保存草稿或提交审核时才创建/更新数据库记录。
+- 阶段 1 只保存标题、正文、后端生成并尽量稳定的 slug、分类、标签和状态；封面、SEO、高级设置、批量上传继续是 UI 占位。
+- 草稿校验宽松，提交审核校验严格；提交时会提醒用户提交后文章锁定。
+- 提交后锁定编辑，待审核文章允许随时撤回到草稿；普通用户只能删除自己的草稿和被驳回文章。
+- 用户面板“我的文章”已接真实列表，不再使用静态占位。
+- 预览为未保存内容即时预览，走 `POST /api/articles/preview`，不会创建数据库记录。
+
+### 阶段 2：管理员待审核队列
+
+- 管理后台内容审核页接入真实 `PENDING_REVIEW` 队列。
+- 管理员可在审核前预览文章正文。
+- 通过审核会将文章置为 `PUBLISHED`，写入 `publishedAt`、`reviewedAt`、`reviewerId`，并公开可见。
+- 驳回审核必须填写 `reviewNote`，文章置为 `REJECTED`，用户侧“我的文章”可看到驳回原因。
+- 阶段 2 默认只做待审核队列；历史审核记录暂未做完整管理。
+
+### 新增接口
+
+- 用户接口：`GET /api/articles/me`
+- 用户接口：`POST /api/articles/preview`
+- 用户接口：`GET /api/articles/drafts/:id`
+- 用户接口：`POST /api/articles/drafts`
+- 用户接口：`PATCH /api/articles/drafts/:id`
+- 用户接口：`POST /api/articles/drafts/:id/submit`
+- 用户接口：`POST /api/articles/drafts/:id/withdraw`
+- 用户接口：`DELETE /api/articles/drafts/:id`
+- 管理员接口：`GET /api/articles/admin/reviews`
+- 管理员接口：`POST /api/articles/admin/reviews/:id/approve`
+- 管理员接口：`POST /api/articles/admin/reviews/:id/reject`
+
+### 验证
+
+```bash
+npm test --workspace server
+npm run build
+git diff --check
+```
+
+说明：`npm run prisma:generate`、`npm run prisma:deploy` 和测试库迁移首次在默认沙箱内遇到 `EPERM: operation not permitted, lstat 'C:\Users\27871'`，按权限流程重跑后通过。`git diff --check` 只有 LF/CRLF 提示。本地已有 `http://localhost:5173` 和 `http://localhost:3000` 服务返回 200；未主动关闭用户已有进程。
 
 ## 本次完成：发布页 Markdown 工具栏真实插入与用户图片上传
 
@@ -205,13 +267,17 @@ git diff --check
   - `server/prisma/migrations/20260528163500_drop_article_chapter_order_index/migration.sql`
   - `server/prisma/migrations/20260530120000_article_stats/migration.sql`
   - `server/prisma/migrations/20260531110000_comment_threads/migration.sql`
+  - `server/prisma/migrations/20260605110000_article_submission_workflow/migration.sql`
 - 后端发布接口首次发布时写入 `published_at`，再次发布不覆盖原首次发布时间。
 - `chapterOrder` 作为文章序号，新建默认当前文章总数 + 1；手动重排时会顺延其他文章。
 - 评论区接口仍主要使用 Prisma raw SQL 访问新评论点赞表/新回复目标字段，以降低本机 Prisma Client 生成被 Windows DLL 占用时的阻塞风险；`schema.prisma` 和迁移已完整更新。
-- 管理员概览接口新增在 `server/src/routes/articles.js`，不新增迁移。
+- 管理员概览接口和待审核队列接口新增在 `server/src/routes/articles.js`；待审核队列会读取 `PENDING_REVIEW` 文章。
+- 普通用户草稿/投稿接口也在 `server/src/routes/articles.js`；保存草稿和提交审核都复用 `articles` 表。
 
 ## 最近重要提交
 
+- `2207bab Add article submission review workflow`：普通用户草稿投稿、即时预览、真实“我的文章”列表和管理员待审核队列。
+- `b26de92 Implement markdown toolbar uploads`：发布页 Markdown 工具栏真实插入和普通用户草稿图片上传。
 - `3e0fe4d Fix article editor route rendering`：修复文章编辑页下方误渲染旧版公共首页/用户页面 UI。
 - `d96d90f Polish dashboard and admin dark UI`：用户/管理员工作台视觉统一、用户面板暗色模式补齐、首页/后台品牌暗色可读性修复。
 - `02607fa Refactor admin dashboard UI`：管理员后台新 UI 和只读管理员概览统计接口。
@@ -223,6 +289,14 @@ git diff --check
 - `1a2f29b Add article statistics APIs`：真实统计 API 和前端接入。
 
 ## 最近验证
+
+最近文章草稿投稿与管理员审核流程已执行：
+
+```bash
+npm test --workspace server
+npm run build
+git diff --check
+```
 
 最近文章编辑页路由修复已执行：
 
@@ -265,10 +339,10 @@ sc.exe config MySQL start= demand
 
 ## 后续建议
 
-- 给用户面板补后端能力：投稿/审核状态、我的文章真实列表、我的收藏列表、我的评论与互动通知、修改密码、手机绑定、第三方账号绑定。
+- 给用户面板补后端能力：我的收藏列表、我的评论与互动通知、修改密码、手机绑定、第三方账号绑定。
 - 基于用户面板当前暗色 CSS 占位图，将近 7 日阅读趋势和分类分布接入真实 ECharts 数据。
-- 发布页编辑器下一步建议接真实草稿、投稿、预览和审核流程；是否需要富文本体验可等 Markdown 投稿链路稳定后再评估 Tiptap / ProseMirror。
-- 将管理后台用户管理、内容审核、敏感评论、分类标签管理接入真实后端接口；当前只做 UI 和提示交互。
+- 投稿编辑器下一步建议接封面、SEO、高级设置、批量上传、真实自动保存或更完整的审核历史；是否需要富文本体验可等 Markdown 投稿链路稳定后再评估 Tiptap / ProseMirror。
+- 将管理后台用户管理、敏感评论、分类标签管理接入真实后端接口；内容审核阶段 2 已完成待审核队列，历史审核记录暂未做完整管理。
 - 基于 `site_visits` 做公开首页和用户面板的真实趋势图；当前管理后台概览已用该数据做近 7 日访问柱状图。
 - 补充评论分页、评论审核，以及敏感词/敏感话题检测流程。
 - 修复评论删除边界：删除主评论时递归清理历史多层回复，或先迁移历史 `parent_id` 到一层结构。
