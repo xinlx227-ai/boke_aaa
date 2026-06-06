@@ -27,9 +27,13 @@ const message = ref("");
 const trafficChartRef = ref(null);
 const adminVisitChartRef = ref(null);
 const adminCategoryChartRef = ref(null);
+const userPanelReadChartRef = ref(null);
+const userPanelCategoryChartRef = ref(null);
 let messageTimer = null;
 let adminVisitChartInstance = null;
 let adminCategoryChartInstance = null;
+let userPanelReadChartInstance = null;
+let userPanelCategoryChartInstance = null;
 const currentUser = ref(null);
 const currentSession = ref(null);
 const publishedArticles = ref([]);
@@ -72,6 +76,39 @@ const expandedReplyCommentIds = ref(new Set());
 const DEFAULT_VISIBLE_REPLY_COUNT = 2;
 const userPanelActiveTab = ref("overview");
 const userPanelMobileNavOpen = ref(false);
+const userPanelSummaryLoading = ref(false);
+const userPanelFavoritesLoading = ref(false);
+const userPanelSocialLoading = ref(false);
+const userPanelSecurityLoading = ref(false);
+const userPanelFavoriteSearch = ref("");
+const userPanelFavoriteCategory = ref("");
+const userPanelFavoriteActionSlug = ref("");
+const userPanelSessionActionId = ref(null);
+const userPanelPasswordSaving = ref(false);
+const userPanelBindingsSaving = ref(false);
+const userPanelSummary = ref({
+  articleCount: 0,
+  viewCount: 0,
+  likeCount: 0,
+  favoriteCount: 0,
+  savedFavoriteCount: 0,
+  commentCount: 0,
+  interactionCount: 0,
+  activeSessionCount: 0,
+  deltas: {},
+  readTrend: [],
+  categoryDistribution: [],
+  bindings: {
+    phoneNumber: null,
+    wechatBound: false,
+    qqBound: false,
+    alipayBound: false
+  }
+});
+const userPanelFavorites = ref([]);
+const userPanelComments = ref([]);
+const userPanelInteractions = ref([]);
+const userPanelSessions = ref([]);
 const articleEditorSettingsCollapsed = ref(false);
 const articleEditorSettingsOpen = ref(false);
 const articleEditorMoreMenuOpen = ref(false);
@@ -219,6 +256,19 @@ const registerForm = reactive({
   password: ""
 });
 
+const userPanelPasswordForm = reactive({
+  currentPassword: "",
+  newPassword: "",
+  confirmPassword: ""
+});
+
+const userPanelBindingsForm = reactive({
+  phoneNumber: "",
+  wechatBound: false,
+  qqBound: false,
+  alipayBound: false
+});
+
 const articleForm = reactive({
   id: null,
   title: "",
@@ -260,49 +310,6 @@ const isUserPanelView = computed(() => view.value === "dashboard" && isAuthentic
 const isArticleEditorView = computed(() => view.value === "articleEditor" && isAuthenticated.value && !isAdmin.value);
 const currentUserInitial = computed(() => (currentUser.value?.username || "?")[0]?.toUpperCase() || "?");
 const userPanelActiveTitle = computed(() => userPanelTabs.find((tab) => tab.id === userPanelActiveTab.value)?.label || "用户面板");
-const userPanelStats = computed(() => [
-  {
-    label: "站内文章",
-    value: formatCompactNumber(publishedArticles.value.length),
-    note: "当前已发布",
-    icon: "mdi:file-document-multiple-outline",
-    tone: "orange"
-  },
-  {
-    label: "站内阅读",
-    value: formatCompactNumber(siteSummary.value.totalViews),
-    note: "真实统计",
-    icon: "mdi:eye-outline",
-    tone: "blue"
-  },
-  {
-    label: "站内点赞",
-    value: formatCompactNumber(siteSummary.value.totalLikes),
-    note: "真实统计",
-    icon: "mdi:heart-outline",
-    tone: "rose"
-  },
-  {
-    label: "站内收藏",
-    value: formatCompactNumber(siteSummary.value.totalFavorites),
-    note: "真实统计",
-    icon: "mdi:bookmark-outline",
-    tone: "purple"
-  }
-]);
-const userPanelCategoryStats = computed(() => {
-  const counts = new Map();
-
-  for (const article of publishedArticles.value) {
-    const categoryName = article.category?.name || "未分类";
-    counts.set(categoryName, (counts.get(categoryName) || 0) + 1);
-  }
-
-  return Array.from(counts, ([name, count]) => ({
-    name,
-    count
-  })).slice(0, 4);
-});
 const userPanelArticleRows = computed(() =>
   userArticles.value.map((article) => ({
     ...article,
@@ -311,6 +318,147 @@ const userPanelArticleRows = computed(() =>
     statusLabel: articleStatusLabel(article.status),
     viewsLabel: formatCompactNumber(article.stats?.viewCount || 0),
     dateLabel: formatDate(article.updatedAt || article.createdAt)
+  }))
+);
+const userPanelDashboardStats = computed(() => [
+  {
+    label: "我的文章",
+    value: formatCompactNumber(userPanelSummary.value.articleCount),
+    delta: userPanelSummary.value.deltas?.articleCount || null,
+    icon: "mdi:file-document-multiple-outline",
+    tone: "orange"
+  },
+  {
+    label: "站内阅读",
+    value: formatCompactNumber(userPanelSummary.value.viewCount),
+    delta: userPanelSummary.value.deltas?.viewCount || null,
+    icon: "mdi:eye-outline",
+    tone: "blue"
+  },
+  {
+    label: "站内点赞",
+    value: formatCompactNumber(userPanelSummary.value.likeCount),
+    delta: userPanelSummary.value.deltas?.likeCount || null,
+    icon: "mdi:heart-outline",
+    tone: "rose"
+  },
+  {
+    label: "站内收藏",
+    value: formatCompactNumber(userPanelSummary.value.favoriteCount),
+    delta: userPanelSummary.value.deltas?.favoriteCount || null,
+    icon: "mdi:bookmark-outline",
+    tone: "purple"
+  }
+]);
+const userPanelReadTrend = computed(() => {
+  const rows = Array.isArray(userPanelSummary.value.readTrend) ? userPanelSummary.value.readTrend : [];
+
+  if (rows.length > 0) {
+    return rows.map((item) => ({
+      date: item.date,
+      label: item.label,
+      value: Number(item.value || 0)
+    }));
+  }
+
+  return ["周一", "周二", "周三", "周四", "周五", "周六", "周日"].map((label) => ({
+    label,
+    value: 0
+  }));
+});
+const userPanelCategoryDistribution = computed(() => {
+  const rows = Array.isArray(userPanelSummary.value.categoryDistribution)
+    ? userPanelSummary.value.categoryDistribution
+    : [];
+
+  return rows
+    .map((item, index) => ({
+      name: item.name || "未分类",
+      value: Number(item.value || 0),
+      color: ADMIN_CATEGORY_COLORS[index % ADMIN_CATEGORY_COLORS.length]
+    }))
+    .filter((item) => item.value > 0);
+});
+const userPanelHasCategoryDistribution = computed(() => userPanelCategoryDistribution.value.length > 0);
+const userPanelFavoriteRows = computed(() =>
+  userPanelFavorites.value.map((item) => ({
+    ...item.article,
+    favoritedAt: item.favoritedAt,
+    summaryText: articlePlainSummary(item.article),
+    categoryLabel: item.article.category?.name || "未分类",
+    authorLabel: item.article.author?.username || "未知作者",
+    dateLabel: formatDate(item.favoritedAt),
+    coverLabel: favoriteCoverLabel(item.article),
+    coverTone: favoriteCoverTone(item.article)
+  }))
+);
+const userPanelFavoriteCategories = computed(() => {
+  const categoryMap = new Map();
+
+  for (const article of userPanelFavoriteRows.value) {
+    const name = article.categoryLabel || "未分类";
+    categoryMap.set(name, (categoryMap.get(name) || 0) + 1);
+  }
+
+  return Array.from(categoryMap, ([name, count]) => ({ name, count })).sort((first, second) => second.count - first.count);
+});
+const userPanelFavoriteStatCards = computed(() => [
+  {
+    label: "收藏总数",
+    value: userPanelFavoriteRows.value.length,
+    tone: "orange"
+  },
+  ...userPanelFavoriteCategories.value.slice(0, 3).map((item, index) => ({
+    label: item.name,
+    value: item.count,
+    tone: ["blue", "rose", "purple"][index] || "orange"
+  }))
+]);
+const filteredUserPanelFavorites = computed(() => {
+  const keyword = userPanelFavoriteSearch.value.trim().toLowerCase();
+  const category = userPanelFavoriteCategory.value;
+
+  return userPanelFavoriteRows.value.filter((article) => {
+    const matchesCategory = !category || article.categoryLabel === category;
+    const searchable = [
+      article.title,
+      article.summaryText,
+      article.authorLabel,
+      article.categoryLabel,
+      ...(article.tags || []).map((tag) => tag.name)
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    return matchesCategory && (!keyword || searchable.includes(keyword));
+  });
+});
+const userPanelCommentRows = computed(() =>
+  userPanelComments.value.map((comment) => ({
+    ...comment,
+    typeLabel: comment.type === "reply" ? "回复" : "评论",
+    dateLabel: formatDate(comment.createdAt),
+    authorLabel: comment.author?.username || "未知用户",
+    initial: (comment.author?.username || (comment.type === "reply" ? "R" : "C"))[0]?.toUpperCase() || "C",
+    replyToLabel: comment.replyToUser?.username ? `回复 @${comment.replyToUser.username}` : ""
+  }))
+);
+const userPanelInteractionRows = computed(() =>
+  userPanelInteractions.value.map((interaction) => ({
+    ...interaction,
+    dateLabel: formatDate(interaction.createdAt),
+    icon: interactionIcon(interaction.type),
+    tone: interactionTone(interaction.type)
+  }))
+);
+const userPanelActiveSessionCount = computed(() => userPanelSessions.value.length || userPanelSummary.value.activeSessionCount || 0);
+const userPanelSessionRows = computed(() =>
+  userPanelSessions.value.map((session) => ({
+    ...session,
+    title: session.isCurrent ? "当前设备" : "登录设备",
+    browserLabel: compactUserAgent(session.userAgent),
+    ipLabel: session.ipAddress || "未知 IP",
+    activeLabel: formatDate(session.lastActiveAt)
   }))
 );
 const articleEditorTags = computed(() => tagTextToArray(articleEditorForm.tagNamesText));
@@ -556,6 +704,124 @@ function replaceArticleInList(article) {
   if (selectedArticle.value?.id === article.id) {
     selectedArticle.value = mergeArticleStats(selectedArticle.value, article);
   }
+}
+
+function articlePlainSummary(article) {
+  const markdown = String(article?.contentMarkdown || "")
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[#>*_`~|-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const htmlText = String(article?.contentHtml || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const text = markdown || htmlText || "暂无摘要";
+
+  return text.length > 96 ? `${text.slice(0, 95)}...` : text;
+}
+
+function favoriteCoverLabel(article) {
+  return (article?.category?.name || article?.title || "收藏").slice(0, 2).toUpperCase();
+}
+
+function favoriteCoverTone(article) {
+  const tones = ["orange", "blue", "rose", "purple", "green"];
+  const seed = String(article?.category?.slug || article?.slug || article?.title || "")
+    .split("")
+    .reduce((total, char) => total + char.charCodeAt(0), 0);
+
+  return tones[seed % tones.length];
+}
+
+function compactUserAgent(userAgent) {
+  const value = String(userAgent || "").trim();
+
+  if (!value) {
+    return "未知浏览器";
+  }
+
+  const browser =
+    value.match(/Edg\/([\d.]+)/)?.[0]?.replace("/", " ") ||
+    value.match(/Chrome\/([\d.]+)/)?.[0]?.replace("/", " ") ||
+    value.match(/Firefox\/([\d.]+)/)?.[0]?.replace("/", " ") ||
+    value.match(/Safari\/([\d.]+)/)?.[0]?.replace("/", " ") ||
+    "浏览器";
+  const system = value.includes("Windows")
+    ? "Windows"
+    : value.includes("Mac OS")
+      ? "macOS"
+      : value.includes("Android")
+        ? "Android"
+        : value.includes("iPhone") || value.includes("iPad")
+          ? "iOS"
+          : "未知系统";
+
+  return `${browser} · ${system}`;
+}
+
+function interactionIcon(type) {
+  if (type === "reply_to_my_comment" || type === "comment_on_my_article") {
+    return "mdi:comment-outline";
+  }
+
+  if (type === "favorite_my_article") {
+    return "mdi:bookmark-heart-outline";
+  }
+
+  return "mdi:heart-outline";
+}
+
+function interactionTone(type) {
+  if (type === "reply_to_my_comment") {
+    return "orange";
+  }
+
+  if (type === "comment_on_my_article") {
+    return "blue";
+  }
+
+  if (type === "favorite_my_article") {
+    return "purple";
+  }
+
+  return "rose";
+}
+
+function resetUserPanelData() {
+  userPanelSummary.value = {
+    articleCount: 0,
+    viewCount: 0,
+    likeCount: 0,
+    favoriteCount: 0,
+    savedFavoriteCount: 0,
+    commentCount: 0,
+    interactionCount: 0,
+    activeSessionCount: 0,
+    deltas: {},
+    readTrend: [],
+    categoryDistribution: [],
+    bindings: {
+      phoneNumber: null,
+      wechatBound: false,
+      qqBound: false,
+      alipayBound: false
+    }
+  };
+  userPanelFavorites.value = [];
+  userPanelComments.value = [];
+  userPanelInteractions.value = [];
+  userPanelSessions.value = [];
+  userPanelFavoriteSearch.value = "";
+  userPanelFavoriteCategory.value = "";
+  userPanelPasswordForm.currentPassword = "";
+  userPanelPasswordForm.newPassword = "";
+  userPanelPasswordForm.confirmPassword = "";
+  userPanelBindingsForm.phoneNumber = "";
+  userPanelBindingsForm.wechatBound = false;
+  userPanelBindingsForm.qqBound = false;
+  userPanelBindingsForm.alipayBound = false;
 }
 
 function optimisticSelectedArticleStats(patch) {
@@ -946,6 +1212,7 @@ function clearAuthState(nextMessage = "登录状态已失效，请重新登录�
   currentSession.value = null;
   adminArticles.value = [];
   userArticles.value = [];
+  resetUserPanelData();
   articleEditorLoaded.value = false;
   articleEditorSnapshot.value = articleEditorSnapshotValue.value;
   localStorage.removeItem(TOKEN_STORAGE_KEY);
@@ -1155,7 +1422,7 @@ function syncViewToHash() {
   view.value = viewName;
 
   if (viewName === "dashboard") {
-    loadUserArticles();
+    loadUserPanelTabData();
   }
 
   if (viewName === "articleEditor") {
@@ -1258,6 +1525,142 @@ async function loadUserArticles() {
   }
 }
 
+function syncUserPanelBindingForm(bindings = userPanelSummary.value.bindings) {
+  userPanelBindingsForm.phoneNumber = bindings?.phoneNumber || "";
+  userPanelBindingsForm.wechatBound = Boolean(bindings?.wechatBound);
+  userPanelBindingsForm.qqBound = Boolean(bindings?.qqBound);
+  userPanelBindingsForm.alipayBound = Boolean(bindings?.alipayBound);
+}
+
+async function loadUserPanelSummary() {
+  if (!isAuthenticated.value || isAdmin.value) {
+    resetUserPanelData();
+    return;
+  }
+
+  userPanelSummaryLoading.value = true;
+
+  try {
+    const payload = await apiFetch("/users/me/summary");
+    userPanelSummary.value = {
+      ...userPanelSummary.value,
+      ...(payload.summary || {}),
+      bindings: {
+        ...userPanelSummary.value.bindings,
+        ...(payload.summary?.bindings || {})
+      }
+    };
+    syncUserPanelBindingForm(userPanelSummary.value.bindings);
+    await nextTick();
+    renderUserPanelCharts();
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    userPanelSummaryLoading.value = false;
+  }
+}
+
+async function loadUserPanelFavorites() {
+  if (!isAuthenticated.value || isAdmin.value) {
+    userPanelFavorites.value = [];
+    return;
+  }
+
+  userPanelFavoritesLoading.value = true;
+
+  try {
+    const payload = await apiFetch("/users/me/favorites");
+    userPanelFavorites.value = payload.favorites || [];
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    userPanelFavoritesLoading.value = false;
+  }
+}
+
+async function loadUserPanelSocial() {
+  if (!isAuthenticated.value || isAdmin.value) {
+    userPanelComments.value = [];
+    userPanelInteractions.value = [];
+    return;
+  }
+
+  userPanelSocialLoading.value = true;
+
+  try {
+    const [commentsPayload, interactionsPayload] = await Promise.all([
+      apiFetch("/users/me/comments"),
+      apiFetch("/users/me/interactions")
+    ]);
+    userPanelComments.value = commentsPayload.comments || [];
+    userPanelInteractions.value = interactionsPayload.interactions || [];
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    userPanelSocialLoading.value = false;
+  }
+}
+
+async function loadUserPanelSessions() {
+  if (!isAuthenticated.value || isAdmin.value) {
+    userPanelSessions.value = [];
+    return;
+  }
+
+  userPanelSecurityLoading.value = true;
+
+  try {
+    const payload = await apiFetch("/users/me/sessions");
+    userPanelSessions.value = payload.sessions || [];
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    userPanelSecurityLoading.value = false;
+  }
+}
+
+async function loadUserPanelSecurity() {
+  await Promise.all([loadUserPanelSummary(), loadUserPanelSessions()]);
+}
+
+async function loadUserPanelTabData(tabId = userPanelActiveTab.value) {
+  if (!isAuthenticated.value || isAdmin.value) {
+    return;
+  }
+
+  if (tabId === "overview") {
+    await loadUserPanelSummary();
+    return;
+  }
+
+  if (tabId === "articles") {
+    await Promise.all([loadUserArticles(), loadUserPanelSummary()]);
+    return;
+  }
+
+  if (tabId === "favorites") {
+    await Promise.all([loadUserPanelFavorites(), loadUserPanelSummary()]);
+    return;
+  }
+
+  if (tabId === "social") {
+    await Promise.all([loadUserPanelSocial(), loadUserPanelSummary()]);
+    return;
+  }
+
+  if (tabId === "security") {
+    await loadUserPanelSecurity();
+  }
+}
+
 async function loadAdminOverview() {
   if (!isAdmin.value) {
     adminOverview.value = {
@@ -1331,6 +1734,137 @@ async function loadProfile() {
   }
 }
 
+function clearUserPanelFavoriteFilters() {
+  userPanelFavoriteSearch.value = "";
+  userPanelFavoriteCategory.value = "";
+}
+
+function openUserPanelArticle(slug) {
+  if (slug) {
+    openArticle(slug);
+  }
+}
+
+async function removeUserPanelFavorite(article) {
+  if (!article?.slug) {
+    return;
+  }
+
+  userPanelFavoriteActionSlug.value = article.slug;
+
+  try {
+    await apiFetch(`/articles/${encodeURIComponent(article.slug)}/favorites`, {
+      method: "DELETE"
+    });
+    setMessage("已取消收藏。");
+    await Promise.all([loadUserPanelFavorites(), loadUserPanelSummary(), loadPopularArticles()]);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    userPanelFavoriteActionSlug.value = "";
+  }
+}
+
+async function submitUserPanelPassword() {
+  userPanelPasswordSaving.value = true;
+
+  try {
+    const payload = await apiFetch("/users/me/password", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(userPanelPasswordForm)
+    });
+    userPanelPasswordForm.currentPassword = "";
+    userPanelPasswordForm.newPassword = "";
+    userPanelPasswordForm.confirmPassword = "";
+    setMessage(payload.message || "密码已更新。");
+    await loadUserPanelSessions();
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    userPanelPasswordSaving.value = false;
+  }
+}
+
+async function saveUserPanelBindings() {
+  userPanelBindingsSaving.value = true;
+
+  try {
+    const payload = await apiFetch("/users/me/bindings", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(userPanelBindingsForm)
+    });
+    currentUser.value = payload.user || currentUser.value;
+    userPanelSummary.value = {
+      ...userPanelSummary.value,
+      bindings: payload.bindings || userPanelSummary.value.bindings
+    };
+    syncUserPanelBindingForm(userPanelSummary.value.bindings);
+    setMessage("绑定状态已保存。");
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    userPanelBindingsSaving.value = false;
+  }
+}
+
+async function clearUserPanelPhone() {
+  userPanelBindingsForm.phoneNumber = "";
+  await saveUserPanelBindings();
+}
+
+async function toggleUserPanelBinding(key) {
+  userPanelBindingsForm[key] = !userPanelBindingsForm[key];
+  await saveUserPanelBindings();
+}
+
+async function revokeUserPanelSession(session) {
+  if (!session?.id) {
+    return;
+  }
+
+  const confirmText = session.isCurrent
+    ? "确定注销当前设备吗？注销后需要重新登录。"
+    : "确定注销这个登录设备吗？";
+
+  if (!window.confirm(confirmText)) {
+    return;
+  }
+
+  userPanelSessionActionId.value = session.id;
+
+  try {
+    const payload = await apiFetch(`/users/me/sessions/${session.id}`, {
+      method: "DELETE"
+    });
+
+    if (payload.loggedOutCurrent) {
+      clearAuthState("当前设备已注销，请重新登录。", "");
+      return;
+    }
+
+    setMessage("登录设备已注销。");
+    await Promise.all([loadUserPanelSessions(), loadUserPanelSummary()]);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    userPanelSessionActionId.value = null;
+  }
+}
+
 async function applyFilters() {
   latestPage.value = 1;
   await loadPublishedArticles();
@@ -1394,7 +1928,7 @@ async function submitLogin() {
     const returnSlug = returnArticleSlugAfterLogin.value;
     setMessage(`欢迎回来，${payload.user.username}。`);
     await loadProfile();
-    await Promise.all([loadPublishedArticles(), loadPopularArticles(), loadUserArticles()]);
+    await Promise.all([loadPublishedArticles(), loadPopularArticles(), loadUserArticles(), loadUserPanelSummary()]);
     if (returnSlug) {
       returnArticleSlugAfterLogin.value = "";
       setHash(`article/${encodeURIComponent(returnSlug)}`);
@@ -1447,8 +1981,17 @@ function closeMobileMenu() {
 }
 
 function setUserPanelTab(tabId) {
+  if (userPanelActiveTab.value === "overview" && tabId !== "overview") {
+    disposeUserPanelCharts();
+  }
+
   userPanelActiveTab.value = tabId;
   userPanelMobileNavOpen.value = false;
+  loadUserPanelTabData(tabId);
+
+  if (tabId === "overview") {
+    nextTick(renderUserPanelCharts);
+  }
 }
 
 function toggleUserPanelMobileNav() {
@@ -1459,8 +2002,17 @@ function closeUserPanelMobileNav() {
   userPanelMobileNavOpen.value = false;
 }
 
-function showUserPanelPlaceholder(featureName) {
-  setMessage(`${featureName}后续接入。`);
+function openUserPanelNotifications() {
+  if (view.value === "articleEditor" && articleEditorHasUnsavedChanges.value && !confirmLeaveArticleEditor()) {
+    return;
+  }
+
+  articleEditorMoreMenuOpen.value = false;
+  userPanelActiveTab.value = "social";
+  userPanelMobileNavOpen.value = false;
+  window.location.hash = "#dashboard";
+  mobileMenuOpen.value = false;
+  loadUserPanelTabData("social");
 }
 
 function showArticleEditorPlaceholder(featureName) {
@@ -2527,6 +3079,18 @@ function disposeAdminCharts() {
   }
 }
 
+function disposeUserPanelCharts() {
+  if (userPanelReadChartInstance) {
+    userPanelReadChartInstance.dispose();
+    userPanelReadChartInstance = null;
+  }
+
+  if (userPanelCategoryChartInstance) {
+    userPanelCategoryChartInstance.dispose();
+    userPanelCategoryChartInstance = null;
+  }
+}
+
 function renderAdminCharts() {
   nextTick(() => {
     if (typeof echarts === "undefined" || view.value !== "admin" || adminActiveTab.value !== "overview") {
@@ -2697,6 +3261,173 @@ function resizeAdminCharts() {
   adminCategoryChartInstance?.resize();
 }
 
+function renderUserPanelCharts() {
+  nextTick(() => {
+    if (typeof echarts === "undefined" || !isUserPanelView.value || userPanelActiveTab.value !== "overview") {
+      return;
+    }
+
+    const readEl = userPanelReadChartRef.value;
+    const categoryEl = userPanelCategoryChartRef.value;
+
+    if (readEl) {
+      if (userPanelReadChartInstance && userPanelReadChartInstance.getDom() !== readEl) {
+        userPanelReadChartInstance.dispose();
+        userPanelReadChartInstance = null;
+      }
+
+      if (!userPanelReadChartInstance) {
+        userPanelReadChartInstance = echarts.init(readEl);
+      }
+
+      const trend = userPanelReadTrend.value;
+      userPanelReadChartInstance.setOption({
+        tooltip: {
+          trigger: "axis",
+          backgroundColor: "#ffffff",
+          borderColor: "#ff6b35",
+          borderWidth: 1,
+          textStyle: {
+            color: "#111827"
+          }
+        },
+        grid: {
+          left: 48,
+          right: 18,
+          top: 24,
+          bottom: 34
+        },
+        xAxis: {
+          type: "category",
+          data: trend.map((item) => item.label),
+          boundaryGap: false,
+          axisTick: {
+            show: false
+          },
+          axisLine: {
+            lineStyle: {
+              color: "#e5e7eb"
+            }
+          },
+          axisLabel: {
+            color: "#9ca3af",
+            fontSize: 12
+          }
+        },
+        yAxis: {
+          type: "value",
+          minInterval: 1,
+          splitLine: {
+            lineStyle: {
+              color: "#f1f5f9",
+              type: "dashed"
+            }
+          },
+          axisLabel: {
+            color: "#8b95a5",
+            fontSize: 12
+          }
+        },
+        series: [
+          {
+            name: "阅读量",
+            type: "line",
+            smooth: true,
+            symbol: "circle",
+            symbolSize: 6,
+            data: trend.map((item) => item.value),
+            lineStyle: {
+              color: "#ff6b35",
+              width: 4
+            },
+            itemStyle: {
+              color: "#ff6b35",
+              borderColor: "#ffffff",
+              borderWidth: 2
+            },
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: "rgba(255, 107, 53, 0.22)" },
+                { offset: 1, color: "rgba(255, 107, 53, 0.02)" }
+              ])
+            }
+          }
+        ]
+      });
+    }
+
+    if (categoryEl && userPanelHasCategoryDistribution.value) {
+      if (userPanelCategoryChartInstance && userPanelCategoryChartInstance.getDom() !== categoryEl) {
+        userPanelCategoryChartInstance.dispose();
+        userPanelCategoryChartInstance = null;
+      }
+
+      if (!userPanelCategoryChartInstance) {
+        userPanelCategoryChartInstance = echarts.init(categoryEl);
+      }
+
+      userPanelCategoryChartInstance.setOption({
+        tooltip: {
+          trigger: "item",
+          backgroundColor: "#ffffff",
+          borderColor: "#ff6b35",
+          borderWidth: 1,
+          textStyle: {
+            color: "#111827"
+          },
+          formatter: "{b}: {c} 篇 ({d}%)"
+        },
+        legend: {
+          bottom: 0,
+          left: "center",
+          itemWidth: 10,
+          itemHeight: 10,
+          textStyle: {
+            color: "#64748b",
+            fontSize: 12
+          }
+        },
+        series: [
+          {
+            type: "pie",
+            radius: ["46%", "72%"],
+            center: ["50%", "44%"],
+            avoidLabelOverlap: true,
+            itemStyle: {
+              borderRadius: 9,
+              borderColor: "#ffffff",
+              borderWidth: 4
+            },
+            label: {
+              show: false
+            },
+            data: userPanelCategoryDistribution.value.map((item) => ({
+              value: item.value,
+              name: item.name,
+              itemStyle: {
+                color: item.color
+              }
+            }))
+          }
+        ]
+      });
+    } else if (userPanelCategoryChartInstance) {
+      userPanelCategoryChartInstance.dispose();
+      userPanelCategoryChartInstance = null;
+    }
+  });
+}
+
+function resizeUserPanelCharts() {
+  userPanelReadChartInstance?.resize();
+  userPanelCategoryChartInstance?.resize();
+}
+
+function resizeCharts() {
+  resizeAdminCharts();
+  resizeUserPanelCharts();
+}
+
 function initTrafficChart() {
   nextTick(() => {
     const el = trafficChartRef.value;
@@ -2745,6 +3476,12 @@ watch(view, (newVal) => {
   } else {
     closeAdminMobileNav();
   }
+
+  if (newVal === "dashboard") {
+    nextTick(renderUserPanelCharts);
+  } else {
+    disposeUserPanelCharts();
+  }
 });
 
 watch(() => articleEditorForm.contentMarkdown, () => {
@@ -2759,11 +3496,17 @@ watch([adminActiveTab, adminCategoryStats], () => {
   }
 });
 
+watch([userPanelActiveTab, userPanelReadTrend, userPanelCategoryDistribution], () => {
+  if (isUserPanelView.value && userPanelActiveTab.value === "overview") {
+    renderUserPanelCharts();
+  }
+});
+
 onMounted(async () => {
   applyThemeMode();
   window.addEventListener("hashchange", handleHashChange);
   window.addEventListener("scroll", handleScroll, { passive: true });
-  window.addEventListener("resize", resizeAdminCharts);
+  window.addEventListener("resize", resizeCharts);
   window.addEventListener("beforeunload", handleBeforeUnload);
   await Promise.all([loadPublishedArticles(), loadArticleFilters(), refreshPublicStats()]);
   if (token.value) {
@@ -2784,9 +3527,10 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener("hashchange", handleHashChange);
   window.removeEventListener("scroll", handleScroll);
-  window.removeEventListener("resize", resizeAdminCharts);
+  window.removeEventListener("resize", resizeCharts);
   window.removeEventListener("beforeunload", handleBeforeUnload);
   disposeAdminCharts();
+  disposeUserPanelCharts();
   if (messageTimer) {
     clearTimeout(messageTimer);
   }
@@ -3193,7 +3937,7 @@ onBeforeUnmount(() => {
         >
           <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
         </button>
-        <button class="user-panel-icon-action" type="button" title="通知" @click="showUserPanelPlaceholder('消息通知')">
+        <button class="user-panel-icon-action" type="button" title="通知" @click="openUserPanelNotifications">
           <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
           <span></span>
         </button>
@@ -3247,12 +3991,14 @@ onBeforeUnmount(() => {
 
         <section v-if="userPanelActiveTab === 'overview'" class="user-panel-tab">
           <div class="user-panel-stat-grid">
-            <article v-for="stat in userPanelStats" :key="stat.label" class="user-panel-stat-card" :class="`tone-${stat.tone}`">
+            <article v-for="stat in userPanelDashboardStats" :key="stat.label" class="user-panel-stat-card" :class="`tone-${stat.tone}`">
               <div>
                 <span>
                   <iconify-icon :icon="stat.icon" width="24"></iconify-icon>
                 </span>
-                <small>{{ stat.note }}</small>
+                <small class="user-panel-stat-delta" :class="`is-${stat.delta?.tone || 'neutral'}`">
+                  {{ stat.delta?.label || "无变化" }}
+                </small>
               </div>
               <p>{{ stat.label }}</p>
               <strong>{{ stat.value }}</strong>
@@ -3263,37 +4009,23 @@ onBeforeUnmount(() => {
             <article class="user-panel-card user-panel-chart-card">
               <div class="user-panel-card-head">
                 <div>
-                  <h2>近 7 日阅读趋势</h2>
-                  <p>后续接入 ECharts 折线图，当前为 CSS 占位。</p>
+                  <h2>近7日阅读趋势</h2>
+                  <p>统计你已发布文章的真实阅读记录。</p>
                 </div>
               </div>
-              <!-- TODO: 后续用 ECharts 接入真实近 7 日阅读趋势数据。 -->
-              <div class="user-panel-line-chart" aria-label="近 7 日阅读趋势占位图">
-                <span style="height: 34%"></span>
-                <span style="height: 58%"></span>
-                <span style="height: 44%"></span>
-                <span style="height: 72%"></span>
-                <span style="height: 52%"></span>
-                <span style="height: 78%"></span>
-                <span style="height: 66%"></span>
-              </div>
+              <div ref="userPanelReadChartRef" class="user-panel-echart"></div>
             </article>
-            <article class="user-panel-card user-panel-category-card">
+            <article class="user-panel-card user-panel-chart-card user-panel-category-card">
               <div class="user-panel-card-head">
                 <div>
                   <h2>文章分类分布</h2>
-                  <p>后续接入 ECharts 环形图，当前为 CSS 占位。</p>
+                  <p>按你创建的文章分类统计。</p>
                 </div>
               </div>
-              <!-- TODO: 后续用 ECharts 接入真实文章分类分布数据。 -->
-              <div class="user-panel-donut" aria-label="文章分类分布占位图"></div>
-              <div class="user-panel-category-list">
-                <p v-if="userPanelCategoryStats.length === 0">暂无分类数据</p>
-                <div v-for="item in userPanelCategoryStats" :key="item.name">
-                  <span></span>
-                  <strong>{{ item.name }}</strong>
-                  <small>{{ item.count }} 篇</small>
-                </div>
+              <div v-if="userPanelHasCategoryDistribution" ref="userPanelCategoryChartRef" class="user-panel-echart user-panel-donut-chart"></div>
+              <div v-else class="user-panel-chart-empty">
+                <iconify-icon icon="mdi:chart-donut" width="34"></iconify-icon>
+                <strong>暂无分类数据</strong>
               </div>
             </article>
           </div>
@@ -3367,46 +4099,129 @@ onBeforeUnmount(() => {
         </section>
 
         <section v-else-if="userPanelActiveTab === 'favorites'" class="user-panel-tab">
-          <div class="user-panel-card user-panel-empty-card">
-            <iconify-icon icon="mdi:bookmark-heart-outline" width="54"></iconify-icon>
-            <h2>我的收藏列表后续接入</h2>
-            <p>当前版本只完成用户面板 UI。收藏状态和计数已存在，后续可补充收藏列表 API。</p>
-            <button type="button" @click="openPublicHome">去首页阅读文章</button>
+          <div class="user-panel-card user-panel-filter-card">
+            <label class="user-panel-search-box">
+              <iconify-icon icon="mdi:magnify" width="22"></iconify-icon>
+              <input v-model="userPanelFavoriteSearch" placeholder="搜索收藏文章..." type="search" />
+            </label>
+            <label class="user-panel-select-box">
+              <span class="sr-only">收藏分类</span>
+              <select v-model="userPanelFavoriteCategory">
+                <option value="">全部分类</option>
+                <option v-for="category in userPanelFavoriteCategories" :key="category.name" :value="category.name">
+                  {{ category.name }}
+                </option>
+              </select>
+              <iconify-icon icon="mdi:chevron-down" width="20"></iconify-icon>
+            </label>
+            <button class="user-panel-text-action" type="button" @click="clearUserPanelFavoriteFilters">清空筛选</button>
+          </div>
+
+          <div class="user-panel-favorite-stats">
+            <article v-for="stat in userPanelFavoriteStatCards" :key="stat.label" class="user-panel-favorite-stat" :class="`tone-${stat.tone}`">
+              <strong>{{ stat.value }}</strong>
+              <span>{{ stat.label }}</span>
+            </article>
+          </div>
+
+          <div class="user-panel-card">
+            <div class="user-panel-card-head">
+              <div>
+                <h2>我的收藏</h2>
+                <p>最多展示最近 50 条公开收藏，列表可滚动浏览。</p>
+              </div>
+              <button type="button" :disabled="userPanelFavoritesLoading" @click="loadUserPanelFavorites">
+                <iconify-icon icon="mdi:refresh" width="20"></iconify-icon>
+              </button>
+            </div>
+            <div class="user-panel-favorite-list user-panel-scroll-area">
+              <article v-for="article in filteredUserPanelFavorites" :key="article.id" class="user-panel-favorite-item">
+                <button class="user-panel-favorite-cover" :class="`tone-${article.coverTone}`" type="button" @click="openUserPanelArticle(article.slug)">
+                  {{ article.coverLabel }}
+                </button>
+                <div class="user-panel-favorite-body">
+                  <button class="user-panel-link-title" type="button" @click="openUserPanelArticle(article.slug)">{{ article.title }}</button>
+                  <span class="user-panel-tag-chip">{{ article.categoryLabel }}</span>
+                  <p>{{ article.summaryText }}</p>
+                  <div class="user-panel-favorite-meta">
+                    <span>作者：{{ article.authorLabel }}</span>
+                    <span>收藏于：{{ article.dateLabel }}</span>
+                    <span>阅读：{{ formatCompactNumber(article.stats?.viewCount) }}</span>
+                    <span>点赞：{{ formatCompactNumber(article.stats?.likeCount) }}</span>
+                    <span>收藏：{{ formatCompactNumber(article.stats?.favoriteCount) }}</span>
+                  </div>
+                  <div class="user-panel-tag-row">
+                    <span v-for="tag in article.tags" :key="tag.id || tag.name">#{{ tag.name }}</span>
+                  </div>
+                </div>
+                <button class="user-panel-muted-action" :disabled="userPanelFavoriteActionSlug === article.slug" type="button" @click="removeUserPanelFavorite(article)">
+                  {{ userPanelFavoriteActionSlug === article.slug ? "处理中" : "取消收藏" }}
+                </button>
+              </article>
+              <div v-if="!userPanelFavoritesLoading && filteredUserPanelFavorites.length === 0" class="user-panel-inline-empty">
+                <iconify-icon icon="mdi:bookmark-outline" width="34"></iconify-icon>
+                <strong>暂无匹配收藏</strong>
+                <p>可以清空筛选，或去首页阅读并收藏文章。</p>
+                <button type="button" @click="openPublicHome">去首页阅读</button>
+              </div>
+            </div>
           </div>
         </section>
 
         <section v-else-if="userPanelActiveTab === 'social'" class="user-panel-tab">
           <div class="user-panel-social-grid">
-            <article class="user-panel-card">
+            <article class="user-panel-card user-panel-social-main">
               <div class="user-panel-card-head">
                 <div>
-                  <h2>我的评论</h2>
-                  <p>后续展示我发表的评论与回复记录。</p>
+                  <h2><iconify-icon icon="mdi:comment-text-outline" width="22"></iconify-icon> 评论管理</h2>
+                  <p>查看其他用户在你文章下发表的评论和回复。</p>
                 </div>
+                <button type="button" :disabled="userPanelSocialLoading" @click="loadUserPanelSocial">
+                  <iconify-icon icon="mdi:refresh" width="20"></iconify-icon>
+                </button>
               </div>
-              <div class="user-panel-comment-placeholder">
-                <span class="user-panel-avatar">评</span>
-                <div>
-                  <strong>评论记录后续接入</strong>
-                  <p>将展示评论内容、所属文章和快捷跳转。</p>
+              <div class="user-panel-comment-list user-panel-scroll-area">
+                <article v-for="comment in userPanelCommentRows" :key="comment.id" class="user-panel-comment-item">
+                  <span class="user-panel-comment-avatar">{{ comment.initial }}</span>
+                  <div>
+                    <div class="user-panel-comment-meta">
+                      <strong>{{ comment.authorLabel }}</strong>
+                      <span>{{ comment.dateLabel }}</span>
+                    </div>
+                    <button class="user-panel-comment-article" type="button" @click="openUserPanelArticle(comment.article?.slug)">
+                      {{ comment.typeLabel }}文章：{{ comment.article?.title || "未知文章" }}
+                    </button>
+                    <p v-if="comment.replyToLabel" class="user-panel-reply-target">{{ comment.replyToLabel }}</p>
+                    <p class="user-panel-comment-content">{{ comment.excerpt }}</p>
+                  </div>
+                </article>
+                <div v-if="!userPanelSocialLoading && userPanelCommentRows.length === 0" class="user-panel-inline-empty">
+                  <iconify-icon icon="mdi:comment-outline" width="34"></iconify-icon>
+                  <strong>暂无评论记录</strong>
+                  <p>当其他用户评论你的文章后，这里会显示评论记录。</p>
                 </div>
               </div>
             </article>
-            <article class="user-panel-card">
+            <article class="user-panel-card user-panel-notice-card">
               <div class="user-panel-card-head">
                 <div>
-                  <h2>互动通知</h2>
-                  <p>后续展示回复、点赞、收藏等互动。</p>
+                  <h2><iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon> 消息通知</h2>
+                  <p>来自评论、点赞和收藏的最新互动。</p>
                 </div>
               </div>
-              <div class="user-panel-notice-list">
-                <div>
-                  <span><iconify-icon icon="mdi:heart-outline" width="20"></iconify-icon></span>
-                  <p>你的文章获得点赞后会显示在这里。</p>
-                </div>
-                <div>
-                  <span><iconify-icon icon="mdi:comment-outline" width="20"></iconify-icon></span>
-                  <p>有人回复你的评论后会显示在这里。</p>
+              <div class="user-panel-notice-list user-panel-scroll-area">
+                <article v-for="notice in userPanelInteractionRows" :key="notice.id" class="user-panel-notice-item" :class="`tone-${notice.tone}`">
+                  <span><iconify-icon :icon="notice.icon" width="20"></iconify-icon></span>
+                  <div>
+                    <strong>{{ notice.message }}</strong>
+                    <button type="button" @click="openUserPanelArticle(notice.article?.slug)">{{ notice.article?.title }}</button>
+                    <small>{{ notice.dateLabel }}</small>
+                  </div>
+                </article>
+                <div v-if="!userPanelSocialLoading && userPanelInteractionRows.length === 0" class="user-panel-inline-empty">
+                  <iconify-icon icon="mdi:bell-sleep-outline" width="34"></iconify-icon>
+                  <strong>暂无互动通知</strong>
+                  <p>当有人评论、回复、点赞或收藏你的内容时，会出现在这里。</p>
                 </div>
               </div>
             </article>
@@ -3414,74 +4229,103 @@ onBeforeUnmount(() => {
         </section>
 
         <section v-else-if="userPanelActiveTab === 'security'" class="user-panel-tab">
-          <div class="user-panel-security-stack">
-            <article class="user-panel-card user-panel-form-card">
+          <div class="user-panel-security-layout">
+            <div class="user-panel-security-stack">
+              <article class="user-panel-card user-panel-form-card">
+                <div class="user-panel-card-head">
+                  <div>
+                    <h2>修改登录密码</h2>
+                    <p>更新后会保留当前设备，其他设备将退出登录。</p>
+                  </div>
+                </div>
+                <form @submit.prevent="submitUserPanelPassword">
+                  <label>
+                    <span>当前密码</span>
+                    <input v-model="userPanelPasswordForm.currentPassword" autocomplete="current-password" placeholder="请输入当前密码" type="password" />
+                  </label>
+                  <label>
+                    <span>新密码</span>
+                    <input v-model="userPanelPasswordForm.newPassword" autocomplete="new-password" placeholder="请输入新密码" type="password" />
+                  </label>
+                  <label>
+                    <span>确认新密码</span>
+                    <input v-model="userPanelPasswordForm.confirmPassword" autocomplete="new-password" placeholder="请再次输入新密码" type="password" />
+                  </label>
+                  <button type="submit" :disabled="userPanelPasswordSaving">{{ userPanelPasswordSaving ? "更新中" : "更新密码" }}</button>
+                </form>
+              </article>
+              <article class="user-panel-card user-panel-form-card">
+                <div class="user-panel-card-head">
+                  <div>
+                    <h2>手机号码绑定</h2>
+                    <p>当前仅保存手机号，本版不做短信验证。</p>
+                  </div>
+                </div>
+                <form class="user-panel-phone-form" @submit.prevent="saveUserPanelBindings">
+                  <label>
+                    <span>手机号码</span>
+                    <input v-model.trim="userPanelBindingsForm.phoneNumber" autocomplete="tel" placeholder="请输入手机号" type="tel" />
+                  </label>
+                  <button type="submit" :disabled="userPanelBindingsSaving">{{ userPanelBindingsSaving ? "保存中" : "保存手机号" }}</button>
+                  <button class="user-panel-secondary-button" type="button" :disabled="userPanelBindingsSaving || !userPanelBindingsForm.phoneNumber" @click="clearUserPanelPhone">清空</button>
+                </form>
+              </article>
+              <article class="user-panel-card">
+                <div class="user-panel-card-head">
+                  <div>
+                    <h2>第三方账号绑定</h2>
+                    <p>仅保存本地绑定标记，不进行真实第三方授权。</p>
+                  </div>
+                </div>
+                <div class="user-panel-bind-grid">
+                  <button type="button" :class="{ 'is-bound': userPanelBindingsForm.wechatBound }" :disabled="userPanelBindingsSaving" @click="toggleUserPanelBinding('wechatBound')">
+                    <iconify-icon icon="mdi:wechat" width="24"></iconify-icon>
+                    <span>微信</span>
+                    <small>{{ userPanelBindingsForm.wechatBound ? "取消绑定" : "标记已绑定" }}</small>
+                  </button>
+                  <button type="button" :class="{ 'is-bound': userPanelBindingsForm.qqBound }" :disabled="userPanelBindingsSaving" @click="toggleUserPanelBinding('qqBound')">
+                    <iconify-icon icon="mdi:qqchat" width="24"></iconify-icon>
+                    <span>QQ</span>
+                    <small>{{ userPanelBindingsForm.qqBound ? "取消绑定" : "标记已绑定" }}</small>
+                  </button>
+                  <button type="button" :class="{ 'is-bound': userPanelBindingsForm.alipayBound }" :disabled="userPanelBindingsSaving" @click="toggleUserPanelBinding('alipayBound')">
+                    <iconify-icon icon="mdi:credit-card-outline" width="24"></iconify-icon>
+                    <span>支付宝</span>
+                    <small>{{ userPanelBindingsForm.alipayBound ? "取消绑定" : "标记已绑定" }}</small>
+                  </button>
+                </div>
+              </article>
+            </div>
+            <aside class="user-panel-device-card user-panel-card">
               <div class="user-panel-card-head">
                 <div>
-                  <h2>修改登录密码</h2>
-                  <p>表单 UI 已预留，接口后续接入。</p>
+                  <h2>登录设备</h2>
+                  <p>{{ userPanelActiveSessionCount }} 个活跃设备，当前设备会被标记。</p>
                 </div>
-              </div>
-              <form @submit.prevent="showUserPanelPlaceholder('修改密码')">
-                <label>
-                  <span>当前密码</span>
-                  <input autocomplete="current-password" placeholder="请输入当前密码" type="password" />
-                </label>
-                <label>
-                  <span>新密码</span>
-                  <input autocomplete="new-password" placeholder="请输入新密码" type="password" />
-                </label>
-                <label>
-                  <span>确认新密码</span>
-                  <input autocomplete="new-password" placeholder="请再次输入新密码" type="password" />
-                </label>
-                <button type="submit">更新密码</button>
-              </form>
-            </article>
-            <article class="user-panel-card user-panel-form-card">
-              <div class="user-panel-card-head">
-                <div>
-                  <h2>手机号码绑定</h2>
-                  <p>验证码与手机号绑定接口后续接入。</p>
-                </div>
-              </div>
-              <form @submit.prevent="showUserPanelPlaceholder('手机绑定')">
-                <label>
-                  <span>更换新手机号</span>
-                  <input placeholder="请输入手机号" type="text" />
-                </label>
-                <label>
-                  <span>短信验证码</span>
-                  <input placeholder="6 位验证码" type="text" />
-                </label>
-                <button type="submit">确认修改</button>
-              </form>
-            </article>
-            <article class="user-panel-card">
-              <div class="user-panel-card-head">
-                <div>
-                  <h2>第三方账号绑定</h2>
-                  <p>微信、QQ、支付宝等绑定能力后续接入。</p>
-                </div>
-              </div>
-              <div class="user-panel-bind-grid">
-                <button type="button" @click="showUserPanelPlaceholder('微信绑定')">
-                  <iconify-icon icon="mdi:wechat" width="24"></iconify-icon>
-                  <span>微信</span>
-                  <small>去绑定</small>
-                </button>
-                <button type="button" @click="showUserPanelPlaceholder('QQ 绑定')">
-                  <iconify-icon icon="mdi:qqchat" width="24"></iconify-icon>
-                  <span>QQ</span>
-                  <small>去绑定</small>
-                </button>
-                <button type="button" @click="showUserPanelPlaceholder('支付宝绑定')">
-                  <iconify-icon icon="mdi:credit-card-outline" width="24"></iconify-icon>
-                  <span>支付宝</span>
-                  <small>去绑定</small>
+                <button type="button" :disabled="userPanelSecurityLoading" @click="loadUserPanelSessions">
+                  <iconify-icon icon="mdi:refresh" width="20"></iconify-icon>
                 </button>
               </div>
-            </article>
+              <div class="user-panel-session-list user-panel-scroll-area">
+                <article v-for="session in userPanelSessionRows" :key="session.id" class="user-panel-session-item" :class="{ 'is-current': session.isCurrent }">
+                  <span class="user-panel-session-icon">
+                    <iconify-icon :icon="session.isCurrent ? 'mdi:cellphone-key' : 'mdi:devices'" width="20"></iconify-icon>
+                  </span>
+                  <div>
+                    <strong>{{ session.title }}</strong>
+                    <p>{{ session.browserLabel }}</p>
+                    <small>{{ session.ipLabel }} · {{ session.activeLabel }}</small>
+                  </div>
+                  <button type="button" :disabled="userPanelSessionActionId === session.id" @click="revokeUserPanelSession(session)">
+                    {{ userPanelSessionActionId === session.id ? "处理中" : "注销" }}
+                  </button>
+                </article>
+                <div v-if="!userPanelSecurityLoading && userPanelSessions.length === 0" class="user-panel-inline-empty">
+                  <iconify-icon icon="mdi:devices" width="34"></iconify-icon>
+                  <strong>暂无活跃设备</strong>
+                </div>
+              </div>
+            </aside>
           </div>
         </section>
       </main>
@@ -3545,7 +4389,7 @@ onBeforeUnmount(() => {
         >
           <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
         </button>
-        <button class="user-panel-icon-action" type="button" title="通知" @click="showUserPanelPlaceholder('消息通知')">
+        <button class="user-panel-icon-action" type="button" title="通知" @click="openUserPanelNotifications">
           <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
           <span></span>
         </button>

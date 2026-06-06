@@ -51,6 +51,10 @@ export function sanitizeUser(user) {
     id: user.id,
     username: user.username,
     email: user.email,
+    phoneNumber: user.phoneNumber ?? null,
+    wechatBound: Boolean(user.wechatBound),
+    qqBound: Boolean(user.qqBound),
+    alipayBound: Boolean(user.alipayBound),
     role: user.role,
     createdAt: user.createdAt
   };

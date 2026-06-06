@@ -1187,6 +1187,447 @@ test("article comments can be viewed publicly, created by users, and deleted by 
   });
 });
 
+test("user panel APIs expose favorites, comments, interactions, sessions, password, and bindings", async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const panelEmail = `panel_user_${suffix}@example.com`;
+  const otherEmail = `panel_other_${suffix}@example.com`;
+  const thirdEmail = `panel_third_${suffix}@example.com`;
+
+  try {
+    const panelUser = await createRegisteredUser({
+      username: `panel_user_${suffix}`,
+      email: panelEmail
+    });
+    const otherUser = await createRegisteredUser({
+      username: `panel_other_${suffix}`,
+      email: otherEmail
+    });
+    const thirdUser = await createRegisteredUser({
+      username: `panel_third_${suffix}`,
+      email: thirdEmail
+    });
+    const category = await prisma.category.create({
+      data: {
+        name: `Panel Category ${suffix}`,
+        slug: `panel-category-${suffix}`
+      }
+    });
+    const panelArticle = await prisma.article.create({
+      data: {
+        authorId: panelUser.user.id,
+        categoryId: category.id,
+        title: "Panel Owned Article",
+        slug: `panel-owned-${suffix}`,
+        contentMarkdown: "# Panel Owned Article",
+        contentHtml: "<h1>Panel Owned Article</h1>",
+        chapterOrder: 1,
+        status: "PUBLISHED",
+        publishedAt: new Date()
+      }
+    });
+    const favoriteTarget = await prisma.article.create({
+      data: {
+        authorId: otherUser.user.id,
+        categoryId: category.id,
+        title: "Favorite Target Article",
+        slug: `favorite-target-${suffix}`,
+        contentMarkdown: "# Favorite Target Article",
+        contentHtml: "<h1>Favorite Target Article</h1>",
+        chapterOrder: 2,
+        status: "PUBLISHED",
+        publishedAt: new Date()
+      }
+    });
+    await prisma.articleStats.create({
+      data: {
+        articleId: panelArticle.id,
+        viewCount: 98,
+        likeCount: 200,
+        favoriteCount: 99
+      }
+    });
+
+    const favoriteResult = await apiRequest(`/articles/${favoriteTarget.slug}/favorites`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${panelUser.token}`
+    }
+  });
+  assert.equal(favoriteResult.status, 200);
+  assert.equal(favoriteResult.body.changed, true);
+
+  const myComment = await apiRequest(`/comments/articles/${favoriteTarget.slug}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${panelUser.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      content: "This is my panel comment."
+    })
+  });
+  assert.equal(myComment.status, 201);
+
+  const replyToMyComment = await apiRequest(`/comments/articles/${favoriteTarget.slug}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${otherUser.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      content: "Replying to the panel comment.",
+      parentId: myComment.body.comment.id,
+      replyToCommentId: myComment.body.comment.id
+    })
+  });
+  assert.equal(replyToMyComment.status, 201);
+
+  const commentOnMyArticle = await apiRequest(`/comments/articles/${panelArticle.slug}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${otherUser.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      content: "Commenting on your article."
+    })
+  });
+  assert.equal(commentOnMyArticle.status, 201);
+
+  const likeMyArticle = await apiRequest(`/articles/${panelArticle.slug}/likes`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${otherUser.token}`
+    }
+  });
+  assert.equal(likeMyArticle.status, 200);
+
+  const favoriteMyArticle = await apiRequest(`/articles/${panelArticle.slug}/favorites`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${otherUser.token}`
+    }
+  });
+  assert.equal(favoriteMyArticle.status, 200);
+
+  const likeMyComment = await apiRequest(`/comments/${myComment.body.comment.id}/likes`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${otherUser.token}`
+    }
+  });
+  assert.equal(likeMyComment.status, 200);
+
+  const firstRead = await apiRequest(`/articles/${panelArticle.slug}/views`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      visitorId: `panel-visitor-a-${suffix}`
+    })
+  });
+  assert.equal(firstRead.status, 200);
+  assert.equal(firstRead.body.counted, true);
+
+  const secondRead = await apiRequest(`/articles/${panelArticle.slug}/views`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      visitorId: `panel-visitor-b-${suffix}`
+    })
+  });
+  assert.equal(secondRead.status, 200);
+  assert.equal(secondRead.body.counted, true);
+
+  const summaryResult = await apiRequest("/users/me/summary", {
+    headers: {
+      Authorization: `Bearer ${panelUser.token}`
+    }
+  });
+  assert.equal(summaryResult.status, 200);
+  assert.equal(summaryResult.body.summary.articleCount, 1);
+  assert.equal(summaryResult.body.summary.viewCount, 100);
+  assert.equal(summaryResult.body.summary.likeCount, 201);
+  assert.equal(summaryResult.body.summary.favoriteCount, 100);
+  assert.equal(summaryResult.body.summary.savedFavoriteCount, 1);
+  assert.equal(summaryResult.body.summary.commentCount, 1);
+  assert.equal(summaryResult.body.summary.interactionCount, 5);
+  assert.equal(summaryResult.body.summary.readTrend.length, 7);
+  assert.ok(summaryResult.body.summary.readTrend.reduce((total, item) => total + item.value, 0) >= 2);
+  assert.equal(summaryResult.body.summary.deltas.articleCount.label, "无变化");
+  assert.equal(summaryResult.body.summary.deltas.articleCount.tone, "neutral");
+  assert.equal(summaryResult.body.summary.deltas.viewCount.label, "+2%");
+  assert.equal(summaryResult.body.summary.deltas.viewCount.tone, "positive");
+  assert.equal(summaryResult.body.summary.deltas.likeCount.label, "+1");
+  assert.equal(summaryResult.body.summary.deltas.favoriteCount.label, "+1%");
+  assert.deepEqual(summaryResult.body.summary.categoryDistribution[0], {
+    name: category.name,
+    value: 1
+  });
+
+  const favoritesResult = await apiRequest("/users/me/favorites", {
+    headers: {
+      Authorization: `Bearer ${panelUser.token}`
+    }
+  });
+  assert.equal(favoritesResult.status, 200);
+  assert.equal(favoritesResult.body.favorites.length, 1);
+  assert.equal(favoritesResult.body.favorites[0].article.slug, favoriteTarget.slug);
+  assert.equal(favoritesResult.body.favorites[0].article.category.slug, category.slug);
+  assert.ok(favoritesResult.body.favorites[0].favoritedAt);
+
+  const commentsResult = await apiRequest("/users/me/comments", {
+    headers: {
+      Authorization: `Bearer ${panelUser.token}`
+    }
+  });
+  assert.equal(commentsResult.status, 200);
+  assert.equal(commentsResult.body.comments.length, 1);
+  assert.equal(commentsResult.body.comments[0].type, "comment");
+  assert.equal(commentsResult.body.comments[0].article.slug, panelArticle.slug);
+  assert.equal(commentsResult.body.comments[0].author.username, otherUser.user.username);
+  assert.equal(commentsResult.body.comments[0].excerpt, "Commenting on your article.");
+
+  const interactionsResult = await apiRequest("/users/me/interactions", {
+    headers: {
+      Authorization: `Bearer ${panelUser.token}`
+    }
+  });
+  assert.equal(interactionsResult.status, 200);
+  assert.deepEqual(
+    new Set(interactionsResult.body.interactions.map((interaction) => interaction.type)),
+    new Set(["reply_to_my_comment", "comment_on_my_article", "like_my_article", "favorite_my_article", "like_my_comment"])
+  );
+  assert.equal(
+    interactionsResult.body.interactions.filter((interaction) => interaction.type === "reply_to_my_comment").length,
+    1
+  );
+
+  const clearFavoriteResult = await apiRequest(`/articles/${favoriteTarget.slug}/favorites`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${panelUser.token}`
+    }
+  });
+  assert.equal(clearFavoriteResult.status, 200);
+  assert.equal(clearFavoriteResult.body.changed, true);
+  const favoriteDeleteEvents = await prisma.$queryRaw`
+    SELECT delta
+    FROM article_metric_events
+    WHERE article_id = ${favoriteTarget.id}
+      AND user_id = ${otherUser.user.id}
+      AND actor_user_id = ${panelUser.user.id}
+      AND metric = 'favorites'
+      AND delta = -1
+  `;
+  assert.equal(Number(favoriteDeleteEvents[0]?.delta), -1);
+
+  const favoritesAfterDeleteResult = await apiRequest("/users/me/favorites", {
+    headers: {
+      Authorization: `Bearer ${panelUser.token}`
+    }
+  });
+  assert.equal(favoritesAfterDeleteResult.status, 200);
+  assert.equal(favoritesAfterDeleteResult.body.favorites.length, 0);
+
+  const secondLogin = await apiRequest("/auth/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      account: `panel_user_${suffix}@example.com`,
+      password: "Passw0rd!"
+    })
+  });
+  assert.equal(secondLogin.status, 200);
+
+  const sessionsResult = await apiRequest("/users/me/sessions", {
+    headers: {
+      Authorization: `Bearer ${secondLogin.body.token}`
+    }
+  });
+  assert.equal(sessionsResult.status, 200);
+  assert.ok(sessionsResult.body.sessions.length >= 2);
+  assert.equal(sessionsResult.body.sessions.filter((session) => session.isCurrent).length, 1);
+  const oldSession = sessionsResult.body.sessions.find((session) => !session.isCurrent);
+  assert.ok(oldSession);
+
+  const deleteSessionResult = await apiRequest(`/users/me/sessions/${oldSession.id}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${secondLogin.body.token}`
+    }
+  });
+  assert.equal(deleteSessionResult.status, 200);
+  assert.equal(deleteSessionResult.body.loggedOutCurrent, false);
+
+  const deletedSessionMe = await apiRequest("/auth/me", {
+    headers: {
+      Authorization: `Bearer ${panelUser.token}`
+    }
+  });
+  assert.equal(deletedSessionMe.status, 401);
+
+  const thirdLogin = await apiRequest("/auth/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      account: `panel_user_${suffix}@example.com`,
+      password: "Passw0rd!"
+    })
+  });
+  assert.equal(thirdLogin.status, 200);
+
+  const wrongPasswordResult = await apiRequest("/users/me/password", {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${secondLogin.body.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      currentPassword: "wrong-password",
+      newPassword: "NewPassw0rd!",
+      confirmPassword: "NewPassw0rd!"
+    })
+  });
+  assert.equal(wrongPasswordResult.status, 401);
+
+  const changePasswordResult = await apiRequest("/users/me/password", {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${secondLogin.body.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      currentPassword: "Passw0rd!",
+      newPassword: "NewPassw0rd!",
+      confirmPassword: "NewPassw0rd!"
+    })
+  });
+  assert.equal(changePasswordResult.status, 200);
+
+  const currentSessionAfterPassword = await apiRequest("/auth/me", {
+    headers: {
+      Authorization: `Bearer ${secondLogin.body.token}`
+    }
+  });
+  assert.equal(currentSessionAfterPassword.status, 200);
+
+  const otherSessionAfterPassword = await apiRequest("/auth/me", {
+    headers: {
+      Authorization: `Bearer ${thirdLogin.body.token}`
+    }
+  });
+  assert.equal(otherSessionAfterPassword.status, 401);
+
+  const oldPasswordLogin = await apiRequest("/auth/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      account: `panel_user_${suffix}@example.com`,
+      password: "Passw0rd!"
+    })
+  });
+  assert.equal(oldPasswordLogin.status, 401);
+
+  const newPasswordLogin = await apiRequest("/auth/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      account: `panel_user_${suffix}@example.com`,
+      password: "NewPassw0rd!"
+    })
+  });
+  assert.equal(newPasswordLogin.status, 200);
+
+  const invalidPhoneResult = await apiRequest("/users/me/bindings", {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${secondLogin.body.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      phoneNumber: "123",
+      wechatBound: true
+    })
+  });
+  assert.equal(invalidPhoneResult.status, 400);
+
+  const bindingResult = await apiRequest("/users/me/bindings", {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${secondLogin.body.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      phoneNumber: "13812345678",
+      wechatBound: true,
+      qqBound: false,
+      alipayBound: true
+    })
+  });
+  assert.equal(bindingResult.status, 200);
+  assert.equal(bindingResult.body.bindings.phoneNumber, "13812345678");
+  assert.equal(bindingResult.body.bindings.wechatBound, true);
+  assert.equal(bindingResult.body.bindings.alipayBound, true);
+
+  const duplicatePhoneResult = await apiRequest("/users/me/bindings", {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${thirdUser.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      phoneNumber: "13812345678"
+    })
+  });
+  assert.equal(duplicatePhoneResult.status, 409);
+
+  const clearBindingResult = await apiRequest("/users/me/bindings", {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${secondLogin.body.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      phoneNumber: "",
+      wechatBound: false,
+      qqBound: false,
+      alipayBound: false
+    })
+  });
+  assert.equal(clearBindingResult.status, 200);
+  assert.equal(clearBindingResult.body.bindings.phoneNumber, null);
+  assert.equal(clearBindingResult.body.bindings.wechatBound, false);
+
+    await prisma.user.deleteMany({
+      where: {
+        email: {
+          in: [panelEmail, otherEmail, thirdEmail]
+        }
+      }
+    });
+  } finally {
+    await prisma.user.deleteMany({
+      where: {
+        email: {
+          in: [panelEmail, otherEmail, thirdEmail]
+        }
+      }
+    });
+  }
+});
+
 test("article stats APIs count real reads, reactions, favorites, comments, and popular ranking", async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
   const adminEmail = `stats_admin_${suffix}@example.com`;

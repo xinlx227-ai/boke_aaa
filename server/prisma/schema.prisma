@@ -31,6 +31,10 @@ model User {
   username        String           @unique @db.VarChar(50)
   email           String           @unique @db.VarChar(100)
   passwordHash    String           @map("password_hash") @db.VarChar(255)
+  phoneNumber     String?          @unique @map("phone_number") @db.VarChar(20)
+  wechatBound     Boolean          @default(false) @map("wechat_bound")
+  qqBound         Boolean          @default(false) @map("qq_bound")
+  alipayBound     Boolean          @default(false) @map("alipay_bound")
   role            UserRole         @default(USER)
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
@@ -95,6 +99,21 @@ model ArticleStats {
   article       Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
 
   @@map("article_stats")
+}
+
+model ArticleMetricEvent {
+  id          Int      @id @default(autoincrement())
+  articleId   Int      @map("article_id")
+  userId      Int      @map("user_id")
+  actorUserId Int?     @map("actor_user_id")
+  metric      String   @db.VarChar(20)
+  delta       Int
+  occurredAt  DateTime @default(now()) @map("occurred_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([userId, metric, occurredAt])
+  @@index([articleId, metric, occurredAt])
+  @@map("article_metric_events")
 }
 
 model ArticleView {

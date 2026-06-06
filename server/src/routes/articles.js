@@ -24,6 +24,12 @@ const HOT_SCORE_WEIGHTS = {
   favorites: 8,
   comments: 3
 };
+const ARTICLE_METRIC = {
+  ARTICLES: "articles",
+  VIEWS: "views",
+  LIKES: "likes",
+  FAVORITES: "favorites"
+};
 const SUBMISSION_STATUS = {
   DRAFT: "DRAFT",
   PENDING_REVIEW: "PENDING_REVIEW",
@@ -371,6 +377,39 @@ async function ensureArticleStats(articleId, tx = prisma) {
   `;
 }
 
+async function recordArticleMetricEvent({ articleId, userId, metric, delta, actorUserId = null, occurredAt = new Date() }, tx = prisma) {
+  await tx.$executeRaw`
+    INSERT INTO article_metric_events (article_id, user_id, actor_user_id, metric, delta, occurred_at, created_at)
+    VALUES (${articleId}, ${userId}, ${actorUserId}, ${metric}, ${delta}, ${occurredAt}, CURRENT_TIMESTAMP(3))
+  `;
+}
+
+async function recordArticlePublishEvent(article, tx = prisma) {
+  if (!article?.id || !article?.authorId) {
+    return;
+  }
+
+  await recordArticleMetricEvent({
+    articleId: article.id,
+    userId: article.authorId,
+    metric: ARTICLE_METRIC.ARTICLES,
+    delta: 1
+  }, tx);
+}
+
+async function recordArticleDeleteEvent(article, tx = prisma) {
+  if (!article?.id || !article?.authorId || article.status !== ArticleStatus.PUBLISHED) {
+    return;
+  }
+
+  await recordArticleMetricEvent({
+    articleId: article.id,
+    userId: article.authorId,
+    metric: ARTICLE_METRIC.ARTICLES,
+    delta: -1
+  }, tx);
+}
+
 async function buildStatsByArticleId(articleIds, userId = null) {
   const uniqueArticleIds = Array.from(new Set(articleIds.filter(Boolean)));
   const statsByArticleId = new Map();
@@ -497,7 +536,7 @@ async function recordSiteVisit({ pageType, articleId = null, userId = null, visi
   return true;
 }
 
-async function recordArticleView({ articleId, userId = null, visitorId, now = new Date() }) {
+async function recordArticleView({ articleId, authorUserId, userId = null, visitorId, now = new Date() }) {
   const normalizedVisitorId = normalizeVisitorId(visitorId);
 
   if (!userId && !normalizedVisitorId) {
@@ -547,6 +586,14 @@ async function recordArticleView({ articleId, userId = null, visitorId, now = ne
       VALUES (${articleId}, 1, 0, 0, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
       ON DUPLICATE KEY UPDATE view_count = view_count + 1, updated_at = CURRENT_TIMESTAMP(3)
     `;
+    await recordArticleMetricEvent({
+      articleId,
+      userId: authorUserId,
+      actorUserId: userId,
+      metric: ARTICLE_METRIC.VIEWS,
+      delta: 1,
+      occurredAt: now
+    }, tx);
   });
 
   await recordSiteVisit({
@@ -1857,17 +1904,22 @@ router.post("/admin/reviews/:id/approve", requireAuth, requireRole("ADMIN"), asy
     }
 
     const reviewedAt = new Date();
-    const article = await prisma.article.update({
-      where: {
-        id: articleId
-      },
-      data: {
-        status: SUBMISSION_STATUS.PUBLISHED,
-        reviewedAt,
-        reviewerId: req.auth.userId,
-        reviewNote: null
-      },
-      include: articleInclude()
+    const article = await prisma.$transaction(async (tx) => {
+      const updatedArticle = await tx.article.update({
+        where: {
+          id: articleId
+        },
+        data: {
+          status: SUBMISSION_STATUS.PUBLISHED,
+          reviewedAt,
+          reviewerId: req.auth.userId,
+          reviewNote: null
+        },
+        include: articleInclude()
+      });
+      await recordArticlePublishEvent(updatedArticle, tx);
+
+      return updatedArticle;
     });
     await setPublishedAtIfMissing(articleId);
     const [articleWithPublishTime] = await withArticlePublishTimes([article]);
@@ -1983,6 +2035,7 @@ router.post("/:slug/views", attachOptionalAuth, async (req, res, next) => {
 
     const counted = await recordArticleView({
       articleId: article.id,
+      authorUserId: article.authorId,
       userId: req.auth?.userId || null,
       visitorId
     });
@@ -2026,6 +2079,13 @@ router.post("/:slug/likes", requireAuth, async (req, res, next) => {
           SET like_count = like_count + 1, updated_at = CURRENT_TIMESTAMP(3)
           WHERE article_id = ${article.id}
         `;
+        await recordArticleMetricEvent({
+          articleId: article.id,
+          userId: article.authorId,
+          actorUserId: req.auth.userId,
+          metric: ARTICLE_METRIC.LIKES,
+          delta: 1
+        }, tx);
         changed = true;
       }
     });
@@ -2067,6 +2127,13 @@ router.delete("/:slug/likes", requireAuth, async (req, res, next) => {
           SET like_count = GREATEST(like_count - 1, 0), updated_at = CURRENT_TIMESTAMP(3)
           WHERE article_id = ${article.id}
         `;
+        await recordArticleMetricEvent({
+          articleId: article.id,
+          userId: article.authorId,
+          actorUserId: req.auth.userId,
+          metric: ARTICLE_METRIC.LIKES,
+          delta: -1
+        }, tx);
         changed = true;
       }
     });
@@ -2107,6 +2174,13 @@ router.post("/:slug/favorites", requireAuth, async (req, res, next) => {
           SET favorite_count = favorite_count + 1, updated_at = CURRENT_TIMESTAMP(3)
           WHERE article_id = ${article.id}
         `;
+        await recordArticleMetricEvent({
+          articleId: article.id,
+          userId: article.authorId,
+          actorUserId: req.auth.userId,
+          metric: ARTICLE_METRIC.FAVORITES,
+          delta: 1
+        }, tx);
         changed = true;
       }
     });
@@ -2148,6 +2222,13 @@ router.delete("/:slug/favorites", requireAuth, async (req, res, next) => {
           SET favorite_count = GREATEST(favorite_count - 1, 0), updated_at = CURRENT_TIMESTAMP(3)
           WHERE article_id = ${article.id}
         `;
+        await recordArticleMetricEvent({
+          articleId: article.id,
+          userId: article.authorId,
+          actorUserId: req.auth.userId,
+          metric: ARTICLE_METRIC.FAVORITES,
+          delta: -1
+        }, tx);
         changed = true;
       }
     });
@@ -2468,14 +2549,22 @@ router.post("/admin/:id/publish", requireAuth, requireRole("ADMIN"), async (req,
       });
     }
 
-    const article = await prisma.article.update({
-      where: {
-        id: articleId
-      },
-      data: {
-        status: ArticleStatus.PUBLISHED
-      },
-      include: articleInclude()
+    const article = await prisma.$transaction(async (tx) => {
+      const updatedArticle = await tx.article.update({
+        where: {
+          id: articleId
+        },
+        data: {
+          status: ArticleStatus.PUBLISHED
+        },
+        include: articleInclude()
+      });
+
+      if (existingArticle.status !== ArticleStatus.PUBLISHED) {
+        await recordArticlePublishEvent(updatedArticle, tx);
+      }
+
+      return updatedArticle;
     });
     await setPublishedAtIfMissing(articleId);
     const [articleWithPublishTime] = await withArticlePublishTimes([article]);
@@ -2506,10 +2595,13 @@ router.delete("/admin/:id", requireAuth, requireRole("ADMIN"), async (req, res, 
       });
     }
 
-    await prisma.article.delete({
-      where: {
-        id: articleId
-      }
+    await prisma.$transaction(async (tx) => {
+      await recordArticleDeleteEvent(existingArticle, tx);
+      await tx.article.delete({
+        where: {
+          id: articleId
+        }
+      });
     });
 
     const articleDirectory = path.join(uploadsRoot, String(articleId));
