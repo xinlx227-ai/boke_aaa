@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和暗色模式补齐、文章编辑页旧版公共 UI 误渲染修复，以及普通用户草稿投稿和管理员待审核队列。当前功能分支为 `codex/article-drafts-submission`，已提交 `2207bab Add article submission review workflow`，尚未合并到 `main`。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和暗色模式补齐、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列，以及用户面板收藏、社交互动、安全设置和个人统计增量闭环。当前功能分支为 `codex/user-panel-features`，已提交 `8ccee52 完善用户面板功能与统计增量`，尚未合并到 `main`。
 
 ## 建议下个 Agent 使用的技能
 
@@ -13,11 +13,11 @@
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前工作分支：`codex/article-drafts-submission`
-- 基线主线：`main` / `origin/main` 当前在 `b26de92 Implement markdown toolbar uploads`
+- 当前工作分支：`codex/user-panel-features`
+- 基线主线：`main` / `origin/main` 当前在 `6f98e74 Update handoff and README`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover` 已合并进 `main` 并推送到 `origin/main`。
-- 当前功能提交：`2207bab Add article submission review workflow`
+- 当前功能提交：`8ccee52 完善用户面板功能与统计增量`
 - 当前工作区在文档收尾前是干净状态；`README.md` / `handoff.md` 会在本次 `$work-end` 中追加文档提交。
 
 继续工作前建议先执行：
@@ -25,7 +25,7 @@
 ```bash
 git status --short --branch
 git log --oneline --decorate -6
-git diff -- client/src/App.vue client/src/style.css server/src/routes/articles.js server/prisma/schema.prisma server/test/articles.test.js README.md handoff.md
+git diff -- client/src/App.vue client/src/style.css server/src/routes/users.js server/src/routes/articles.js server/prisma/schema.prisma server/test/articles.test.js README.md handoff.md
 git diff --check
 ```
 
@@ -40,7 +40,66 @@ git diff --check
 
 ## 项目概况
 
-这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、普通用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、文章编辑页路由隔离修复，以及真实阅读/点赞/收藏/热门排行统计能力。
+这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、普通用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、文章编辑页路由隔离修复、真实阅读/点赞/收藏/热门排行统计能力、普通用户草稿投稿/管理员审核，以及用户面板收藏、社交互动、安全设置和个人统计增量闭环。
+
+## 本次完成：完善用户面板功能与统计增量
+
+工作分支：`codex/user-panel-features`。
+
+功能提交：
+
+- `8ccee52 完善用户面板功能与统计增量`
+
+改动文件：
+
+- `client/src/App.vue`
+- `client/src/style.css`
+- `server/src/routes/users.js`
+- `server/src/routes/articles.js`
+- `server/src/routes/index.js`
+- `server/src/lib/auth.js`
+- `server/prisma/schema.prisma`
+- `server/prisma/migrations/20260606110000_user_panel_bindings/migration.sql`
+- `server/prisma/migrations/20260606113000_article_metric_events/migration.sql`
+- `server/test/articles.test.js`
+
+### 后端与数据
+
+- 新增 `server/src/routes/users.js`，挂载为 `/api/users`。
+- 新增接口：`GET /api/users/me/summary`、`GET /api/users/me/favorites`、`GET /api/users/me/comments`、`GET /api/users/me/interactions`、`GET /api/users/me/sessions`、`DELETE /api/users/me/sessions/:id`、`PATCH /api/users/me/password`、`PATCH /api/users/me/bindings`。
+- `users` 新增 `phone_number`、`wechat_bound`、`qq_bound`、`alipay_bound`；手机号唯一，第三方字段只表示本地绑定标记。
+- `sanitizeUser` 已让 `/api/auth/me` 返回手机号和本地绑定状态。
+- 新增 `article_metric_events`，用于记录当前用户文章的文章数、阅读、点赞、收藏增量事件。
+- 文章发布/删除、有效阅读、点赞/取消、收藏/取消会记录作者维度指标事件；`summary.deltas` 按今日事件相对昨日结束时总量计算。
+- 修改密码成功后保留当前会话并停用其他会话；会话注销若注销当前设备，前端会清理 token 并回到登录态。
+
+### 前端用户面板
+
+- 数据看板展示“我的文章”、该用户文章的站内阅读、站内点赞、站内收藏，并显示相对昨日结束时总量的增量；低于 1% 的变化显示数量，达到 1% 及以上显示百分比。
+- 数据看板恢复并接入当前用户文章的近 7 日阅读趋势和文章分类分布 ECharts 图表。
+- “我的收藏”接真实列表，只返回仍为 `PUBLISHED` 的收藏文章；支持搜索、分类筛选、最多 3 个真实分类统计卡、跳转阅读和取消收藏。
+- “社交互动”中评论管理展示其他用户评论/回复当前用户文章的内容；消息通知从回复、文章被赞、文章被收藏、评论被赞等数据实时派生，排除当前用户自己的动作。
+- “安全设置”接真实修改密码、手机号保存/清空、微信/QQ/支付宝本地绑定标记、登录设备列表和注销按钮。
+- 用户面板 tab 切换懒加载对应数据；提交安全设置、取消收藏、注销设备后刷新相关列表和 summary。
+
+### 边界
+
+- 第一版不接短信服务，不接真实微信/QQ/支付宝 OAuth。
+- 第一版不做通知已读/未读，不新增通知表。
+- “我的文章”沿用上一轮已完成的真实投稿列表，本轮只做必要联动刷新。
+- `npm run prisma:generate --workspace server` 曾在 Windows 上遇到 Prisma Client DLL rename 锁定问题；新增表访问使用 raw SQL，当前功能不依赖生成后的新 Prisma Client 模型。
+
+### 验证
+
+```bash
+node --check server/src/routes/articles.js
+node --check server/src/routes/users.js
+node --check server/test/articles.test.js
+npm test --workspace server
+npm run build
+git diff --check
+npx prisma validate --schema prisma/schema.prisma
+```
 
 ## 本次完成：文章草稿投稿与管理员审核流程
 
@@ -174,8 +233,8 @@ git diff --check
 ### 边界
 
 - 本轮只改前端 UI 和文档，不新增后端接口、不改数据库、不改权限模型。
-- 用户面板中的“我的文章”“我的收藏”“社交互动”“安全设置”仍是 UI 占位和提示交互。
-- 管理后台用户管理、内容审核、敏感评论、分类标签管理仍是 UI 占位和提示交互。
+- 用户面板中的“我的收藏”“社交互动”“安全设置”已接入真实接口；第三方账号绑定仍仅为本地状态标记。
+- 管理后台用户管理、敏感评论、分类标签管理仍是 UI 占位和提示交互；内容审核后续已接真实待审核队列。
 
 ## 本次完成：管理员后台新 UI
 
@@ -237,11 +296,12 @@ git diff --check
 - 顶部栏采用 `MyBlog Pro` 品牌 + 返回首页；右侧保留明暗模式切换、通知占位和用户胶囊。
 - 侧边栏 Tab 为：数据看板、我的文章、我的收藏、社交互动、安全设置。
 - 暗色模式已补齐，视觉与管理后台暗色风格对齐。
-- 数据看板尽量接现有真实数据：站内文章数来自 `publishedArticles`，站内阅读/点赞/收藏来自 `siteSummary`。
-- 近 7 日阅读趋势和文章分类分布当前为 CSS 占位图，代码中保留后续用 ECharts 接入真实数据的 TODO。
+- 数据看板接入用户个人汇总：我的文章、该用户文章的站内阅读、站内点赞、站内收藏及相对昨日结束时总量的增量。
+- 近 7 日阅读趋势和文章分类分布已使用 ECharts 接入当前用户文章数据。
 - “我的文章”是未来投稿中心 UI 预演，状态为 `草稿`、`待审核`、`已发布`、`未通过`。
-- “我的收藏”“社交互动”“安全设置”目前是视觉与提示占位。
-- 社交互动未来方向是“我的评论 + 收到的互动通知”，不是粉丝/关注或私信体系。
+- “我的收藏”已接真实收藏列表并支持取消收藏。
+- 社交互动已实现“收到的评论 + 收到的互动通知”，不是粉丝/关注或私信体系。
+- “安全设置”已接修改密码、手机号、本地第三方绑定状态和登录设备管理。
 
 ## 当前 UI 与功能状态
 
@@ -257,7 +317,7 @@ git diff --check
 - 发布新文章页面已重构为独立专注写作 UI。
 - 管理后台已改为独立新 UI：顶部导航按首页/用户面板新 UI，左侧保留站点概览、用户管理、内容审核、分类标签；管理员顶部搜索框已移除，布局宽度和侧栏色彩已向用户面板对齐。
 - 管理后台站点概览已接入只读统计接口，近 7 日访问趋势为 ECharts 柱状图并显示 `MM-DD` 日期，文章分类分布为 ECharts 环形图。
-- 管理后台用户管理、内容审核、敏感评论、分类标签管理当前先做 UI 和提示交互，不改数据库、不改审核流程。
+- 管理后台用户管理、敏感评论、分类标签管理当前先做 UI 和提示交互；内容审核已接真实待审核队列。
 
 ## 后端与数据状态
 
@@ -268,14 +328,18 @@ git diff --check
   - `server/prisma/migrations/20260530120000_article_stats/migration.sql`
   - `server/prisma/migrations/20260531110000_comment_threads/migration.sql`
   - `server/prisma/migrations/20260605110000_article_submission_workflow/migration.sql`
+  - `server/prisma/migrations/20260606110000_user_panel_bindings/migration.sql`
+  - `server/prisma/migrations/20260606113000_article_metric_events/migration.sql`
 - 后端发布接口首次发布时写入 `published_at`，再次发布不覆盖原首次发布时间。
 - `chapterOrder` 作为文章序号，新建默认当前文章总数 + 1；手动重排时会顺延其他文章。
 - 评论区接口仍主要使用 Prisma raw SQL 访问新评论点赞表/新回复目标字段，以降低本机 Prisma Client 生成被 Windows DLL 占用时的阻塞风险；`schema.prisma` 和迁移已完整更新。
 - 管理员概览接口和待审核队列接口新增在 `server/src/routes/articles.js`；待审核队列会读取 `PENDING_REVIEW` 文章。
 - 普通用户草稿/投稿接口也在 `server/src/routes/articles.js`；保存草稿和提交审核都复用 `articles` 表。
+- 用户中心接口新增在 `server/src/routes/users.js`；收藏、评论、互动通知、会话、密码和绑定状态都需要登录。
 
 ## 最近重要提交
 
+- `8ccee52 完善用户面板功能与统计增量`：用户面板收藏、收到的评论、互动通知、安全设置、会话管理、绑定状态和个人统计增量。
 - `2207bab Add article submission review workflow`：普通用户草稿投稿、即时预览、真实“我的文章”列表和管理员待审核队列。
 - `b26de92 Implement markdown toolbar uploads`：发布页 Markdown 工具栏真实插入和普通用户草稿图片上传。
 - `3e0fe4d Fix article editor route rendering`：修复文章编辑页下方误渲染旧版公共首页/用户页面 UI。
@@ -289,6 +353,20 @@ git diff --check
 - `1a2f29b Add article statistics APIs`：真实统计 API 和前端接入。
 
 ## 最近验证
+
+最近用户面板功能工作已执行：
+
+```bash
+node --check server/src/routes/articles.js
+node --check server/src/routes/users.js
+node --check server/test/articles.test.js
+npm test --workspace server
+npm run build
+git diff --check
+npx prisma validate --schema prisma/schema.prisma
+```
+
+说明：本轮开发库和测试库迁移均已应用。`npm run prisma:generate --workspace server` 曾在 Windows 上遇到 Prisma Client DLL rename 锁定问题，当前新增表访问使用 raw SQL，不依赖生成后的新 Prisma Client 模型；等没有 Node/Prisma 进程占用时可再运行生成。
 
 最近文章草稿投稿与管理员审核流程已执行：
 
@@ -339,11 +417,10 @@ sc.exe config MySQL start= demand
 
 ## 后续建议
 
-- 给用户面板补后端能力：我的收藏列表、我的评论与互动通知、修改密码、手机绑定、第三方账号绑定。
-- 基于用户面板当前暗色 CSS 占位图，将近 7 日阅读趋势和分类分布接入真实 ECharts 数据。
+- 如需继续完善用户中心，可评估通知已读/未读、真实短信验证码、真实微信/QQ/支付宝 OAuth、会话设备名称解析和更完整的安全审计。
 - 投稿编辑器下一步建议接封面、SEO、高级设置、批量上传、真实自动保存或更完整的审核历史；是否需要富文本体验可等 Markdown 投稿链路稳定后再评估 Tiptap / ProseMirror。
 - 将管理后台用户管理、敏感评论、分类标签管理接入真实后端接口；内容审核阶段 2 已完成待审核队列，历史审核记录暂未做完整管理。
-- 基于 `site_visits` 做公开首页和用户面板的真实趋势图；当前管理后台概览已用该数据做近 7 日访问柱状图。
+- 基于 `site_visits` 做公开首页的真实趋势图；当前管理后台概览已用该数据做近 7 日访问柱状图，用户面板已接当前用户文章阅读趋势。
 - 补充评论分页、评论审核，以及敏感词/敏感话题检测流程。
 - 修复评论删除边界：删除主评论时递归清理历史多层回复，或先迁移历史 `parent_id` 到一层结构。
 - 给 `comment_likes` 增加 `(user_id, comment_id)` 复合索引，优化用户态 `likedByMe` 查询。

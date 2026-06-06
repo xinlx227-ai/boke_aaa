@@ -1,20 +1,20 @@
 # Private Blog System - 私有博客系统
 
-一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、用户/管理员工作台视觉统一与暗色模式补齐、文章编辑页旧版公共 UI 误渲染修复、真实阅读/点赞/收藏/热门排行统计能力，以及普通用户草稿投稿和管理员待审核队列。
+一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、用户/管理员工作台视觉统一与暗色模式补齐、文章编辑页旧版公共 UI 误渲染修复、真实阅读/点赞/收藏/热门排行统计能力、普通用户草稿投稿和管理员待审核队列，以及用户面板收藏、社交互动、安全设置和个人统计增量闭环。
 
 ## 当前状态
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前工作分支 | `codex/article-drafts-submission` |
-| 最新 UI 工作 | 普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和暗色模式补齐均已合并到 `main`；发布页为专注写作布局，管理后台为独立后台布局；文章编辑页下方旧版公共 UI 误渲染已修复 |
-| 最新功能工作 | `articles` 表复用并扩展 `PENDING_REVIEW` / `REJECTED` 状态；普通用户可手动保存草稿、提交审核、撤回待审、删除草稿/驳回文章；“我的文章”已接真实列表；管理员后台内容审核已接真实待审队列、预览、通过发布和驳回原因 |
+| 当前工作分支 | `codex/user-panel-features` |
+| 最新 UI 工作 | 用户面板收藏、社交互动、安全设置和数据看板已替换旧占位；收藏页支持搜索/分类筛选，社交页展示收到的评论和互动通知，安全页接入密码、手机号、本地第三方绑定和登录设备管理 |
+| 最新功能工作 | 新增 `/api/users/me/*` 用户中心接口；用户绑定字段和作者指标事件表已迁移；数据看板展示“我的文章、站内阅读、站内点赞、站内收藏”及相对昨日结束总量的增量；“我的文章”仍沿用已完成的真实投稿列表 |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
-| 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes` |
-| 最近验证 | 2026-06-05：文章草稿投稿和管理员审核流程完成后，执行 `npm test --workspace server`、`npm run build`、`git diff --check`，均通过；`git diff --check` 仅有 LF/CRLF 提示 |
-| 合并状态 | 当前功能提交 `2207bab Add article submission review workflow` 位于 `codex/article-drafts-submission`，尚未合并到 `main`；`main` / `origin/main` 当前在 `b26de92 Implement markdown toolbar uploads` |
+| 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes`、`article_metric_events` |
+| 最近验证 | 2026-06-06：用户面板功能完成后，执行 `npm test --workspace server`、`npm run build`、`git diff --check`、`npx prisma validate --schema prisma/schema.prisma`，均通过；`git diff --check` 仅有 LF/CRLF 提示 |
+| 合并状态 | 当前功能提交 `8ccee52 完善用户面板功能与统计增量` 位于 `codex/user-panel-features`，尚未合并到 `main` |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
@@ -43,9 +43,12 @@
 - 用户面板顶部导航采用 `MyBlog Pro` 品牌、返回首页、明暗模式切换、通知占位和用户胶囊；退出登录保留在左侧栏底部。
 - 用户面板左侧导航包含数据看板、我的文章、我的收藏、社交互动、安全设置；移动端使用抽屉式导航。
 - 用户面板 `#dashboard` 已补齐暗色模式，顶部栏、左侧栏、卡片、表格、表单、空状态和占位图统一为深蓝灰工作台风格，并与管理后台暗色视觉对齐。
-- 用户面板数据看板尽量复用现有真实统计：站内文章、阅读、点赞、收藏；近 7 日阅读趋势和文章分类分布暂用 CSS 占位，并在代码中保留后续接入 ECharts 的 TODO。
+- 用户面板数据看板显示当前用户自己的文章总数、该用户文章的站内阅读、站内点赞、站内收藏，并展示相对昨日结束时总量的增量；低于 1% 的变化用数量显示，达到 1% 及以上用百分比显示。
+- 用户面板数据看板已接入近 7 日阅读趋势和文章分类分布 ECharts 图表，统计范围为当前用户文章。
 - “我的文章”已接真实文章列表，展示 `草稿`、`待审核`、`已发布`、`未通过` 状态；待审核文章允许撤回到草稿，普通用户只能删除自己的草稿和被驳回文章。
-- “我的收藏”“社交互动”“安全设置”当前为 UI 占位和提示交互，后续需要补收藏列表、我的评论/互动通知、修改密码/绑定手机/第三方绑定等接口。
+- “我的收藏”已接真实收藏列表，只返回当前用户收藏的已发布文章；支持搜索、分类筛选、最多 3 个真实分类统计卡、跳转阅读和取消收藏。
+- “社交互动”已接真实数据：评论管理展示其他用户评论/回复当前用户文章的内容；消息通知从评论、文章点赞、文章收藏和评论点赞实时派生，不新增已读/未读状态。
+- “安全设置”已接真实表单：修改密码、手机号本地保存、微信/QQ/支付宝本地绑定标记、登录设备列表和会话注销。
 - 普通用户面板顶部右侧“发布新文章”进入独立发布页面 `#article/new`，左侧导航不新增发布项。
 - 发布页面顶部沿用用户面板导航视觉，提供“返回用户面板”、预览、发布、明暗切换、通知和用户胶囊。
 - 发布页面采用桌面端左侧 sticky 文章设置栏 + 右侧 Markdown 专注写作区；移动端文章设置收进抽屉。
@@ -122,11 +125,13 @@ hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
 - 普通用户进入 `#dashboard` 后显示独立工作台布局
 - 桌面端为顶部栏 + 左侧固定导航 + 主内容区
 - 移动端为顶部栏 + 抽屉式导航 + 单列内容
-- 数据看板显示站内文章、阅读、点赞、收藏等已有统计
-- 近 7 日阅读趋势和文章分类分布为 CSS 占位图，代码中标注后续使用 ECharts 接入真实数据
+- 数据看板显示“我的文章”、该用户文章的站内阅读、站内点赞、站内收藏，并显示相对昨日结束时总量的增量
+- 近 7 日阅读趋势和文章分类分布使用 ECharts，数据范围为当前用户文章
 - “我的文章”读取真实用户文章列表，状态包含 `草稿`、`待审核`、`已发布`、`未通过`
 - 草稿和驳回文章可继续编辑或删除，待审核文章可撤回到草稿，已提交文章默认锁定编辑
-- “我的收藏”“社交互动”“安全设置”保留完整视觉和占位提示，当前不提交真实后端请求
+- “我的收藏”读取真实收藏列表，仅展示仍为 `PUBLISHED` 的文章，支持取消收藏后刷新列表和统计
+- “社交互动”读取其他用户对当前用户文章的评论/回复，并派生回复、文章被赞/收藏、评论被赞等互动通知
+- “安全设置”接入真实修改密码、手机号本地保存、第三方本地绑定标记和登录设备注销
 
 ### 发布新文章页面
 
@@ -279,7 +284,7 @@ npm run prisma:deploy
 npm run prisma:migrate -- --name your_migration_name
 ```
 
-本项目当前包含 `published_at` 相关迁移、取消 `chapterOrder` 唯一索引的迁移、文章统计相关迁移、评论回复/评论点赞相关迁移，以及文章草稿投稿/审核状态相关迁移。其他环境同步代码后需要执行迁移部署。
+本项目当前包含 `published_at` 相关迁移、取消 `chapterOrder` 唯一索引的迁移、文章统计相关迁移、评论回复/评论点赞相关迁移、文章草稿投稿/审核状态相关迁移、用户面板绑定字段迁移，以及作者指标事件表迁移。其他环境同步代码后需要执行迁移部署。
 
 最近新增迁移：
 
@@ -287,6 +292,8 @@ npm run prisma:migrate -- --name your_migration_name
 server/prisma/migrations/20260530120000_article_stats/migration.sql
 server/prisma/migrations/20260531110000_comment_threads/migration.sql
 server/prisma/migrations/20260605110000_article_submission_workflow/migration.sql
+server/prisma/migrations/20260606110000_user_panel_bindings/migration.sql
+server/prisma/migrations/20260606113000_article_metric_events/migration.sql
 ```
 
 ## 本地开发
@@ -441,6 +448,27 @@ npm test --workspace server
 }
 ```
 
+### Users
+
+所有用户中心接口都需要登录，路由挂载在 `/api/users` 下：
+
+- `GET /api/users/me/summary`
+- `GET /api/users/me/favorites`
+- `GET /api/users/me/comments`
+- `GET /api/users/me/interactions`
+- `GET /api/users/me/sessions`
+- `DELETE /api/users/me/sessions/:id`
+- `PATCH /api/users/me/password`
+- `PATCH /api/users/me/bindings`
+
+边界说明：
+
+- 收藏列表只返回当前用户收藏的已发布文章。
+- 评论管理展示其他用户评论/回复当前用户文章的内容，不是展示自己发过的评论。
+- 互动通知从现有评论、文章点赞、文章收藏和评论点赞实时派生，排除当前用户自己的动作，不保存已读/未读状态。
+- 第三方绑定只保存微信/QQ/支付宝本地标记，不代表已经完成真实 OAuth 授权。
+- 修改密码成功后保留当前会话，停用其他会话。
+
 ## 测试与构建
 
 后端测试：
@@ -455,7 +483,18 @@ npm test --workspace server
 npm run build
 ```
 
-当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、普通用户草稿/投稿/撤回/删除、未保存内容预览、管理员待审列表/通过/驳回、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、评论回复、评论点赞/取消、评论作者禁止自赞、回复禁止点赞、文章序号、首次发布时间、阅读去重、点赞/收藏登录限制、热门排行和全站 summary 等流程。
+当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、普通用户草稿/投稿/撤回/删除、未保存内容预览、管理员待审列表/通过/驳回、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、评论回复、评论点赞/取消、评论作者禁止自赞、回复禁止点赞、文章序号、首次发布时间、阅读去重、点赞/收藏登录限制、热门排行、全站 summary、用户面板收藏列表、收到的评论、互动通知、修改密码、会话管理、手机号唯一性和本地绑定状态等流程。
+
+最近用户面板功能工作已验证：
+
+```bash
+npm test --workspace server
+npm run build
+git diff --check
+npx prisma validate --schema prisma/schema.prisma
+```
+
+说明：本轮开发库和测试库迁移均已应用。`npm run prisma:generate --workspace server` 曾在 Windows 上遇到 Prisma Client DLL rename 锁定问题，当前新增表访问使用 raw SQL，不依赖生成后的新 Prisma Client 模型；等没有 Node/Prisma 进程占用时可再运行生成。
 
 最近文章草稿投稿与管理员审核工作已验证：
 
@@ -513,7 +552,7 @@ WHERE email = 'your-admin@example.com';
 
 - 可将管理后台用户管理、敏感评论、分类标签管理接入真实后端接口；内容审核阶段 2 已完成待审核队列，历史审核记录暂未做完整管理。
 - 可基于 `site_visits` 做公开首页和用户面板的真实趋势图；当前公开首页阅读趋势图形仍有占位性质。
-- 给用户面板补后端能力：我的收藏列表、我的评论与互动通知、修改密码和账号绑定。
 - 投稿编辑器下一步可继续接封面、SEO、高级设置、批量上传、真实自动保存或更完整的审核历史；是否需要富文本体验可等 Markdown 投稿链路稳定后再评估 Tiptap / ProseMirror。
+- 如需继续完善用户中心，可评估通知已读/未读、真实短信验证码、真实微信/QQ/支付宝 OAuth、会话设备名称解析和更完整的安全审计。
 - 补充评论分页、评论审核、删除主评论时递归清理历史多层回复。
 - 将粉丝数、作者关注等静态展示接入真实后端模型。
