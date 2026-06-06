@@ -6,15 +6,15 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前工作分支 | `codex/user-panel-features` |
+| 当前工作分支 | `main` |
 | 最新 UI 工作 | 用户面板收藏、社交互动、安全设置和数据看板已替换旧占位；收藏页支持搜索/分类筛选，社交页展示收到的评论和互动通知，安全页接入密码、手机号、本地第三方绑定和登录设备管理 |
 | 最新功能工作 | 新增 `/api/users/me/*` 用户中心接口；用户绑定字段和作者指标事件表已迁移；数据看板展示“我的文章、站内阅读、站内点赞、站内收藏”及相对昨日结束总量的增量；“我的文章”仍沿用已完成的真实投稿列表 |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes`、`article_metric_events` |
-| 最近验证 | 2026-06-06：用户面板功能完成后，执行 `npm test --workspace server`、`npm run build`、`git diff --check`、`npx prisma validate --schema prisma/schema.prisma`，均通过；`git diff --check` 仅有 LF/CRLF 提示 |
-| 合并状态 | 当前功能提交 `8ccee52 完善用户面板功能与统计增量` 位于 `codex/user-panel-features`，尚未合并到 `main` |
+| 最近验证 | 2026-06-06：用户面板功能合并前后均执行 `npm test --workspace server`、`npm run build`、`git diff --check`、`npx prisma validate --schema prisma/schema.prisma`，均通过；合并后后端测试 10/10 通过 |
+| 合并状态 | `codex/user-panel-features` 已 fast-forward 合并进 `main` 并推送到 `origin/main`；本地功能分支已删除，当前最新主线提交为 `5c889e1 Update handoff and README` |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
@@ -485,7 +485,7 @@ npm run build
 
 当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、普通用户草稿/投稿/撤回/删除、未保存内容预览、管理员待审列表/通过/驳回、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、评论回复、评论点赞/取消、评论作者禁止自赞、回复禁止点赞、文章序号、首次发布时间、阅读去重、点赞/收藏登录限制、热门排行、全站 summary、用户面板收藏列表、收到的评论、互动通知、修改密码、会话管理、手机号唯一性和本地绑定状态等流程。
 
-最近用户面板功能工作已验证：
+最近用户面板功能工作已合并到 `main` 并验证：
 
 ```bash
 npm test --workspace server
@@ -494,7 +494,7 @@ git diff --check
 npx prisma validate --schema prisma/schema.prisma
 ```
 
-说明：本轮开发库和测试库迁移均已应用。`npm run prisma:generate --workspace server` 曾在 Windows 上遇到 Prisma Client DLL rename 锁定问题，当前新增表访问使用 raw SQL，不依赖生成后的新 Prisma Client 模型；等没有 Node/Prisma 进程占用时可再运行生成。
+说明：本轮开发库和测试库迁移均已应用。`codex/user-panel-features` 已 fast-forward 合并进 `main` 并推送到 `origin/main`，本地功能分支已删除。合并后后端测试 10/10 通过。`npm run prisma:generate --workspace server` 曾在 Windows 上遇到 Prisma Client DLL rename 锁定问题，当前新增表访问使用 raw SQL，不依赖生成后的新 Prisma Client 模型；等没有 Node/Prisma 进程占用时可再运行生成。
 
 最近文章草稿投稿与管理员审核工作已验证：
 
@@ -551,7 +551,7 @@ WHERE email = 'your-admin@example.com';
 ## 后续建议
 
 - 可将管理后台用户管理、敏感评论、分类标签管理接入真实后端接口；内容审核阶段 2 已完成待审核队列，历史审核记录暂未做完整管理。
-- 可基于 `site_visits` 做公开首页和用户面板的真实趋势图；当前公开首页阅读趋势图形仍有占位性质。
+- 可基于 `site_visits` 做公开首页的真实趋势图；当前公开首页阅读趋势图形仍有占位性质，用户面板已接当前用户文章阅读趋势。
 - 投稿编辑器下一步可继续接封面、SEO、高级设置、批量上传、真实自动保存或更完整的审核历史；是否需要富文本体验可等 Markdown 投稿链路稳定后再评估 Tiptap / ProseMirror。
 - 如需继续完善用户中心，可评估通知已读/未读、真实短信验证码、真实微信/QQ/支付宝 OAuth、会话设备名称解析和更完整的安全审计。
 - 补充评论分页、评论审核、删除主评论时递归清理历史多层回复。

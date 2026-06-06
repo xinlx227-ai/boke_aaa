@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和暗色模式补齐、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列，以及用户面板收藏、社交互动、安全设置和个人统计增量闭环。当前功能分支为 `codex/user-panel-features`，已提交 `8ccee52 完善用户面板功能与统计增量`，尚未合并到 `main`。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和暗色模式补齐、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列，以及用户面板收藏、社交互动、安全设置和个人统计增量闭环。`codex/user-panel-features` 已 fast-forward 合并到 `main` 并推送到 `origin/main`，本地功能分支已删除。
 
 ## 建议下个 Agent 使用的技能
 
@@ -13,19 +13,20 @@
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前工作分支：`codex/user-panel-features`
-- 基线主线：`main` / `origin/main` 当前在 `6f98e74 Update handoff and README`
+- 当前工作分支：`main`
+- 主线同步状态：`main` / `origin/main` 当前在 `5c889e1 Update handoff and README`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover` 已合并进 `main` 并推送到 `origin/main`。
-- 当前功能提交：`8ccee52 完善用户面板功能与统计增量`
-- 当前工作区在文档收尾前是干净状态；`README.md` / `handoff.md` 会在本次 `$work-end` 中追加文档提交。
+- 当前功能提交：`8ccee52 完善用户面板功能与统计增量`，已在主线中
+- 本地只剩 `main` 分支；`codex/user-panel-features` 已删除
+- 当前工作区在文档收尾前是干净状态；`README.md` / `handoff.md` 会在本次 `$work-end` 中追加合并后文档提交。
 
 继续工作前建议先执行：
 
 ```bash
 git status --short --branch
 git log --oneline --decorate -6
-git diff -- client/src/App.vue client/src/style.css server/src/routes/users.js server/src/routes/articles.js server/prisma/schema.prisma server/test/articles.test.js README.md handoff.md
+git diff -- README.md handoff.md
 git diff --check
 ```
 
@@ -100,6 +101,14 @@ npm run build
 git diff --check
 npx prisma validate --schema prisma/schema.prisma
 ```
+
+### 合并收尾
+
+- `codex/user-panel-features` 已通过 `git merge --ff-only codex/user-panel-features` 合并到 `main`。
+- 合并前和合并后均执行了 `npm test --workspace server`、`npm run build`、`git diff --check`、`npx prisma validate --schema prisma/schema.prisma`。
+- 合并后后端测试 10/10 通过，包含用户面板 API 用例。
+- `main` 已推送到 `origin/main`；第一次推送遇到 gitee 443 连接失败，按权限流程重试后成功。
+- 本地功能分支 `codex/user-panel-features` 已通过 `git branch -d codex/user-panel-features` 删除。
 
 ## 本次完成：文章草稿投稿与管理员审核流程
 
@@ -354,7 +363,7 @@ git diff --check
 
 ## 最近验证
 
-最近用户面板功能工作已执行：
+最近用户面板功能工作已合并到 `main` 并执行：
 
 ```bash
 node --check server/src/routes/articles.js
@@ -366,7 +375,7 @@ git diff --check
 npx prisma validate --schema prisma/schema.prisma
 ```
 
-说明：本轮开发库和测试库迁移均已应用。`npm run prisma:generate --workspace server` 曾在 Windows 上遇到 Prisma Client DLL rename 锁定问题，当前新增表访问使用 raw SQL，不依赖生成后的新 Prisma Client 模型；等没有 Node/Prisma 进程占用时可再运行生成。
+说明：本轮开发库和测试库迁移均已应用。合并前后验证均通过，合并后后端测试 10/10 通过。`npm run prisma:generate --workspace server` 曾在 Windows 上遇到 Prisma Client DLL rename 锁定问题，当前新增表访问使用 raw SQL，不依赖生成后的新 Prisma Client 模型；等没有 Node/Prisma 进程占用时可再运行生成。
 
 最近文章草稿投稿与管理员审核流程已执行：
 
