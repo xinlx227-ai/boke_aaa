@@ -1943,3 +1943,258 @@ test("article stats APIs count real reads, reactions, favorites, comments, and p
     }
   });
 });
+
+test("admin management APIs manage users, taxonomies, and published articles", async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const admin = await createRegisteredUser({
+    username: `mgmt_admin_${suffix}`,
+    email: `mgmt_admin_${suffix}@example.com`,
+    role: "ADMIN"
+  });
+  const user = await createRegisteredUser({
+    username: `mgmt_user_${suffix}`,
+    email: `mgmt_user_${suffix}@example.com`
+  });
+  const protectedAdmin = await createRegisteredUser({
+    username: `mgmt_guard_${suffix}`,
+    email: `mgmt_guard_${suffix}@example.com`,
+    role: "ADMIN"
+  });
+
+  const category = await prisma.category.create({
+    data: {
+      name: `Mgmt Category ${suffix}`,
+      slug: `mgmt-category-${suffix}`
+    }
+  });
+  const tag = await prisma.tag.create({
+    data: {
+      name: `Mgmt Tag ${suffix}`,
+      slug: `mgmt-tag-${suffix}`
+    }
+  });
+  const article = await prisma.article.create({
+    data: {
+      authorId: user.user.id,
+      categoryId: category.id,
+      title: `Mgmt Published ${suffix}`,
+      slug: `mgmt-published-${suffix}`,
+      contentMarkdown: "# Managed",
+      contentHtml: "<h1>Managed</h1>",
+      chapterOrder: 1,
+      status: "PUBLISHED",
+      publishedAt: new Date(),
+      tags: {
+        create: [
+          {
+            tagId: tag.id
+          }
+        ]
+      }
+    },
+    include: {
+      tags: true
+    }
+  });
+  await prisma.articleStats.create({
+    data: {
+      articleId: article.id,
+      viewCount: 3,
+      likeCount: 2,
+      favoriteCount: 1
+    }
+  });
+
+  try {
+    const unauthorizedUsers = await apiRequest("/admin/users");
+    assert.equal(unauthorizedUsers.status, 401);
+
+    const userList = await apiRequest(`/admin/users?q=${encodeURIComponent(user.user.username)}`, {
+      headers: {
+        Authorization: `Bearer ${admin.token}`
+      }
+    });
+    assert.equal(userList.status, 200);
+    assert.equal(userList.body.users.length, 1);
+    assert.equal(userList.body.users[0].username, user.user.username);
+    assert.equal(userList.body.users[0].stats.articleCount, 1);
+
+    const disableUser = await apiRequest(`/admin/users/${user.user.id}/disabled`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${admin.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        isDisabled: true
+      })
+    });
+    assert.equal(disableUser.status, 200);
+    assert.equal(disableUser.body.user.isDisabled, true);
+    assert.equal(disableUser.body.user.stats.activeSessionCount, 0);
+
+    const disabledSession = await apiRequest("/auth/me", {
+      headers: {
+        Authorization: `Bearer ${user.token}`
+      }
+    });
+    assert.equal(disabledSession.status, 401);
+
+    const disabledLogin = await apiRequest("/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        account: user.user.email,
+        password: "Passw0rd!"
+      })
+    });
+    assert.equal(disabledLogin.status, 403);
+
+    const enableUser = await apiRequest(`/admin/users/${user.user.id}/disabled`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${admin.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        isDisabled: false
+      })
+    });
+    assert.equal(enableUser.status, 200);
+    assert.equal(enableUser.body.user.isDisabled, false);
+
+    const categoryDeleteMismatch = await apiRequest(`/admin/categories/${category.id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${admin.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        confirmName: "wrong"
+      })
+    });
+    assert.equal(categoryDeleteMismatch.status, 400);
+
+    const deleteCategory = await apiRequest(`/admin/categories/${category.id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${admin.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        confirmName: category.name
+      })
+    });
+    assert.equal(deleteCategory.status, 200);
+    assert.equal(deleteCategory.body.removedFromArticleCount, 1);
+
+    const articleWithoutCategory = await prisma.article.findUnique({
+      where: {
+        id: article.id
+      }
+    });
+    assert.equal(articleWithoutCategory.categoryId, null);
+
+    const deleteTag = await apiRequest(`/admin/tags/${tag.id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${admin.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        confirmName: tag.name
+      })
+    });
+    assert.equal(deleteTag.status, 200);
+    assert.equal(deleteTag.body.removedFromArticleCount, 1);
+
+    const tagLinks = await prisma.articleTag.count({
+      where: {
+        articleId: article.id,
+        tagId: tag.id
+      }
+    });
+    assert.equal(tagLinks, 0);
+
+    const archiveArticle = await apiRequest(`/admin/articles/${article.id}/status`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${admin.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        status: "ARCHIVED"
+      })
+    });
+    assert.equal(archiveArticle.status, 200);
+    assert.equal(archiveArticle.body.article.status, "ARCHIVED");
+
+    const archivedPublicDetail = await apiRequest(`/articles/${article.slug}`);
+    assert.equal(archivedPublicDetail.status, 404);
+
+    const republishArticle = await apiRequest(`/admin/articles/${article.id}/status`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${admin.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        status: "PUBLISHED"
+      })
+    });
+    assert.equal(republishArticle.status, 200);
+    assert.equal(republishArticle.body.article.status, "PUBLISHED");
+
+    const adminDelete = await apiRequest(`/admin/users/${protectedAdmin.user.id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${admin.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        confirmName: protectedAdmin.user.username
+      })
+    });
+    assert.equal(adminDelete.status, 403);
+
+    const deleteUser = await apiRequest(`/admin/users/${user.user.id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${admin.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        confirmName: user.user.username
+      })
+    });
+    assert.equal(deleteUser.status, 200);
+    assert.equal(deleteUser.body.deleted.articleCount, 1);
+
+    const deletedArticle = await prisma.article.findUnique({
+      where: {
+        id: article.id
+      }
+    });
+    assert.equal(deletedArticle, null);
+  } finally {
+    await prisma.user.deleteMany({
+      where: {
+        email: {
+          in: [admin.user.email, user.user.email, protectedAdmin.user.email]
+        }
+      }
+    });
+    await prisma.category.deleteMany({
+      where: {
+        slug: `mgmt-category-${suffix}`
+      }
+    });
+    await prisma.tag.deleteMany({
+      where: {
+        slug: `mgmt-tag-${suffix}`
+      }
+    });
+  }
+});

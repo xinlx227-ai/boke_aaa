@@ -58,11 +58,24 @@ const adminActiveTab = ref("overview");
 const adminMobileNavOpen = ref(false);
 const adminOverviewLoading = ref(false);
 const adminReviewLoading = ref(false);
+const adminUsersLoading = ref(false);
+const adminTaxonomyLoading = ref(false);
+const adminManagedArticlesLoading = ref(false);
 const adminReviewActionId = ref(null);
+const adminUserActionId = ref(null);
+const adminTaxonomyActionKey = ref("");
+const adminArticleActionId = ref(null);
 const adminRejectTarget = ref(null);
 const adminRejectNote = ref("");
 const adminReviewPreviewOpen = ref(false);
+const adminReviewPreviewMode = ref("review");
 const adminReviewPreviewArticle = ref(null);
+const adminUsers = ref([]);
+const adminTaxonomies = ref({
+  categories: [],
+  tags: []
+});
+const adminManagedArticles = ref([]);
 const adminOverview = ref({
   summary: {
     userCount: 0,
@@ -163,6 +176,11 @@ const adminTabs = [
     icon: "mdi:account-group-outline"
   },
   {
+    id: "articles",
+    label: "已发布文章",
+    icon: "mdi:file-document-multiple-outline"
+  },
+  {
     id: "review",
     label: "内容审核",
     icon: "mdi:shield-check-outline"
@@ -171,51 +189,6 @@ const adminTabs = [
     id: "taxonomy",
     label: "分类标签",
     icon: "mdi:tag-outline"
-  }
-];
-
-const adminUserRows = [
-  {
-    username: "fuck",
-    email: "fuck@example.com",
-    createdAt: "2024-01-15",
-    status: "正常",
-    color: "#f97316"
-  },
-  {
-    username: "张三",
-    email: "zhangsan@example.com",
-    createdAt: "2024-03-20",
-    status: "正常",
-    color: "#3b82f6"
-  },
-  {
-    username: "李四",
-    email: "lisi@example.com",
-    createdAt: "2024-05-10",
-    status: "已禁用",
-    color: "#a855f7"
-  },
-  {
-    username: "王五",
-    email: "wangwu@example.com",
-    createdAt: "2024-06-05",
-    status: "正常",
-    color: "#22c55e"
-  },
-  {
-    username: "赵六",
-    email: "zhaoliu@example.com",
-    createdAt: "2024-07-18",
-    status: "已禁用",
-    color: "#ef4444"
-  },
-  {
-    username: "孙七",
-    email: "sunqi@example.com",
-    createdAt: "2024-08-22",
-    status: "正常",
-    color: "#14b8a6"
   }
 ];
 
@@ -301,6 +274,30 @@ const articleEditorForm = reactive({
 
 const imageForm = reactive({
   altText: ""
+});
+
+const adminUserFilters = reactive({
+  q: "",
+  status: "",
+  role: ""
+});
+
+const adminArticleFilters = reactive({
+  q: "",
+  categoryId: "",
+  status: ""
+});
+
+const adminTaxonomyFilters = reactive({
+  q: ""
+});
+
+const adminCategoryForm = reactive({
+  name: ""
+});
+
+const adminTagForm = reactive({
+  name: ""
 });
 
 const commentForm = reactive({
@@ -563,6 +560,43 @@ const adminSummaryCards = computed(() => [
     tone: "purple"
   }
 ]);
+const adminIsLoading = computed(
+  () =>
+    adminOverviewLoading.value ||
+    adminReviewLoading.value ||
+    adminUsersLoading.value ||
+    adminTaxonomyLoading.value ||
+    adminManagedArticlesLoading.value
+);
+const adminUserRows = computed(() =>
+  adminUsers.value.map((user, index) => ({
+    ...user,
+    statusLabel: user.isDisabled ? "已禁用" : "正常",
+    color: ADMIN_CATEGORY_COLORS[index % ADMIN_CATEGORY_COLORS.length],
+    createdLabel: formatDate(user.createdAt),
+    roleLabel: user.role === "ADMIN" ? "管理员" : "普通用户"
+  }))
+);
+const adminManagedArticleRows = computed(() =>
+  adminManagedArticles.value.map((article) => ({
+    ...article,
+    statusLabel: article.status === "ARCHIVED" ? "已下架" : "已发布",
+    dateLabel: formatDate(article.publishedAt || article.updatedAt || article.createdAt),
+    metricLabel: `${formatCompactNumber(article.stats?.viewCount || 0)} 阅读 · ${formatCompactNumber(article.stats?.likeCount || 0)} 赞 · ${formatCompactNumber(article.stats?.commentCount || 0)} 评`
+  }))
+);
+const adminTaxonomyCategoryRows = computed(() =>
+  adminTaxonomies.value.categories.map((category, index) => ({
+    ...category,
+    color: ADMIN_CATEGORY_COLORS[index % ADMIN_CATEGORY_COLORS.length]
+  }))
+);
+const adminTaxonomyTagRows = computed(() =>
+  adminTaxonomies.value.tags.map((tag, index) => ({
+    ...tag,
+    color: ADMIN_CATEGORY_COLORS[index % ADMIN_CATEGORY_COLORS.length]
+  }))
+);
 const adminCategoryStats = computed(() => {
   const categoryCounts = new Map();
 
@@ -596,6 +630,7 @@ const adminPageSubtitle = computed(() => {
   const subtitles = {
     overview: "博客运营数据一览",
     users: "管理所有注册用户",
+    articles: "管理已发布和已下架文章",
     review: "审核用户提交的文章和风险评论",
     taxonomy: "管理文章分类和标签"
   };
@@ -1635,6 +1670,117 @@ async function loadAdminArticles() {
   }
 }
 
+function adminUserQueryString() {
+  const params = new URLSearchParams();
+
+  if (adminUserFilters.q.trim()) {
+    params.set("q", adminUserFilters.q.trim());
+  }
+
+  if (adminUserFilters.status) {
+    params.set("status", adminUserFilters.status);
+  }
+
+  if (adminUserFilters.role) {
+    params.set("role", adminUserFilters.role);
+  }
+
+  return params.toString();
+}
+
+async function loadAdminUsers() {
+  if (!isAdmin.value) {
+    adminUsers.value = [];
+    return;
+  }
+
+  adminUsersLoading.value = true;
+
+  try {
+    const query = adminUserQueryString();
+    const payload = await apiFetch(query ? `/admin/users?${query}` : "/admin/users");
+    adminUsers.value = payload.users || [];
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminUsersLoading.value = false;
+  }
+}
+
+function adminArticleQueryString() {
+  const params = new URLSearchParams();
+
+  if (adminArticleFilters.q.trim()) {
+    params.set("q", adminArticleFilters.q.trim());
+  }
+
+  if (adminArticleFilters.categoryId) {
+    params.set("categoryId", adminArticleFilters.categoryId);
+  }
+
+  if (adminArticleFilters.status) {
+    params.set("status", adminArticleFilters.status);
+  }
+
+  return params.toString();
+}
+
+async function loadAdminManagedArticles() {
+  if (!isAdmin.value) {
+    adminManagedArticles.value = [];
+    return;
+  }
+
+  adminManagedArticlesLoading.value = true;
+
+  try {
+    const query = adminArticleQueryString();
+    const payload = await apiFetch(query ? `/admin/articles?${query}` : "/admin/articles");
+    adminManagedArticles.value = payload.articles || [];
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminManagedArticlesLoading.value = false;
+  }
+}
+
+async function loadAdminTaxonomies() {
+  if (!isAdmin.value) {
+    adminTaxonomies.value = {
+      categories: [],
+      tags: []
+    };
+    return;
+  }
+
+  adminTaxonomyLoading.value = true;
+
+  try {
+    const params = new URLSearchParams();
+
+    if (adminTaxonomyFilters.q.trim()) {
+      params.set("q", adminTaxonomyFilters.q.trim());
+    }
+
+    const query = params.toString();
+    const payload = await apiFetch(query ? `/admin/taxonomies?${query}` : "/admin/taxonomies");
+    adminTaxonomies.value = {
+      categories: payload.categories || [],
+      tags: payload.tags || []
+    };
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminTaxonomyLoading.value = false;
+  }
+}
+
 async function loadUserArticles() {
   if (!isAuthenticated.value || isAdmin.value) {
     userArticles.value = [];
@@ -1891,7 +2037,7 @@ async function loadProfile() {
     currentUser.value = payload.user;
     currentSession.value = payload.session;
     if (payload.user.role === "ADMIN") {
-      await Promise.all([loadAdminArticles(), loadAdminOverview(), loadAdminReviews()]);
+      await Promise.all([loadAdminArticles(), loadAdminOverview(), loadAdminReviews(), loadAdminUsers(), loadAdminTaxonomies(), loadAdminManagedArticles()]);
     } else {
       await refreshUserPanelNotificationState();
     }
@@ -2911,14 +3057,35 @@ function setAdminTab(tabId) {
   adminMobileNavOpen.value = false;
   if (tabId === "overview") {
     nextTick(renderAdminCharts);
+  } else if (tabId === "users") {
+    loadAdminUsers();
+  } else if (tabId === "articles") {
+    loadAdminManagedArticles();
   } else if (tabId === "review") {
     loadAdminReviews();
+  } else if (tabId === "taxonomy") {
+    loadAdminTaxonomies();
   }
 }
 
 function refreshAdminCurrentTab() {
+  if (adminActiveTab.value === "users") {
+    loadAdminUsers();
+    return;
+  }
+
+  if (adminActiveTab.value === "articles") {
+    loadAdminManagedArticles();
+    return;
+  }
+
   if (adminActiveTab.value === "review") {
     loadAdminReviews();
+    return;
+  }
+
+  if (adminActiveTab.value === "taxonomy") {
+    loadAdminTaxonomies();
     return;
   }
 
@@ -2937,13 +3104,412 @@ function showAdminPlaceholder(action) {
   setMessage(`${action}将在后续接入。`);
 }
 
-function openAdminReviewPreview(article) {
+function confirmDangerAction({ message: warningMessage, expected, label = "名称" }) {
+  const confirmed = window.confirm(warningMessage);
+
+  if (!confirmed) {
+    return null;
+  }
+
+  const typed = window.prompt(`请输入${label}「${expected}」以确认删除。`);
+
+  if (typed === null) {
+    return null;
+  }
+
+  if (typed.trim() !== String(expected || "").trim()) {
+    setMessage(`${label}不匹配，已取消操作。`);
+    return null;
+  }
+
+  return typed.trim();
+}
+
+function openAdminReviewPreview(article, mode = "review") {
   adminReviewPreviewArticle.value = article;
+  adminReviewPreviewMode.value = mode;
   adminReviewPreviewOpen.value = true;
+}
+
+function openAdminManagedArticlePreview(article) {
+  openAdminReviewPreview(article, "managedArticle");
 }
 
 function closeAdminReviewPreview() {
   adminReviewPreviewOpen.value = false;
+  adminReviewPreviewMode.value = "review";
+}
+
+async function updateAdminUserDisabled(user) {
+  if (!user?.id || user.role !== "USER") {
+    setMessage("只能管理普通用户。");
+    return;
+  }
+
+  const nextDisabled = !user.isDisabled;
+  const confirmed = window.confirm(
+    nextDisabled
+      ? `确定禁用用户「${user.username}」吗？该用户会被立即踢下线，后续无法登录。`
+      : `确定启用用户「${user.username}」吗？`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  adminUserActionId.value = user.id;
+
+  try {
+    await apiFetch(`/admin/users/${user.id}/disabled`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        isDisabled: nextDisabled
+      })
+    });
+    setMessage(nextDisabled ? "用户已禁用并踢下线。" : "用户已启用。");
+    await Promise.all([loadAdminUsers(), loadAdminOverview()]);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminUserActionId.value = null;
+  }
+}
+
+async function deleteAdminUser(user) {
+  if (!user?.id || user.role !== "USER") {
+    setMessage("只能删除普通用户。");
+    return;
+  }
+
+  const confirmName = confirmDangerAction({
+    label: "用户名",
+    expected: user.username,
+    message: `确定删除用户「${user.username}」吗？这会同时删除 TA 的文章、评论、点赞、收藏、会话等关联数据，且无法恢复。`
+  });
+
+  if (!confirmName) {
+    return;
+  }
+
+  adminUserActionId.value = user.id;
+
+  try {
+    await apiFetch(`/admin/users/${user.id}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        confirmName
+      })
+    });
+    setMessage(`用户「${user.username}」已删除。`);
+    await Promise.all([loadAdminUsers(), loadAdminOverview(), loadPublishedArticles(), loadArticleFilters(), loadAdminManagedArticles()]);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminUserActionId.value = null;
+  }
+}
+
+async function updateAdminManagedArticleStatus(article, status) {
+  if (!article?.id) {
+    return;
+  }
+
+  const actionLabel = status === "ARCHIVED" ? "下架" : "重新发布";
+  const confirmed = window.confirm(
+    status === "ARCHIVED"
+      ? `确定下架《${article.title}》吗？下架后公开页面将不再展示，但会保留评论、点赞、收藏和统计。`
+      : `确定重新发布《${article.title}》吗？文章会重新出现在公开页面。`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  adminArticleActionId.value = article.id;
+
+  try {
+    await apiFetch(`/admin/articles/${article.id}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        status
+      })
+    });
+    setMessage(`文章已${actionLabel}。`);
+    await Promise.all([loadAdminManagedArticles(), loadPublishedArticles(), loadAdminOverview(), refreshPublicStats()]);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminArticleActionId.value = null;
+  }
+}
+
+async function deleteAdminManagedArticle(article) {
+  if (!article?.id) {
+    return;
+  }
+
+  const confirmTitle = confirmDangerAction({
+    label: "文章标题",
+    expected: article.title,
+    message: `确定删除文章《${article.title}》吗？这会清除文章本体及评论、点赞、收藏、阅读、图片等关联数据，且无法恢复。`
+  });
+
+  if (!confirmTitle) {
+    return;
+  }
+
+  adminArticleActionId.value = article.id;
+
+  try {
+    await apiFetch(`/admin/articles/${article.id}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        confirmTitle
+      })
+    });
+    setMessage(`文章《${article.title}》已删除。`);
+    await Promise.all([loadAdminManagedArticles(), loadPublishedArticles(), loadAdminOverview(), loadArticleFilters(), refreshPublicStats()]);
+    if (selectedArticle.value?.id === article.id) {
+      selectedArticle.value = null;
+      comments.value = [];
+    }
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminArticleActionId.value = null;
+  }
+}
+
+async function createAdminCategory() {
+  const name = adminCategoryForm.name.trim();
+
+  if (!name) {
+    setMessage("请输入分类名称。");
+    return;
+  }
+
+  adminTaxonomyActionKey.value = "category:create";
+
+  try {
+    await apiFetch("/admin/categories", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name
+      })
+    });
+    adminCategoryForm.name = "";
+    setMessage("分类已新增。");
+    await Promise.all([loadAdminTaxonomies(), loadArticleFilters()]);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminTaxonomyActionKey.value = "";
+  }
+}
+
+async function renameAdminCategory(category) {
+  const name = window.prompt("请输入新的分类名称。", category.name);
+
+  if (name === null) {
+    return;
+  }
+
+  const nextName = name.trim();
+
+  if (!nextName) {
+    setMessage("分类名称不能为空。");
+    return;
+  }
+
+  adminTaxonomyActionKey.value = `category:${category.id}`;
+
+  try {
+    await apiFetch(`/admin/categories/${category.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name: nextName
+      })
+    });
+    setMessage("分类已更新。");
+    await Promise.all([loadAdminTaxonomies(), loadArticleFilters(), loadPublishedArticles(), loadAdminManagedArticles()]);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminTaxonomyActionKey.value = "";
+  }
+}
+
+async function deleteAdminCategory(category) {
+  const confirmName = confirmDangerAction({
+    label: "分类名称",
+    expected: category.name,
+    message:
+      category.articleCount > 0
+        ? `分类「${category.name}」正在被 ${category.articleCount} 篇文章使用。删除后这些文章会移除此分类，确定继续吗？`
+        : `确定删除分类「${category.name}」吗？`
+  });
+
+  if (!confirmName) {
+    return;
+  }
+
+  adminTaxonomyActionKey.value = `category:${category.id}`;
+
+  try {
+    await apiFetch(`/admin/categories/${category.id}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        confirmName
+      })
+    });
+    setMessage("分类已删除。");
+    await Promise.all([loadAdminTaxonomies(), loadArticleFilters(), loadPublishedArticles(), loadAdminManagedArticles()]);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminTaxonomyActionKey.value = "";
+  }
+}
+
+async function createAdminTag() {
+  const name = adminTagForm.name.trim();
+
+  if (!name) {
+    setMessage("请输入标签名称。");
+    return;
+  }
+
+  adminTaxonomyActionKey.value = "tag:create";
+
+  try {
+    await apiFetch("/admin/tags", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name
+      })
+    });
+    adminTagForm.name = "";
+    setMessage("标签已新增。");
+    await Promise.all([loadAdminTaxonomies(), loadArticleFilters()]);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminTaxonomyActionKey.value = "";
+  }
+}
+
+async function renameAdminTag(tag) {
+  const name = window.prompt("请输入新的标签名称。", tag.name);
+
+  if (name === null) {
+    return;
+  }
+
+  const nextName = name.trim();
+
+  if (!nextName) {
+    setMessage("标签名称不能为空。");
+    return;
+  }
+
+  adminTaxonomyActionKey.value = `tag:${tag.id}`;
+
+  try {
+    await apiFetch(`/admin/tags/${tag.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name: nextName
+      })
+    });
+    setMessage("标签已更新。");
+    await Promise.all([loadAdminTaxonomies(), loadArticleFilters(), loadPublishedArticles(), loadAdminManagedArticles()]);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminTaxonomyActionKey.value = "";
+  }
+}
+
+async function deleteAdminTag(tag) {
+  const confirmName = confirmDangerAction({
+    label: "标签名称",
+    expected: tag.name,
+    message:
+      tag.articleCount > 0
+        ? `标签「${tag.name}」正在被 ${tag.articleCount} 篇文章使用。删除后这些文章会移除此标签，确定继续吗？`
+        : `确定删除标签「${tag.name}」吗？`
+  });
+
+  if (!confirmName) {
+    return;
+  }
+
+  adminTaxonomyActionKey.value = `tag:${tag.id}`;
+
+  try {
+    await apiFetch(`/admin/tags/${tag.id}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        confirmName
+      })
+    });
+    setMessage("标签已删除。");
+    await Promise.all([loadAdminTaxonomies(), loadArticleFilters(), loadPublishedArticles(), loadAdminManagedArticles()]);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminTaxonomyActionKey.value = "";
+  }
 }
 
 async function approveAdminReviewArticle(article) {
@@ -3979,7 +4545,7 @@ onBeforeUnmount(() => {
           <p>这篇投稿没有可预览的正文。</p>
         </div>
       </main>
-      <footer class="admin-review-preview-actions">
+      <footer v-if="adminReviewPreviewMode === 'review'" class="admin-review-preview-actions">
         <button type="button" @click="closeAdminReviewPreview">关闭</button>
         <button
           class="reject"
@@ -3993,6 +4559,9 @@ onBeforeUnmount(() => {
           :disabled="adminReviewActionId === adminReviewPreviewArticle?.id"
           @click="approveAdminReviewArticle(adminReviewPreviewArticle)"
         >通过并发布</button>
+      </footer>
+      <footer v-else class="admin-review-preview-actions">
+        <button type="button" @click="closeAdminReviewPreview">关闭</button>
       </footer>
     </section>
   </div>
@@ -5000,9 +5569,9 @@ onBeforeUnmount(() => {
             <h1>{{ adminPageTitle }}</h1>
             <p>{{ adminPageSubtitle }}</p>
           </div>
-          <button class="admin-refresh-button" type="button" :disabled="adminOverviewLoading || adminReviewLoading" @click="refreshAdminCurrentTab">
+          <button class="admin-refresh-button" type="button" :disabled="adminIsLoading" @click="refreshAdminCurrentTab">
             <iconify-icon icon="mdi:refresh" width="20"></iconify-icon>
-            {{ adminOverviewLoading || adminReviewLoading ? "刷新中" : "刷新数据" }}
+            {{ adminIsLoading ? "刷新中" : "刷新数据" }}
           </button>
         </header>
 
@@ -5060,29 +5629,29 @@ onBeforeUnmount(() => {
         </template>
 
         <template v-else-if="adminActiveTab === 'users'">
-          <section class="admin-card admin-filter-card">
+          <section class="admin-card admin-filter-card admin-user-filter-card">
             <div class="admin-filter-search">
               <iconify-icon icon="mdi:magnify" width="20"></iconify-icon>
-              <input readonly placeholder="搜索用户名或邮箱..." type="text" />
+              <input v-model.trim="adminUserFilters.q" placeholder="搜索用户名或邮箱..." type="search" @keydown.enter.prevent="loadAdminUsers" />
             </div>
-            <select aria-label="时间筛选">
-              <option>全部时间</option>
-              <option>近7天</option>
-              <option>近30天</option>
+            <select v-model="adminUserFilters.status" aria-label="状态筛选" @change="loadAdminUsers">
+              <option value="">全部状态</option>
+              <option value="active">正常</option>
+              <option value="disabled">已禁用</option>
             </select>
-            <select aria-label="状态筛选">
-              <option>全部状态</option>
-              <option>正常</option>
-              <option>已禁用</option>
+            <select v-model="adminUserFilters.role" aria-label="角色筛选" @change="loadAdminUsers">
+              <option value="">全部角色</option>
+              <option value="USER">普通用户</option>
+              <option value="ADMIN">管理员</option>
             </select>
-            <button type="button" @click="showAdminPlaceholder('用户筛选')">
+            <button type="button" :disabled="adminUsersLoading" @click="loadAdminUsers">
               <iconify-icon icon="mdi:filter-outline" width="18"></iconify-icon>
-              筛选
+              {{ adminUsersLoading ? "加载中" : "筛选" }}
             </button>
           </section>
 
           <section class="admin-card admin-table-card">
-            <div class="admin-user-table">
+            <div class="admin-user-table admin-scroll-table">
               <div class="admin-user-row admin-user-head">
                 <span>用户</span>
                 <span>邮箱</span>
@@ -5090,39 +5659,109 @@ onBeforeUnmount(() => {
                 <span>状态</span>
                 <span>操作</span>
               </div>
-              <div v-for="user in adminUserRows" :key="user.email" class="admin-user-row">
+              <div v-for="user in adminUserRows" :key="user.id" class="admin-user-row">
                 <div class="admin-user-cell-main">
                   <span class="admin-user-avatar" :style="{ backgroundColor: user.color }">{{ user.username[0]?.toUpperCase() }}</span>
-                  <strong>{{ user.username }}</strong>
+                  <div>
+                    <strong>{{ user.username }}</strong>
+                    <small>{{ user.roleLabel }} · {{ formatCompactNumber(user.stats.articleCount) }} 篇文章</small>
+                  </div>
                 </div>
                 <span>{{ user.email }}</span>
-                <span>{{ user.createdAt }}</span>
+                <span>{{ user.createdLabel }}</span>
                 <span>
-                  <mark :class="{ 'is-disabled': user.status === '已禁用' }">{{ user.status }}</mark>
+                  <mark :class="{ 'is-disabled': user.isDisabled }">{{ user.statusLabel }}</mark>
                 </span>
                 <div class="admin-user-actions">
-                  <button type="button" @click="showAdminPlaceholder('查看用户详情')">查看</button>
                   <button
+                    v-if="user.role === 'USER'"
                     class="toggle"
                     type="button"
-                    @click="showAdminPlaceholder(user.status === '已禁用' ? '启用用户' : '禁用用户')"
+                    :disabled="adminUserActionId === user.id"
+                    @click="updateAdminUserDisabled(user)"
                   >
-                    {{ user.status === "已禁用" ? "启用" : "禁用" }}
+                    {{ user.isDisabled ? "启用" : "禁用" }}
                   </button>
-                  <button class="danger" type="button" @click="showAdminPlaceholder('删除用户')">删除</button>
+                  <button v-if="user.role === 'USER'" class="danger" type="button" :disabled="adminUserActionId === user.id" @click="deleteAdminUser(user)">删除</button>
+                  <span v-else class="admin-muted-action">受保护</span>
                 </div>
               </div>
+              <p v-if="!adminUsersLoading && adminUserRows.length === 0" class="admin-empty-text admin-table-empty">暂无匹配用户。</p>
+              <p v-if="adminUsersLoading" class="admin-empty-text admin-table-empty">正在加载用户...</p>
             </div>
             <footer class="admin-table-footer">
-              <span>显示 1 到 {{ adminUserRows.length }} 条，共 {{ formatCompactNumber(adminOverview.summary.userCount || adminUserRows.length) }} 条数据</span>
-              <div class="admin-pagination">
-                <button type="button" @click="showAdminPlaceholder('用户分页')">上一页</button>
-                <button class="is-active" type="button">1</button>
-                <button type="button" @click="showAdminPlaceholder('用户分页')">2</button>
-                <button type="button" @click="showAdminPlaceholder('用户分页')">3</button>
-                <button type="button" @click="showAdminPlaceholder('用户分页')">下一页</button>
-              </div>
+              <span>当前筛选显示 {{ adminUserRows.length }} 条，列表区域可滚动。</span>
+              <span>仅普通用户可禁用或删除。</span>
             </footer>
+          </section>
+        </template>
+
+        <template v-else-if="adminActiveTab === 'articles'">
+          <section class="admin-card admin-filter-card admin-article-filter-card">
+            <div class="admin-filter-search">
+              <iconify-icon icon="mdi:magnify" width="20"></iconify-icon>
+              <input v-model.trim="adminArticleFilters.q" placeholder="搜索标题、Slug 或作者..." type="search" @keydown.enter.prevent="loadAdminManagedArticles" />
+            </div>
+            <select v-model="adminArticleFilters.categoryId" aria-label="分类筛选" @change="loadAdminManagedArticles">
+              <option value="">全部分类</option>
+              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+            </select>
+            <select v-model="adminArticleFilters.status" aria-label="状态筛选" @change="loadAdminManagedArticles">
+              <option value="">全部状态</option>
+              <option value="published">已发布</option>
+              <option value="archived">已下架</option>
+            </select>
+            <button type="button" :disabled="adminManagedArticlesLoading" @click="loadAdminManagedArticles">
+              <iconify-icon icon="mdi:filter-outline" width="18"></iconify-icon>
+              {{ adminManagedArticlesLoading ? "加载中" : "筛选" }}
+            </button>
+          </section>
+
+          <section class="admin-card admin-review-card admin-managed-article-card">
+            <div class="admin-card-header">
+              <h2>
+                <iconify-icon icon="mdi:file-document-multiple-outline" width="24"></iconify-icon>
+                已发布文章管理
+              </h2>
+              <span>{{ adminManagedArticleRows.length }} 条结果</span>
+            </div>
+            <div class="admin-review-list admin-scroll-list">
+              <article v-for="article in adminManagedArticleRows" :key="article.id" class="admin-review-item admin-managed-article-item">
+                <div>
+                  <h3>{{ article.title }}</h3>
+                  <p>
+                    作者：{{ article.author?.username || '未知用户' }}
+                    · 分类：{{ article.category?.name || '未分类' }}
+                    · {{ article.dateLabel }}
+                  </p>
+                  <div class="admin-risk-tags">
+                    <span :class="{ reason: article.status === 'ARCHIVED' }">{{ article.statusLabel }}</span>
+                    <span>{{ article.metricLabel }}</span>
+                    <span v-for="tag in article.tags.slice(0, 3)" :key="tag.id">{{ tag.name }}</span>
+                  </div>
+                </div>
+                <div class="admin-review-actions">
+                  <button class="neutral" type="button" @click="openAdminManagedArticlePreview(article)">预览</button>
+                  <button
+                    v-if="article.status === 'PUBLISHED'"
+                    class="reject"
+                    type="button"
+                    :disabled="adminArticleActionId === article.id"
+                    @click="updateAdminManagedArticleStatus(article, 'ARCHIVED')"
+                  >下架</button>
+                  <button
+                    v-else
+                    class="approve"
+                    type="button"
+                    :disabled="adminArticleActionId === article.id"
+                    @click="updateAdminManagedArticleStatus(article, 'PUBLISHED')"
+                  >发布</button>
+                  <button class="delete" type="button" :disabled="adminArticleActionId === article.id" @click="deleteAdminManagedArticle(article)">删除</button>
+                </div>
+              </article>
+              <p v-if="!adminManagedArticlesLoading && adminManagedArticleRows.length === 0" class="admin-empty-text">暂无匹配文章。</p>
+              <p v-if="adminManagedArticlesLoading" class="admin-empty-text">正在加载文章...</p>
+            </div>
           </section>
         </template>
 
@@ -5198,6 +5837,16 @@ onBeforeUnmount(() => {
         </template>
 
         <template v-else-if="adminActiveTab === 'taxonomy'">
+          <section class="admin-card admin-filter-card admin-taxonomy-filter-card">
+            <div class="admin-filter-search">
+              <iconify-icon icon="mdi:magnify" width="20"></iconify-icon>
+              <input v-model.trim="adminTaxonomyFilters.q" placeholder="搜索分类或标签..." type="search" @keydown.enter.prevent="loadAdminTaxonomies" />
+            </div>
+            <button type="button" :disabled="adminTaxonomyLoading" @click="loadAdminTaxonomies">
+              <iconify-icon icon="mdi:filter-outline" width="18"></iconify-icon>
+              {{ adminTaxonomyLoading ? "加载中" : "筛选" }}
+            </button>
+          </section>
           <section class="admin-taxonomy-grid">
             <article class="admin-card">
               <div class="admin-card-header">
@@ -5206,24 +5855,25 @@ onBeforeUnmount(() => {
                   文章分类管理
                 </h2>
               </div>
-              <div class="admin-taxonomy-list">
-                <div v-for="category in adminCategoryStats" :key="category.name" class="admin-taxonomy-item">
+              <div class="admin-taxonomy-list admin-scroll-list">
+                <div v-for="category in adminTaxonomyCategoryRows" :key="category.id" class="admin-taxonomy-item">
                   <div>
                     <span class="admin-taxonomy-dot" :style="{ backgroundColor: category.color }"></span>
                     <strong>{{ category.name }}</strong>
-                    <small>{{ category.value }} 篇文章</small>
+                    <small>{{ formatCompactNumber(category.articleCount) }} 篇文章使用</small>
                   </div>
                   <div>
-                    <button type="button" @click="showAdminPlaceholder('编辑分类')"><iconify-icon icon="mdi:pencil-outline" width="18"></iconify-icon></button>
-                    <button type="button" @click="showAdminPlaceholder('删除分类')"><iconify-icon icon="mdi:trash-can-outline" width="18"></iconify-icon></button>
+                    <button type="button" :disabled="adminTaxonomyActionKey === `category:${category.id}`" @click="renameAdminCategory(category)"><iconify-icon icon="mdi:pencil-outline" width="18"></iconify-icon></button>
+                    <button type="button" :disabled="adminTaxonomyActionKey === `category:${category.id}`" @click="deleteAdminCategory(category)"><iconify-icon icon="mdi:trash-can-outline" width="18"></iconify-icon></button>
                   </div>
                 </div>
-                <p v-if="adminCategoryStats.length === 0" class="admin-empty-text">暂无分类。</p>
+                <p v-if="!adminTaxonomyLoading && adminTaxonomyCategoryRows.length === 0" class="admin-empty-text">暂无分类。</p>
+                <p v-if="adminTaxonomyLoading" class="admin-empty-text">正在加载分类...</p>
               </div>
-              <div class="admin-inline-create">
-                <input readonly placeholder="新增分类名称..." type="text" />
-                <button type="button" @click="showAdminPlaceholder('新增分类')">新增</button>
-              </div>
+              <form class="admin-inline-create" @submit.prevent="createAdminCategory">
+                <input v-model.trim="adminCategoryForm.name" placeholder="新增分类名称..." type="text" />
+                <button type="submit" :disabled="adminTaxonomyActionKey === 'category:create'">新增</button>
+              </form>
             </article>
 
             <article class="admin-card">
@@ -5233,19 +5883,24 @@ onBeforeUnmount(() => {
                   文章标签管理
                 </h2>
               </div>
-              <div class="admin-tag-cloud">
-                <span v-for="tag in adminTagStats" :key="tag.id" :style="{ '--tag-color': tag.color }">
+              <div class="admin-tag-cloud admin-scroll-list">
+                <span v-for="tag in adminTaxonomyTagRows" :key="tag.id" :style="{ '--tag-color': tag.color }">
                   {{ tag.name }}
-                  <button type="button" @click="showAdminPlaceholder('删除标签')">
+                  <small>{{ formatCompactNumber(tag.articleCount) }}</small>
+                  <button type="button" title="重命名标签" :disabled="adminTaxonomyActionKey === `tag:${tag.id}`" @click="renameAdminTag(tag)">
+                    <iconify-icon icon="mdi:pencil-outline" width="15"></iconify-icon>
+                  </button>
+                  <button type="button" title="删除标签" :disabled="adminTaxonomyActionKey === `tag:${tag.id}`" @click="deleteAdminTag(tag)">
                     <iconify-icon icon="mdi:close" width="15"></iconify-icon>
                   </button>
                 </span>
-                <p v-if="adminTagStats.length === 0" class="admin-empty-text">暂无标签。</p>
+                <p v-if="!adminTaxonomyLoading && adminTaxonomyTagRows.length === 0" class="admin-empty-text">暂无标签。</p>
+                <p v-if="adminTaxonomyLoading" class="admin-empty-text">正在加载标签...</p>
               </div>
-              <div class="admin-inline-create">
-                <input readonly placeholder="输入新标签名称..." type="text" />
-                <button type="button" @click="showAdminPlaceholder('新增标签')">新增</button>
-              </div>
+              <form class="admin-inline-create" @submit.prevent="createAdminTag">
+                <input v-model.trim="adminTagForm.name" placeholder="输入新标签名称..." type="text" />
+                <button type="submit" :disabled="adminTaxonomyActionKey === 'tag:create'">新增</button>
+              </form>
             </article>
           </section>
         </template>

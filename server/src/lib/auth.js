@@ -56,6 +56,7 @@ export function sanitizeUser(user) {
     qqBound: Boolean(user.qqBound),
     alipayBound: Boolean(user.alipayBound),
     role: user.role,
+    isDisabled: Boolean(user.isDisabled),
     createdAt: user.createdAt
   };
 }

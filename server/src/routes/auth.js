@@ -29,6 +29,17 @@ function normalizeAccount(account) {
   return String(account || "").trim();
 }
 
+async function userIsDisabled(userId) {
+  const rows = await prisma.$queryRaw`
+    SELECT is_disabled AS isDisabled
+    FROM users
+    WHERE id = ${userId}
+    LIMIT 1
+  `;
+
+  return Boolean(rows[0]?.isDisabled);
+}
+
 function validateRegistrationInput({ username, email, password }) {
   if (username.length < 3 || username.length > 50) {
     return "用户名长度必须在 3 到 50 个字符之间。";
@@ -145,6 +156,12 @@ router.post("/login", async (req, res, next) => {
 
       return res.status(401).json({
         message: "用户名/邮箱或密码错误。"
+      });
+    }
+
+    if (await userIsDisabled(user.id)) {
+      return res.status(403).json({
+        message: "账号已被禁用，请联系管理员。"
       });
     }
 

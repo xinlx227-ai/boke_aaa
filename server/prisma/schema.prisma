@@ -36,6 +36,7 @@ model User {
   qqBound         Boolean          @default(false) @map("qq_bound")
   alipayBound     Boolean          @default(false) @map("alipay_bound")
   role            UserRole         @default(USER)
+  isDisabled      Boolean          @default(false) @map("is_disabled")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
   articles        Article[]

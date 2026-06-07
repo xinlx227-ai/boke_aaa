@@ -1,20 +1,20 @@
 # Private Blog System - 私有博客系统
 
-一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、用户/管理员工作台视觉统一与暗色模式补齐、文章编辑页旧版公共 UI 误渲染修复、真实阅读/点赞/收藏/热门排行统计能力、普通用户草稿投稿和管理员待审核队列，以及用户面板收藏、社交互动、安全设置、个人统计增量、通知已读/未读、会话设备解析和安全审计闭环。
+一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、用户/管理员工作台视觉统一与暗色模式补齐、文章编辑页旧版公共 UI 误渲染修复、真实阅读/点赞/收藏/热门排行统计能力、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环，以及管理员用户管理、分类标签管理和已发布文章管理真实接口。
 
 ## 当前状态
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前工作分支 | `main` |
-| 最新 UI 工作 | 用户面板收藏、社交互动、安全设置和数据看板已替换旧占位；收藏页支持搜索/分类筛选，社交页展示收到的评论和互动通知并支持已读状态，安全页接入密码、手机号、本地第三方绑定、登录设备管理和最近安全活动 |
-| 最新功能工作 | 用户中心安全闭环已合入：互动通知支持轻量已读表、单条/全部已读、未读数；会话列表使用 `ua-parser-js` 返回友好设备名；安全设置记录并展示最近安全审计事件 |
+| 当前工作分支 | `codex/admin-ui-improvements` |
+| 最新 UI 工作 | 管理后台左侧新增“已发布文章”；用户管理、已发布文章、分类标签改为真实数据列表和滚动区域，不做分页；危险删除操作要求输入目标名称确认 |
+| 最新功能工作 | 管理员真实管理闭环：用户搜索/筛选/禁用/启用/硬删除，分类标签新增/改名/删除，已发布文章搜索/分类筛选/预览/下架/重新发布/删除 |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
-| 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes`、`article_metric_events`、`user_notification_reads`、`security_audit_events` |
-| 最近验证 | 2026-06-07：当前主线位于 `87053f7 Add user center security features`，`main` 与 `origin/main` 同步；用户中心安全闭环新增后端测试覆盖，文档同步前 `git diff --check` 干净 |
-| 合并状态 | `main` 与 `origin/main` 当前同步在 `87053f7 Add user center security features`；本地只剩 `main` 分支 |
+| 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes`、`article_metric_events`、`user_notification_reads`、`security_audit_events`，以及 `users.is_disabled` |
+| 最近验证 | 2026-06-07：`codex/admin-ui-improvements` 已执行 `npm test --workspace server`、`npm run build`、`npx prisma validate --schema prisma/schema.prisma`、`git diff --check`；后端测试 11/11 通过，`diff --check` 仅 LF/CRLF 提示 |
+| 合并状态 | 当前功能分支基于 `d4d2039 Update handoff and README`；本地 `main` 领先 `origin/main` 1 个文档提交，`origin/main` 仍在 `87053f7 Add user center security features` |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
@@ -64,14 +64,15 @@
 - 普通用户不能手动编辑 slug，后端自动生成并尽量保持稳定；提交审核前进行严格必填校验，保存草稿校验较宽松；提交后文章锁定，需撤回到草稿才能继续修改。
 - 文章编辑页主路由已阻止公开首页主内容链路继续渲染，不会在编辑器下方再出现旧版用户页面 UI。
 - 管理后台已重构为独立后台 UI，顶部导航沿用首页的 `MyBlog Pro` 品牌、明暗切换、通知和用户胶囊；管理员页面顶部不显示搜索框，布局宽度、左侧栏色彩和顶部栏图标/账号区已向用户面板对齐。
-- 管理后台左侧导航包含站点概览、用户管理、内容审核、分类标签；移动端使用抽屉式导航。
+- 管理后台左侧导航包含站点概览、用户管理、已发布文章、内容审核、分类标签；移动端使用抽屉式导航。
 - 管理后台默认进入站点概览，统计卡尽量复用真实数据：注册账号数、文章数、评论数、今日访问。
 - 管理后台“近7日访问趋势”使用 ECharts 柱状图，按 `Asia/Shanghai` 自然日展示 `MM-DD` 日期；匿名用户按 `visitorId` 去重，登录用户按 `userId` 去重，只统计首页和文章页访问。
 - 管理后台“文章分类分布”使用 ECharts 环形图，基于已发布文章的真实分类聚合。
-- 管理后台用户管理当前为 UI 占位，搜索/筛选/查看/禁用/删除按钮只提示后续接入，未新增用户禁用或删除接口。
+- 管理后台用户管理已接真实接口：支持后端搜索、状态/角色筛选、禁用/启用普通用户和硬删除普通用户；禁用会停用该用户活跃会话，登录和已有 token 都会被拦截。
+- 管理后台已发布文章页已接真实接口：支持搜索、分类/状态筛选、预览、下架到 `ARCHIVED`、重新发布为 `PUBLISHED` 和删除；本轮不做编辑入口。
 - 管理后台内容审核已接真实待审核文章队列，支持管理员预览、通过并发布、驳回并填写原因；历史审核记录暂未做完整管理。
 - 管理后台敏感评论当前为 UI 示例，不是后端检测结果；忽略/删除按钮只提示后续接入。
-- 分类标签页读取现有真实分类和标签展示，但新增、编辑、删除操作仍是 UI 占位。
+- 分类标签页已接真实接口，支持分类/标签新增、改名和删除；删除正在被文章使用的分类会将相关文章分类置空，删除正在被文章使用的标签会移除对应文章标签关联，前端会提示正在被使用。
 
 ## 功能概览
 
@@ -167,8 +168,11 @@ hotScore = views * 1 + likes * 5 + favorites * 8 + comments * 3
 - 站点概览展示真实注册账号数、文章数、评论数、今日访问。
 - 近 7 日访问趋势来自只读管理员概览接口，按日期展示柱状图。
 - 文章分类分布基于当前已发布文章分类聚合展示环形图。
+- 用户管理已接真实列表、搜索、筛选、禁用/启用和普通用户硬删除。
+- 已发布文章管理已接真实列表、搜索、分类筛选、预览、下架/重新发布和删除。
 - 内容审核已接真实待审核文章队列，支持预览、通过发布和驳回原因。
-- 用户管理、敏感评论处理、分类标签管理当前为 UI 占位和提示交互。
+- 分类标签管理已接真实新增、改名和删除。
+- 敏感评论处理当前仍为 UI 占位和提示交互。
 - 管理员当前主要负责审核和管理；撰写文章能力后续规划放到普通用户投稿流程中。
 
 ### 评论
@@ -284,7 +288,7 @@ npm run prisma:deploy
 npm run prisma:migrate -- --name your_migration_name
 ```
 
-本项目当前包含 `published_at` 相关迁移、取消 `chapterOrder` 唯一索引的迁移、文章统计相关迁移、评论回复/评论点赞相关迁移、文章草稿投稿/审核状态相关迁移、用户面板绑定字段迁移、作者指标事件表迁移，以及用户通知已读/安全审计迁移。其他环境同步代码后需要执行迁移部署。
+本项目当前包含 `published_at` 相关迁移、取消 `chapterOrder` 唯一索引的迁移、文章统计相关迁移、评论回复/评论点赞相关迁移、文章草稿投稿/审核状态相关迁移、用户面板绑定字段迁移、作者指标事件表迁移、用户通知已读/安全审计迁移，以及管理员用户禁用字段迁移。其他环境同步代码后需要执行迁移部署。
 
 最近新增迁移：
 
@@ -295,6 +299,7 @@ server/prisma/migrations/20260605110000_article_submission_workflow/migration.sq
 server/prisma/migrations/20260606110000_user_panel_bindings/migration.sql
 server/prisma/migrations/20260606113000_article_metric_events/migration.sql
 server/prisma/migrations/20260607100000_user_center_security_loop/migration.sql
+server/prisma/migrations/20260607113000_admin_management_loop/migration.sql
 ```
 
 ## 本地开发
@@ -385,6 +390,29 @@ npm test --workspace server
 - `GET /api/articles/admin/reviews`
 - `POST /api/articles/admin/reviews/:id/approve`
 - `POST /api/articles/admin/reviews/:id/reject`
+
+管理员管理接口：
+
+- `GET /api/admin/users`
+- `PATCH /api/admin/users/:id/disabled`
+- `DELETE /api/admin/users/:id`
+- `GET /api/admin/taxonomies`
+- `POST /api/admin/categories`
+- `PATCH /api/admin/categories/:id`
+- `DELETE /api/admin/categories/:id`
+- `POST /api/admin/tags`
+- `PATCH /api/admin/tags/:id`
+- `DELETE /api/admin/tags/:id`
+- `GET /api/admin/articles`
+- `PATCH /api/admin/articles/:id/status`
+- `DELETE /api/admin/articles/:id`
+
+管理员管理边界：
+
+- 只能禁用、启用或删除 `USER`，不能删除 `ADMIN`。
+- 删除用户是硬删除，会连带删除该用户文章、评论、点赞、收藏、会话等关联数据；前端会要求输入用户名确认。
+- 删除正在被文章使用的分类/标签允许继续执行；分类会从相关文章移除，标签会移除对应文章标签关联；前端会提示正在被文章使用并要求输入名称确认。
+- 已发布文章管理不提供编辑入口；下架使用现有 `ARCHIVED` 状态，重新发布恢复为 `PUBLISHED`。
 
 文章接口返回的统计字段：
 
@@ -489,7 +517,18 @@ npm test --workspace server
 npm run build
 ```
 
-当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、普通用户草稿/投稿/撤回/删除、未保存内容预览、管理员待审列表/通过/驳回、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、评论回复、评论点赞/取消、评论作者禁止自赞、回复禁止点赞、文章序号、首次发布时间、阅读去重、点赞/收藏登录限制、热门排行、全站 summary、用户面板收藏列表、收到的评论、互动通知、通知已读/未读、修改密码、会话管理、设备解析、手机号唯一性、本地绑定状态和安全审计等流程。
+当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、普通用户草稿/投稿/撤回/删除、未保存内容预览、管理员待审列表/通过/驳回、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、评论回复、评论点赞/取消、评论作者禁止自赞、回复禁止点赞、文章序号、首次发布时间、阅读去重、点赞/收藏登录限制、热门排行、全站 summary、用户面板收藏列表、收到的评论、互动通知、通知已读/未读、修改密码、会话管理、设备解析、手机号唯一性、本地绑定状态、安全审计、管理员用户禁用/硬删除、分类标签删除关联处理、已发布文章下架/重新发布等流程。
+
+当前管理员真实管理功能在 `codex/admin-ui-improvements` 上已验证：
+
+```bash
+npm test --workspace server
+npm run build
+npx prisma validate --schema prisma/schema.prisma
+git diff --check
+```
+
+说明：本轮新增 `users.is_disabled` 和 `/api/admin/*` 管理接口。开发库和测试库均已执行 `npm run prisma:deploy --workspace server` 或等效 `prisma migrate deploy`。`npm run prisma:generate --workspace server` 曾因 Windows Prisma Client DLL rename 被占用失败；新增禁用字段运行时使用 raw SQL 读写，不阻塞当前功能。
 
 最近用户中心安全闭环工作已合并到 `main`：
 
@@ -567,7 +606,9 @@ WHERE email = 'your-admin@example.com';
 
 ## 后续建议
 
-- 可将管理后台用户管理、敏感评论、分类标签管理接入真实后端接口；内容审核阶段 2 已完成待审核队列，历史审核记录暂未做完整管理。
+- 可继续将管理后台敏感评论处理接入真实检测/审核后端；内容审核阶段 2 已完成待审核队列，历史审核记录暂未做完整管理。
+- 管理后台用户管理后续可补充更细的用户详情、批量操作和管理员权限管理；当前仅允许管理 `USER`。
+- 已发布文章管理后续可补充后台编辑入口、批量下架和审核历史联动；当前仅做列表、预览、上下架和删除。
 - 可基于 `site_visits` 做公开首页的真实趋势图；当前公开首页阅读趋势图形仍有占位性质，用户面板已接当前用户文章阅读趋势。
 - 投稿编辑器下一步可继续接封面、SEO、高级设置、批量上传、真实自动保存或更完整的审核历史；是否需要富文本体验可等 Markdown 投稿链路稳定后再评估 Tiptap / ProseMirror。
 - 如需继续完善用户中心，可评估真实短信验证码、真实微信/QQ/支付宝 OAuth、通知精确定位/高亮、更完整的安全审计筛选和管理员全站安全审计后台。

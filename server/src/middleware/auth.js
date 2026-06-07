@@ -5,6 +5,17 @@ function sendUnauthorized(res, message = "请先登录。") {
   return res.status(401).json({ message });
 }
 
+async function userIsDisabled(userId) {
+  const rows = await prisma.$queryRaw`
+    SELECT is_disabled AS isDisabled
+    FROM users
+    WHERE id = ${userId}
+    LIMIT 1
+  `;
+
+  return Boolean(rows[0]?.isDisabled);
+}
+
 async function resolveAuth(req) {
   const authorizationHeader = req.headers.authorization;
 
@@ -40,6 +51,10 @@ async function resolveAuth(req) {
     session.deviceId !== deviceId ||
     session.tokenHash !== hashTokenId(tokenId)
   ) {
+    return null;
+  }
+
+  if (await userIsDisabled(userId)) {
     return null;
   }
 

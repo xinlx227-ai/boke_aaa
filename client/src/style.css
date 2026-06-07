@@ -819,6 +819,10 @@ iconify-icon:not(:defined) + .brand-feather-fallback {
   align-items: center;
 }
 
+.admin-taxonomy-filter-card {
+  grid-template-columns: minmax(0, 1fr) 96px;
+}
+
 .admin-filter-search {
   display: flex;
   align-items: center;
@@ -864,6 +868,16 @@ iconify-icon:not(:defined) + .brand-feather-fallback {
   box-shadow: 0 14px 28px rgba(249, 115, 22, 0.22);
 }
 
+.admin-filter-card button:disabled,
+.admin-inline-create button:disabled,
+.admin-review-actions button:disabled,
+.admin-user-actions button:disabled,
+.admin-taxonomy-item button:disabled,
+.admin-tag-cloud button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .admin-table-card {
   padding: 0;
   overflow: hidden;
@@ -871,6 +885,12 @@ iconify-icon:not(:defined) + .brand-feather-fallback {
 
 .admin-user-table {
   min-width: 920px;
+}
+
+.admin-scroll-table,
+.admin-scroll-list {
+  max-height: min(620px, calc(100vh - 300px));
+  overflow: auto;
 }
 
 .admin-user-row {
@@ -905,6 +925,14 @@ iconify-icon:not(:defined) + .brand-feather-fallback {
   font-weight: 900;
 }
 
+.admin-user-cell-main small {
+  display: block;
+  margin-top: 4px;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .admin-user-avatar {
   display: inline-flex;
   width: 38px;
@@ -932,6 +960,7 @@ iconify-icon:not(:defined) + .brand-feather-fallback {
 
 .admin-user-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 16px;
 }
@@ -949,6 +978,16 @@ iconify-icon:not(:defined) + .brand-feather-fallback {
 
 .admin-user-actions button.danger {
   color: #ef4444;
+}
+
+.admin-muted-action {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.admin-table-empty {
+  padding: 22px 24px;
 }
 
 .admin-table-footer {
@@ -998,6 +1037,14 @@ iconify-icon:not(:defined) + .brand-feather-fallback {
   border-radius: 16px;
   padding: 18px;
   background: #fff;
+}
+
+.admin-managed-article-card {
+  min-height: 0;
+}
+
+.admin-managed-article-item {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .admin-review-item:hover {
@@ -1051,6 +1098,8 @@ iconify-icon:not(:defined) + .brand-feather-fallback {
 
 .admin-review-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 10px;
 }
 
@@ -1163,6 +1212,13 @@ iconify-icon:not(:defined) + .brand-feather-fallback {
   color: var(--tag-color);
   font-size: 0.9rem;
   font-weight: 800;
+}
+
+.admin-tag-cloud span small {
+  border-radius: 999px;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 0.72rem;
 }
 
 .admin-empty-text {
