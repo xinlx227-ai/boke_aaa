@@ -277,6 +277,34 @@ model UserSession {
   @@map("user_sessions")
 }
 
+model UserNotificationRead {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @map("user_id")
+  notificationKey String   @map("notification_key") @db.VarChar(191)
+  readAt          DateTime @default(now()) @map("read_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, notificationKey])
+  @@index([userId, readAt])
+  @@map("user_notification_reads")
+}
+
+model SecurityAuditEvent {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  sessionId Int?     @map("session_id")
+  eventType String   @map("event_type") @db.VarChar(80)
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  userAgent String?  @map("user_agent") @db.VarChar(500)
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([eventType, createdAt])
+  @@map("security_audit_events")
+}
+
 model ArticleVersion {
   id               Int           @id @default(autoincrement())
   articleId        Int           @map("article_id")

@@ -92,6 +92,32 @@ test("auth flow enforces JWT session validation and three active devices", async
   assert.notEqual(createdUser.passwordHash, password);
   assert.match(createdUser.passwordHash, /^\$2[aby]\$/);
 
+  const wrongPasswordLogin = await apiRequest("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      account: email,
+      password: "WrongPassw0rd!"
+    })
+  });
+  assert.equal(wrongPasswordLogin.status, 401);
+
+  const missingAccountLogin = await apiRequest("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      account: `missing_${suffix}@example.com`,
+      password: "WrongPassw0rd!"
+    })
+  });
+  assert.equal(missingAccountLogin.status, 401);
+
+  const failedLoginEvents = await prisma.$queryRaw`
+    SELECT event_type AS eventType
+    FROM security_audit_events
+    WHERE user_id = ${createdUser.id}
+      AND event_type = 'login_failed'
+  `;
+  assert.equal(failedLoginEvents.length, 1);
+
   const loginResults = [];
 
   for (let index = 0; index < 4; index += 1) {
@@ -135,6 +161,14 @@ test("auth flow enforces JWT session validation and three active devices", async
 
   assert.equal(activeSessions, 3);
 
+  const successfulLoginEvents = await prisma.$queryRaw`
+    SELECT event_type AS eventType
+    FROM security_audit_events
+    WHERE user_id = ${createdUser.id}
+      AND event_type = 'login_success'
+  `;
+  assert.equal(successfulLoginEvents.length, 4);
+
   const logoutResult = await apiRequest("/auth/logout", {
     method: "POST",
     headers: {
@@ -151,6 +185,14 @@ test("auth flow enforces JWT session validation and three active devices", async
   });
 
   assert.equal(meAfterLogout.status, 401);
+
+  const logoutEvents = await prisma.$queryRaw`
+    SELECT event_type AS eventType
+    FROM security_audit_events
+    WHERE user_id = ${createdUser.id}
+      AND event_type = 'logout'
+  `;
+  assert.equal(logoutEvents.length, 1);
 
   await prisma.user.delete({
     where: {

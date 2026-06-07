@@ -1401,10 +1401,53 @@ test("user panel APIs expose favorites, comments, interactions, sessions, passwo
     new Set(interactionsResult.body.interactions.map((interaction) => interaction.type)),
     new Set(["reply_to_my_comment", "comment_on_my_article", "like_my_article", "favorite_my_article", "like_my_comment"])
   );
+  assert.equal(interactionsResult.body.unreadCount, 5);
+  assert.ok(interactionsResult.body.interactions.every((interaction) => interaction.notificationKey));
+  assert.ok(interactionsResult.body.interactions.every((interaction) => interaction.isRead === false));
   assert.equal(
     interactionsResult.body.interactions.filter((interaction) => interaction.type === "reply_to_my_comment").length,
     1
   );
+
+  const firstInteraction = interactionsResult.body.interactions[0];
+  const readOneResult = await apiRequest(`/users/me/interactions/${encodeURIComponent(firstInteraction.notificationKey)}/read`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${panelUser.token}`
+    }
+  });
+  assert.equal(readOneResult.status, 200);
+  assert.equal(readOneResult.body.notificationKey, firstInteraction.notificationKey);
+
+  const interactionsAfterReadOne = await apiRequest("/users/me/interactions", {
+    headers: {
+      Authorization: `Bearer ${panelUser.token}`
+    }
+  });
+  assert.equal(interactionsAfterReadOne.status, 200);
+  assert.equal(interactionsAfterReadOne.body.unreadCount, 4);
+  assert.equal(
+    interactionsAfterReadOne.body.interactions.find((interaction) => interaction.notificationKey === firstInteraction.notificationKey)?.isRead,
+    true
+  );
+
+  const readAllResult = await apiRequest("/users/me/interactions/read-all", {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${panelUser.token}`
+    }
+  });
+  assert.equal(readAllResult.status, 200);
+  assert.ok(readAllResult.body.changed >= 5);
+
+  const interactionsAfterReadAll = await apiRequest("/users/me/interactions", {
+    headers: {
+      Authorization: `Bearer ${panelUser.token}`
+    }
+  });
+  assert.equal(interactionsAfterReadAll.status, 200);
+  assert.equal(interactionsAfterReadAll.body.unreadCount, 0);
+  assert.ok(interactionsAfterReadAll.body.interactions.every((interaction) => interaction.isRead === true));
 
   const clearFavoriteResult = await apiRequest(`/articles/${favoriteTarget.slug}/favorites`, {
     method: "DELETE",
@@ -1453,6 +1496,10 @@ test("user panel APIs expose favorites, comments, interactions, sessions, passwo
   assert.equal(sessionsResult.status, 200);
   assert.ok(sessionsResult.body.sessions.length >= 2);
   assert.equal(sessionsResult.body.sessions.filter((session) => session.isCurrent).length, 1);
+  assert.ok(sessionsResult.body.sessions.every((session) => session.deviceName));
+  assert.ok(sessionsResult.body.sessions.every((session) => session.browserName));
+  assert.ok(sessionsResult.body.sessions.every((session) => session.osName));
+  assert.ok(sessionsResult.body.sessions.every((session) => session.deviceType));
   const oldSession = sessionsResult.body.sessions.find((session) => !session.isCurrent);
   assert.ok(oldSession);
 
@@ -1609,6 +1656,31 @@ test("user panel APIs expose favorites, comments, interactions, sessions, passwo
   assert.equal(clearBindingResult.status, 200);
   assert.equal(clearBindingResult.body.bindings.phoneNumber, null);
   assert.equal(clearBindingResult.body.bindings.wechatBound, false);
+
+  const securityEventsResult = await apiRequest("/users/me/security-events", {
+    headers: {
+      Authorization: `Bearer ${secondLogin.body.token}`
+    }
+  });
+  assert.equal(securityEventsResult.status, 200);
+  assert.ok(securityEventsResult.body.events.length <= 5);
+  assert.ok(securityEventsResult.body.events.length >= 5);
+  assert.ok(securityEventsResult.body.events.every((event) => event.eventType));
+  assert.ok(securityEventsResult.body.events.every((event) => event.device?.deviceName));
+  assert.ok(
+    securityEventsResult.body.events.some((event) => event.eventType === "bindings_updated")
+  );
+  assert.ok(
+    securityEventsResult.body.events.some((event) => event.eventType === "password_changed")
+  );
+
+  const sessionRevokedEvents = await prisma.$queryRaw`
+    SELECT event_type AS eventType
+    FROM security_audit_events
+    WHERE user_id = ${panelUser.user.id}
+      AND event_type = 'session_revoked'
+  `;
+  assert.ok(sessionRevokedEvents.length >= 1);
 
     await prisma.user.deleteMany({
       where: {

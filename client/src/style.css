@@ -3514,7 +3514,7 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 }
 .user-panel-link-title:hover,
 .user-panel-comment-article:hover,
-.user-panel-notice-item button:hover {
+.user-panel-notice-item:hover em {
   color: #f97316;
 }
 .user-panel-tag-chip {
@@ -3571,7 +3571,7 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   font-weight: 900;
 }
 .user-panel-comment-placeholder,
-.user-panel-notice-list div {
+.user-panel-notice-list .user-panel-inline-empty {
   display: flex;
   align-items: flex-start;
   gap: 12px;
@@ -3593,7 +3593,7 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   display: grid;
   gap: 12px;
 }
-.user-panel-notice-list span,
+.user-panel-notice-list .user-panel-notice-icon,
 .user-panel-notice-item > span {
   width: 38px;
   height: 38px;
@@ -3662,11 +3662,12 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   line-height: 1.55;
 }
 .user-panel-comment-article,
-.user-panel-notice-item button {
+.user-panel-notice-item em {
   margin-top: 4px;
   color: #f97316;
   font-weight: 900;
   text-align: left;
+  font-style: normal;
 }
 .user-panel-comment-content {
   margin-top: 10px;
@@ -3689,6 +3690,43 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 .user-panel-notice-item.tone-purple > span {
   background: #f3e8ff;
   color: #9333ea;
+}
+.user-panel-notice-item {
+  position: relative;
+  width: 100%;
+  align-items: flex-start;
+  text-align: left;
+  cursor: pointer;
+}
+.user-panel-notice-item:hover {
+  border-color: rgba(249, 115, 22, 0.35);
+  background: #fffaf5;
+}
+.user-panel-notice-item > div {
+  min-width: 0;
+  flex: 1;
+}
+.user-panel-notice-item strong,
+.user-panel-notice-item em,
+.user-panel-notice-item small {
+  display: block;
+}
+.user-panel-notice-item strong,
+.user-panel-notice-item em {
+  padding-right: 16px;
+}
+.user-panel-notice-item.is-unread {
+  border-color: rgba(249, 115, 22, 0.26);
+}
+.user-panel-unread-dot {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #f97316;
+  box-shadow: 0 0 0 3px #fff;
 }
 .user-panel-security-stack {
   display: grid;
@@ -3846,6 +3884,57 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   background: #ffedd5;
   color: #ea580c;
 }
+.user-panel-audit-list {
+  display: grid;
+  gap: 12px;
+}
+.user-panel-audit-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid #f1f5f9;
+  border-radius: 16px;
+  background: #fff;
+}
+.user-panel-audit-icon {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: #dbeafe;
+  color: #2563eb;
+}
+.user-panel-audit-item.tone-orange .user-panel-audit-icon {
+  background: #ffedd5;
+  color: #ea580c;
+}
+.user-panel-audit-item.tone-rose .user-panel-audit-icon {
+  background: #ffe4e6;
+  color: #e11d48;
+}
+.user-panel-audit-item.tone-purple .user-panel-audit-icon {
+  background: #f3e8ff;
+  color: #9333ea;
+}
+.user-panel-audit-item strong {
+  display: block;
+  color: #0f172a;
+  font-weight: 900;
+}
+.user-panel-audit-item p,
+.user-panel-audit-item time {
+  color: #94a3b8;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+.user-panel-audit-item time {
+  white-space: nowrap;
+  font-weight: 800;
+}
 
 .dark .user-panel-shell {
   background:
@@ -3932,7 +4021,7 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 
 .dark .user-panel-sidebar-profile,
 .dark .user-panel-comment-placeholder,
-.dark .user-panel-notice-list div,
+.dark .user-panel-notice-list .user-panel-inline-empty,
 .dark .user-panel-table th,
 .dark .user-panel-bind-grid button {
   border-color: rgba(148, 163, 184, 0.18);
@@ -4009,7 +4098,7 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 }
 
 .dark .user-panel-article-title span,
-.dark .user-panel-notice-list span {
+.dark .user-panel-notice-list .user-panel-notice-icon {
   background: rgba(249, 115, 22, 0.14);
   color: #fdba74;
 }
@@ -6345,6 +6434,7 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 .dark .user-panel-favorite-item,
 .dark .user-panel-comment-item,
 .dark .user-panel-notice-item,
+.dark .user-panel-audit-item,
 .dark .user-panel-session-item,
 .dark .user-panel-search-box,
 .dark .user-panel-select-box,
@@ -6363,6 +6453,15 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   color: #fdba74;
 }
 
+.dark .user-panel-notice-item:hover {
+  border-color: rgba(251, 146, 60, 0.42);
+  background: rgba(249, 115, 22, 0.1);
+}
+
+.dark .user-panel-unread-dot {
+  box-shadow: 0 0 0 3px #223047;
+}
+
 .dark .user-panel-search-box input,
 .dark .user-panel-select-box select,
 .dark .user-panel-link-title,
@@ -6370,7 +6469,8 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 .dark .user-panel-comment-meta strong,
 .dark .user-panel-inline-empty strong,
 .dark .user-panel-current-device strong,
-.dark .user-panel-session-item strong {
+.dark .user-panel-session-item strong,
+.dark .user-panel-audit-item strong {
   color: #f8fafc;
 }
 
@@ -6382,7 +6482,9 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 .dark .user-panel-session-item p,
 .dark .user-panel-session-item small,
 .dark .user-panel-current-device small,
-.dark .user-panel-notice-item small {
+.dark .user-panel-notice-item small,
+.dark .user-panel-audit-item p,
+.dark .user-panel-audit-item time {
   color: #b6c4d8;
 }
 

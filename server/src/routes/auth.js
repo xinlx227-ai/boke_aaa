@@ -6,14 +6,13 @@ import {
   comparePassword,
   generateDeviceId,
   generateTokenId,
-  getRequestIp,
   hashPassword,
   hashTokenId,
   sanitizeUser,
-  signAccessToken,
-  trimUserAgent
+  signAccessToken
 } from "../lib/auth.js";
 import { requireAuth } from "../middleware/auth.js";
+import { SECURITY_AUDIT_EVENTS, recordSecurityAuditEvent, requestAuditContext } from "../lib/securityAudit.js";
 
 const { Prisma } = prismaPkg;
 const router = Router();
@@ -127,9 +126,23 @@ router.post("/login", async (req, res, next) => {
       });
     }
 
+    const auditContext = requestAuditContext(req);
     const passwordIsValid = await comparePassword(password, user.passwordHash);
 
     if (!passwordIsValid) {
+      try {
+        await recordSecurityAuditEvent({
+          userId: user.id,
+          eventType: SECURITY_AUDIT_EVENTS.LOGIN_FAILED,
+          ...auditContext,
+          metadata: {
+            account
+          }
+        });
+      } catch (_error) {
+        // Login failure audit is best-effort so failed writes do not leak behavior.
+      }
+
       return res.status(401).json({
         message: "用户名/邮箱或密码错误。"
       });
@@ -138,8 +151,8 @@ router.post("/login", async (req, res, next) => {
     const deviceId = generateDeviceId();
     const tokenId = generateTokenId();
     const tokenHash = hashTokenId(tokenId);
-    const ipAddress = getRequestIp(req);
-    const userAgent = trimUserAgent(req.headers["user-agent"]);
+    const ipAddress = auditContext.ipAddress;
+    const userAgent = auditContext.userAgent;
 
     const session = await prisma.$transaction(async (tx) => {
       const createdSession = await tx.userSession.create({
@@ -188,6 +201,21 @@ router.post("/login", async (req, res, next) => {
         });
       }
 
+      await recordSecurityAuditEvent(
+        {
+          userId: user.id,
+          sessionId: createdSession.id,
+          eventType: SECURITY_AUDIT_EVENTS.LOGIN_SUCCESS,
+          ipAddress,
+          userAgent,
+          metadata: {
+            deactivatedSessionCount:
+              activeSessions.length > MAX_ACTIVE_SESSIONS ? activeSessions.length - MAX_ACTIVE_SESSIONS : 0
+          }
+        },
+        tx
+      );
+
       return createdSession;
     });
 
@@ -221,6 +249,8 @@ router.get("/me", requireAuth, async (req, res) => {
 
 router.post("/logout", requireAuth, async (req, res, next) => {
   try {
+    const auditContext = requestAuditContext(req);
+
     await prisma.userSession.updateMany({
       where: {
         id: req.auth.sessionId,
@@ -231,6 +261,17 @@ router.post("/logout", requireAuth, async (req, res, next) => {
         isActive: false
       }
     });
+
+    try {
+      await recordSecurityAuditEvent({
+        userId: req.auth.userId,
+        sessionId: req.auth.sessionId,
+        eventType: SECURITY_AUDIT_EVENTS.LOGOUT,
+        ...auditContext
+      });
+    } catch (_error) {
+      // Logout should not be blocked if best-effort audit logging fails.
+    }
 
     return res.json({
       ok: true

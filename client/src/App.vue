@@ -29,6 +29,8 @@ const adminVisitChartRef = ref(null);
 const adminCategoryChartRef = ref(null);
 const userPanelReadChartRef = ref(null);
 const userPanelCategoryChartRef = ref(null);
+const articleCommentsCardRef = ref(null);
+const userPanelNoticeCardRef = ref(null);
 let messageTimer = null;
 let adminVisitChartInstance = null;
 let adminCategoryChartInstance = null;
@@ -84,6 +86,11 @@ const userPanelFavoriteSearch = ref("");
 const userPanelFavoriteCategory = ref("");
 const userPanelFavoriteActionSlug = ref("");
 const userPanelSessionActionId = ref(null);
+const userPanelSecurityEvents = ref([]);
+const userPanelUnreadCount = ref(0);
+const articleReturnTarget = ref(null);
+const pendingArticleScrollTarget = ref(null);
+const pendingUserPanelScrollTarget = ref(null);
 const userPanelPasswordSaving = ref(false);
 const userPanelBindingsSaving = ref(false);
 const userPanelSummary = ref({
@@ -448,18 +455,34 @@ const userPanelInteractionRows = computed(() =>
     ...interaction,
     dateLabel: formatDate(interaction.createdAt),
     icon: interactionIcon(interaction.type),
-    tone: interactionTone(interaction.type)
+    tone: interactionTone(interaction.type),
+    isRead: Boolean(interaction.isRead)
   }))
 );
+const hasUnreadNotifications = computed(() => userPanelUnreadCount.value > 0);
 const userPanelActiveSessionCount = computed(() => userPanelSessions.value.length || userPanelSummary.value.activeSessionCount || 0);
 const userPanelSessionRows = computed(() =>
   userPanelSessions.value.map((session) => ({
     ...session,
     title: session.isCurrent ? "当前设备" : "登录设备",
-    browserLabel: compactUserAgent(session.userAgent),
+    browserLabel: session.deviceName || compactUserAgent(session.userAgent),
     ipLabel: session.ipAddress || "未知 IP",
     activeLabel: formatDate(session.lastActiveAt)
   }))
+);
+const userPanelSecurityEventRows = computed(() =>
+  userPanelSecurityEvents.value.map((event) => {
+    const deviceName = event.device?.deviceName || compactUserAgent(event.userAgent);
+
+    return {
+      ...event,
+      title: securityEventTitle(event.eventType),
+      icon: securityEventIcon(event.eventType),
+      tone: securityEventTone(event.eventType),
+      dateLabel: formatDate(event.createdAt),
+      detail: `${deviceName} · ${event.ipAddress || "未知 IP"}`
+    };
+  })
 );
 const articleEditorTags = computed(() => tagTextToArray(articleEditorForm.tagNamesText));
 const articleEditorSnapshotValue = computed(() =>
@@ -789,6 +812,97 @@ function interactionTone(type) {
   return "rose";
 }
 
+function interactionShouldScrollToComments(type) {
+  return ["reply_to_my_comment", "comment_on_my_article", "like_my_comment"].includes(type);
+}
+
+function securityEventTitle(eventType) {
+  return {
+    login_success: "登录成功",
+    login_failed: "登录失败",
+    logout: "退出登录",
+    password_changed: "修改密码",
+    session_revoked: "注销登录设备",
+    bindings_updated: "更新账号绑定设置"
+  }[eventType] || "安全活动";
+}
+
+function securityEventIcon(eventType) {
+  return {
+    login_success: "mdi:login-variant",
+    login_failed: "mdi:alert-circle-outline",
+    logout: "mdi:logout-variant",
+    password_changed: "mdi:lock-reset",
+    session_revoked: "mdi:cellphone-remove",
+    bindings_updated: "mdi:shield-account-outline"
+  }[eventType] || "mdi:shield-check-outline";
+}
+
+function securityEventTone(eventType) {
+  if (eventType === "login_failed") {
+    return "rose";
+  }
+
+  if (eventType === "password_changed" || eventType === "session_revoked") {
+    return "orange";
+  }
+
+  if (eventType === "bindings_updated") {
+    return "purple";
+  }
+
+  return "blue";
+}
+
+function scrollToArticleComments() {
+  nextTick(() => {
+    articleCommentsCardRef.value?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  });
+}
+
+function scrollToUserPanelNoticeCard() {
+  nextTick(() => {
+    userPanelNoticeCardRef.value?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  });
+}
+
+function createArticleReturnTarget() {
+  if (view.value === "article" && articleReturnTarget.value) {
+    return articleReturnTarget.value;
+  }
+
+  if (view.value === "dashboard" && isAuthenticated.value && !isAdmin.value) {
+    return {
+      hash: "dashboard",
+      userPanelTab: userPanelActiveTab.value
+    };
+  }
+
+  if (view.value === "admin" && isAdmin.value) {
+    return {
+      hash: "admin"
+    };
+  }
+
+  return {
+    hash: ""
+  };
+}
+
+function articleReturnTargetForUserNotices() {
+  return {
+    hash: "dashboard",
+    userPanelTab: "social",
+    scrollTarget: "notices"
+  };
+}
+
 function resetUserPanelData() {
   userPanelSummary.value = {
     articleCount: 0,
@@ -813,6 +927,8 @@ function resetUserPanelData() {
   userPanelComments.value = [];
   userPanelInteractions.value = [];
   userPanelSessions.value = [];
+  userPanelSecurityEvents.value = [];
+  userPanelUnreadCount.value = 0;
   userPanelFavoriteSearch.value = "";
   userPanelFavoriteCategory.value = "";
   userPanelPasswordForm.currentPassword = "";
@@ -1387,6 +1503,10 @@ async function loadArticleDetail(slug) {
     tocOpen.value = false;
     await loadComments(payload.article.slug);
     await recordArticleView(payload.article.slug);
+    if (pendingArticleScrollTarget.value === "comments") {
+      pendingArticleScrollTarget.value = null;
+      scrollToArticleComments();
+    }
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -1423,6 +1543,10 @@ function syncViewToHash() {
 
   if (viewName === "dashboard") {
     loadUserPanelTabData();
+    if (pendingUserPanelScrollTarget.value === "notices") {
+      pendingUserPanelScrollTarget.value = null;
+      scrollToUserPanelNoticeCard();
+    }
   }
 
   if (viewName === "articleEditor") {
@@ -1439,6 +1563,8 @@ function syncViewToHash() {
     loadArticleDetail(slug);
     return;
   }
+
+  articleReturnTarget.value = null;
 
   if (viewName === "public" && !selectedArticle.value && sortedPublishedArticles.value.length > 0) {
     selectedArticle.value = sortedPublishedArticles.value[0];
@@ -1586,6 +1712,7 @@ async function loadUserPanelSocial() {
   if (!isAuthenticated.value || isAdmin.value) {
     userPanelComments.value = [];
     userPanelInteractions.value = [];
+    userPanelUnreadCount.value = 0;
     return;
   }
 
@@ -1598,12 +1725,31 @@ async function loadUserPanelSocial() {
     ]);
     userPanelComments.value = commentsPayload.comments || [];
     userPanelInteractions.value = interactionsPayload.interactions || [];
+    userPanelUnreadCount.value = Number(interactionsPayload.unreadCount || 0);
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
     }
   } finally {
     userPanelSocialLoading.value = false;
+  }
+}
+
+async function refreshUserPanelNotificationState() {
+  if (!isAuthenticated.value || isAdmin.value) {
+    userPanelInteractions.value = [];
+    userPanelUnreadCount.value = 0;
+    return;
+  }
+
+  try {
+    const payload = await apiFetch("/users/me/interactions");
+    userPanelInteractions.value = payload.interactions || [];
+    userPanelUnreadCount.value = Number(payload.unreadCount || 0);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
   }
 }
 
@@ -1627,8 +1773,30 @@ async function loadUserPanelSessions() {
   }
 }
 
+async function loadUserPanelSecurityEvents() {
+  if (!isAuthenticated.value || isAdmin.value) {
+    userPanelSecurityEvents.value = [];
+    return;
+  }
+
+  try {
+    const payload = await apiFetch("/users/me/security-events");
+    userPanelSecurityEvents.value = payload.events || [];
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  }
+}
+
 async function loadUserPanelSecurity() {
-  await Promise.all([loadUserPanelSummary(), loadUserPanelSessions()]);
+  userPanelSecurityLoading.value = true;
+
+  try {
+    await Promise.all([loadUserPanelSummary(), loadUserPanelSessions(), loadUserPanelSecurityEvents()]);
+  } finally {
+    userPanelSecurityLoading.value = false;
+  }
 }
 
 async function loadUserPanelTabData(tabId = userPanelActiveTab.value) {
@@ -1724,6 +1892,8 @@ async function loadProfile() {
     currentSession.value = payload.session;
     if (payload.user.role === "ADMIN") {
       await Promise.all([loadAdminArticles(), loadAdminOverview(), loadAdminReviews()]);
+    } else {
+      await refreshUserPanelNotificationState();
     }
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
@@ -1742,6 +1912,72 @@ function clearUserPanelFavoriteFilters() {
 function openUserPanelArticle(slug) {
   if (slug) {
     openArticle(slug);
+  }
+}
+
+function openUserPanelArticleTarget(slug, target = null, returnTarget = null) {
+  if (!slug) {
+    return;
+  }
+
+  pendingArticleScrollTarget.value = target;
+  openArticle(slug, returnTarget);
+}
+
+async function readUserPanelNotice(notice) {
+  if (!notice?.notificationKey) {
+    return;
+  }
+
+  try {
+    await apiFetch(`/users/me/interactions/${encodeURIComponent(notice.notificationKey)}/read`, {
+      method: "PATCH"
+    });
+    userPanelInteractions.value = userPanelInteractions.value.map((interaction) =>
+      interaction.notificationKey === notice.notificationKey
+        ? {
+            ...interaction,
+            isRead: true,
+            readAt: new Date().toISOString()
+          }
+        : interaction
+    );
+    userPanelUnreadCount.value = Math.max(0, userPanelUnreadCount.value - (notice.isRead ? 0 : 1));
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  }
+}
+
+async function openUserPanelNotice(notice) {
+  await readUserPanelNotice(notice);
+  openUserPanelArticleTarget(
+    notice.article?.slug,
+    interactionShouldScrollToComments(notice.type) ? "comments" : null,
+    articleReturnTargetForUserNotices()
+  );
+}
+
+async function markAllUserPanelNoticesRead() {
+  if (!userPanelUnreadCount.value) {
+    return;
+  }
+
+  try {
+    await apiFetch("/users/me/interactions/read-all", {
+      method: "PATCH"
+    });
+    userPanelInteractions.value = userPanelInteractions.value.map((interaction) => ({
+      ...interaction,
+      isRead: true,
+      readAt: interaction.readAt || new Date().toISOString()
+    }));
+    userPanelUnreadCount.value = 0;
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
   }
 }
 
@@ -1782,7 +2018,7 @@ async function submitUserPanelPassword() {
     userPanelPasswordForm.newPassword = "";
     userPanelPasswordForm.confirmPassword = "";
     setMessage(payload.message || "密码已更新。");
-    await loadUserPanelSessions();
+    await Promise.all([loadUserPanelSessions(), loadUserPanelSecurityEvents()]);
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -1810,6 +2046,7 @@ async function saveUserPanelBindings() {
     };
     syncUserPanelBindingForm(userPanelSummary.value.bindings);
     setMessage("绑定状态已保存。");
+    await loadUserPanelSecurityEvents();
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -1855,7 +2092,7 @@ async function revokeUserPanelSession(session) {
     }
 
     setMessage("登录设备已注销。");
-    await Promise.all([loadUserPanelSessions(), loadUserPanelSummary()]);
+    await Promise.all([loadUserPanelSessions(), loadUserPanelSummary(), loadUserPanelSecurityEvents()]);
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -1928,9 +2165,18 @@ async function submitLogin() {
     const returnSlug = returnArticleSlugAfterLogin.value;
     setMessage(`欢迎回来，${payload.user.username}。`);
     await loadProfile();
-    await Promise.all([loadPublishedArticles(), loadPopularArticles(), loadUserArticles(), loadUserPanelSummary()]);
+    await Promise.all([
+      loadPublishedArticles(),
+      loadPopularArticles(),
+      loadUserArticles(),
+      loadUserPanelSummary(),
+      refreshUserPanelNotificationState()
+    ]);
     if (returnSlug) {
       returnArticleSlugAfterLogin.value = "";
+      articleReturnTarget.value = {
+        hash: ""
+      };
       setHash(`article/${encodeURIComponent(returnSlug)}`);
     } else {
       setHash("");
@@ -1964,12 +2210,30 @@ async function logout() {
   }
 }
 
-function openArticle(slug) {
+function openArticle(slug, returnTarget = null) {
+  if (!slug) {
+    return;
+  }
+
+  articleReturnTarget.value = returnTarget || createArticleReturnTarget();
   setHash(`article/${encodeURIComponent(slug)}`);
 }
 
 function openPublicHome() {
+  articleReturnTarget.value = null;
   setHash("");
+}
+
+function returnFromArticle() {
+  const target = articleReturnTarget.value;
+  articleReturnTarget.value = null;
+
+  if (target?.userPanelTab) {
+    userPanelActiveTab.value = target.userPanelTab;
+    pendingUserPanelScrollTarget.value = target.scrollTarget || null;
+  }
+
+  setHash(target?.hash || "");
 }
 
 function toggleMobileMenu() {
@@ -3782,7 +4046,7 @@ onBeforeUnmount(() => {
             <span class="brand-logo-text compact">MyBlog <span>Pro</span></span>
           </button>
           <span class="article-header-divider"></span>
-          <button class="article-return-button" type="button" @click="openPublicHome">
+          <button class="article-return-button" type="button" @click="returnFromArticle">
             <iconify-icon icon="mdi:arrow-left" width="20"></iconify-icon>
             <span class="icon-fallback" aria-hidden="true">←</span>
             <span>返回</span>
@@ -3825,9 +4089,9 @@ onBeforeUnmount(() => {
           >
             <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
           </button>
-          <button v-if="isAuthenticated" class="p-2 text-slate-500 hover:text-orange-500 transition-colors relative" title="通知" type="button">
+          <button v-if="isAuthenticated" class="p-2 text-slate-500 hover:text-orange-500 transition-colors relative" title="通知" type="button" @click="openUserPanelNotifications">
             <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
-            <span class="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white"></span>
+            <span v-if="hasUnreadNotifications" class="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white"></span>
           </button>
 
           <template v-if="!isAuthenticated">
@@ -3879,9 +4143,9 @@ onBeforeUnmount(() => {
           >
             <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
           </button>
-          <button v-if="isAuthenticated" :class="view === 'admin' ? 'admin-topbar-icon-action' : 'p-2 text-slate-500 hover:text-orange-500 transition-colors relative'" title="通知" type="button">
+          <button v-if="isAuthenticated" :class="view === 'admin' ? 'admin-topbar-icon-action' : 'p-2 text-slate-500 hover:text-orange-500 transition-colors relative'" title="通知" type="button" @click="openUserPanelNotifications">
             <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
-            <span :class="view === 'admin' ? 'admin-topbar-notice-dot' : 'absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white'"></span>
+            <span v-if="hasUnreadNotifications" :class="view === 'admin' ? 'admin-topbar-notice-dot' : 'absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white'"></span>
           </button>
           <div :class="view === 'admin' ? 'admin-topbar-divider' : 'h-8 w-[1px] bg-slate-200 mx-1'"></div>
 
@@ -3939,7 +4203,7 @@ onBeforeUnmount(() => {
         </button>
         <button class="user-panel-icon-action" type="button" title="通知" @click="openUserPanelNotifications">
           <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
-          <span></span>
+          <span v-if="hasUnreadNotifications"></span>
         </button>
         <div class="user-panel-account">
           <span class="user-panel-avatar">{{ currentUserInitial }}</span>
@@ -4202,22 +4466,33 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </article>
-            <article class="user-panel-card user-panel-notice-card">
+            <article ref="userPanelNoticeCardRef" class="user-panel-card user-panel-notice-card">
               <div class="user-panel-card-head">
                 <div>
                   <h2><iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon> 消息通知</h2>
                   <p>来自评论、点赞和收藏的最新互动。</p>
                 </div>
+                <button type="button" :disabled="userPanelSocialLoading || !userPanelUnreadCount" @click="markAllUserPanelNoticesRead">
+                  全部已读
+                </button>
               </div>
               <div class="user-panel-notice-list user-panel-scroll-area">
-                <article v-for="notice in userPanelInteractionRows" :key="notice.id" class="user-panel-notice-item" :class="`tone-${notice.tone}`">
-                  <span><iconify-icon :icon="notice.icon" width="20"></iconify-icon></span>
+                <button
+                  v-for="notice in userPanelInteractionRows"
+                  :key="notice.id"
+                  class="user-panel-notice-item"
+                  :class="[`tone-${notice.tone}`, { 'is-unread': !notice.isRead }]"
+                  type="button"
+                  @click="openUserPanelNotice(notice)"
+                >
+                  <span class="user-panel-notice-icon"><iconify-icon :icon="notice.icon" width="20"></iconify-icon></span>
                   <div>
                     <strong>{{ notice.message }}</strong>
-                    <button type="button" @click="openUserPanelArticle(notice.article?.slug)">{{ notice.article?.title }}</button>
+                    <em>{{ notice.article?.title }}</em>
                     <small>{{ notice.dateLabel }}</small>
                   </div>
-                </article>
+                  <i v-if="!notice.isRead" class="user-panel-unread-dot" aria-hidden="true"></i>
+                </button>
                 <div v-if="!userPanelSocialLoading && userPanelInteractionRows.length === 0" class="user-panel-inline-empty">
                   <iconify-icon icon="mdi:bell-sleep-outline" width="34"></iconify-icon>
                   <strong>暂无互动通知</strong>
@@ -4293,6 +4568,33 @@ onBeforeUnmount(() => {
                     <span>支付宝</span>
                     <small>{{ userPanelBindingsForm.alipayBound ? "取消绑定" : "标记已绑定" }}</small>
                   </button>
+                </div>
+              </article>
+              <article class="user-panel-card user-panel-audit-card">
+                <div class="user-panel-card-head">
+                  <div>
+                    <h2>最近安全活动</h2>
+                    <p>展示最近 5 条登录、密码和绑定相关记录。</p>
+                  </div>
+                  <button type="button" :disabled="userPanelSecurityLoading" @click="loadUserPanelSecurityEvents">
+                    <iconify-icon icon="mdi:refresh" width="20"></iconify-icon>
+                  </button>
+                </div>
+                <div class="user-panel-audit-list">
+                  <article v-for="event in userPanelSecurityEventRows" :key="event.id" class="user-panel-audit-item" :class="`tone-${event.tone}`">
+                    <span class="user-panel-audit-icon">
+                      <iconify-icon :icon="event.icon" width="20"></iconify-icon>
+                    </span>
+                    <div>
+                      <strong>{{ event.title }}</strong>
+                      <p>{{ event.detail }}</p>
+                    </div>
+                    <time>{{ event.dateLabel }}</time>
+                  </article>
+                  <div v-if="!userPanelSecurityLoading && userPanelSecurityEventRows.length === 0" class="user-panel-inline-empty">
+                    <iconify-icon icon="mdi:shield-check-outline" width="34"></iconify-icon>
+                    <strong>暂无安全活动</strong>
+                  </div>
                 </div>
               </article>
             </div>
@@ -4391,7 +4693,7 @@ onBeforeUnmount(() => {
         </button>
         <button class="user-panel-icon-action" type="button" title="通知" @click="openUserPanelNotifications">
           <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
-          <span></span>
+          <span v-if="hasUnreadNotifications"></span>
         </button>
         <div class="user-panel-account">
           <span class="user-panel-avatar">{{ currentUserInitial }}</span>
@@ -5424,7 +5726,7 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <section class="article-comments-card">
+          <section ref="articleCommentsCardRef" class="article-comments-card">
             <div class="article-card-title">
               <iconify-icon icon="mdi:comment-outline" width="32"></iconify-icon>
               <h2>评论 ({{ commentTotalCount }})</h2>

@@ -1,7 +1,14 @@
 import prismaPkg from "@prisma/client";
 import { Router } from "express";
 import { comparePassword, hashPassword, sanitizeUser } from "../lib/auth.js";
+import { parseDeviceInfo } from "../lib/device.js";
 import { prisma } from "../lib/prisma.js";
+import {
+  SECURITY_AUDIT_EVENTS,
+  formatSecurityAuditEvent,
+  recordSecurityAuditEvent,
+  requestAuditContext
+} from "../lib/securityAudit.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const { ArticleStatus, CommentStatus, Prisma } = prismaPkg;
@@ -90,11 +97,14 @@ function truncateText(value, maxLength = 160) {
 }
 
 function formatSession(session, currentSessionId) {
+  const device = parseDeviceInfo(session.userAgent);
+
   return {
     id: session.id,
     deviceId: session.deviceId,
     ipAddress: session.ipAddress,
     userAgent: session.userAgent,
+    ...device,
     lastActiveAt: session.lastActiveAt,
     createdAt: session.createdAt,
     isCurrent: session.id === currentSessionId
@@ -234,6 +244,10 @@ function interactionMessage(type, actorName, articleTitle) {
   return `${actorName}点赞了你的评论`;
 }
 
+function notificationKeyFromRow(row) {
+  return `${row.type}:${Number(row.eventId)}:${Number(row.actorId || 0)}`;
+}
+
 function mapInteraction(row) {
   const type = row.type;
   const actor = compactUser({
@@ -246,16 +260,145 @@ function mapInteraction(row) {
     title: row.articleTitle,
     slug: row.articleSlug
   };
+  const notificationKey = row.notificationKey || notificationKeyFromRow(row);
 
   return {
-    id: `${type}-${Number(row.eventId)}-${actor?.id || 0}`,
+    id: notificationKey,
+    notificationKey,
     type,
     message: interactionMessage(type, actor?.username || "用户", article.title),
     createdAt: row.createdAt,
+    isRead: Boolean(row.readAt),
+    readAt: row.readAt || null,
     actor,
     article,
     commentId: row.commentId == null ? null : Number(row.commentId)
   };
+}
+
+async function getInteractionRows(userId, tx = prisma) {
+  const rows = await tx.$queryRaw`
+    SELECT
+      interactions.*,
+      CONCAT(interactions.type, ':', interactions.eventId, ':', interactions.actorId) AS notificationKey,
+      unr.read_at AS readAt
+    FROM (
+      SELECT
+        c.id AS eventId,
+        CASE
+          WHEN target.user_id = ${userId} THEN 'reply_to_my_comment'
+          ELSE 'comment_on_my_article'
+        END AS type,
+        c.created_at AS createdAt,
+        c.id AS commentId,
+        actor.id AS actorId,
+        actor.username AS actorUsername,
+        actor.role AS actorRole,
+        a.id AS articleId,
+        a.title AS articleTitle,
+        a.slug AS articleSlug
+      FROM comments c
+      INNER JOIN articles a ON a.id = c.article_id
+      INNER JOIN users actor ON actor.id = c.user_id
+      LEFT JOIN comments target ON target.id = c.reply_to_comment_id
+      WHERE c.user_id <> ${userId}
+        AND c.status = ${CommentStatus.APPROVED}
+        AND a.status = ${ArticleStatus.PUBLISHED}
+        AND (
+          target.user_id = ${userId}
+          OR (a.author_id = ${userId} AND (target.user_id IS NULL OR target.user_id <> ${userId}))
+        )
+      UNION ALL
+      SELECT
+        al.article_id AS eventId,
+        'like_my_article' AS type,
+        al.created_at AS createdAt,
+        NULL AS commentId,
+        actor.id AS actorId,
+        actor.username AS actorUsername,
+        actor.role AS actorRole,
+        a.id AS articleId,
+        a.title AS articleTitle,
+        a.slug AS articleSlug
+      FROM article_likes al
+      INNER JOIN articles a ON a.id = al.article_id
+      INNER JOIN users actor ON actor.id = al.user_id
+      WHERE a.author_id = ${userId}
+        AND a.status = ${ArticleStatus.PUBLISHED}
+        AND al.user_id <> ${userId}
+      UNION ALL
+      SELECT
+        af.article_id AS eventId,
+        'favorite_my_article' AS type,
+        af.created_at AS createdAt,
+        NULL AS commentId,
+        actor.id AS actorId,
+        actor.username AS actorUsername,
+        actor.role AS actorRole,
+        a.id AS articleId,
+        a.title AS articleTitle,
+        a.slug AS articleSlug
+      FROM article_favorites af
+      INNER JOIN articles a ON a.id = af.article_id
+      INNER JOIN users actor ON actor.id = af.user_id
+      WHERE a.author_id = ${userId}
+        AND a.status = ${ArticleStatus.PUBLISHED}
+        AND af.user_id <> ${userId}
+      UNION ALL
+      SELECT
+        cl.comment_id AS eventId,
+        'like_my_comment' AS type,
+        cl.created_at AS createdAt,
+        c.id AS commentId,
+        actor.id AS actorId,
+        actor.username AS actorUsername,
+        actor.role AS actorRole,
+        a.id AS articleId,
+        a.title AS articleTitle,
+        a.slug AS articleSlug
+      FROM comment_likes cl
+      INNER JOIN comments c ON c.id = cl.comment_id
+      INNER JOIN articles a ON a.id = c.article_id
+      INNER JOIN users actor ON actor.id = cl.user_id
+      WHERE c.user_id = ${userId}
+        AND c.parent_id IS NULL
+        AND c.status = ${CommentStatus.APPROVED}
+        AND a.status = ${ArticleStatus.PUBLISHED}
+        AND cl.user_id <> ${userId}
+    ) interactions
+    LEFT JOIN user_notification_reads unr
+      ON unr.user_id = ${userId}
+      AND unr.notification_key = CONCAT(interactions.type, ':', interactions.eventId, ':', interactions.actorId)
+    ORDER BY interactions.createdAt DESC
+    LIMIT ${MAX_PANEL_ITEMS}
+  `;
+
+  return rows;
+}
+
+async function upsertNotificationRead(userId, notificationKey, tx = prisma) {
+  await tx.$executeRaw`
+    INSERT INTO user_notification_reads (user_id, notification_key, read_at, created_at, updated_at)
+    VALUES (${userId}, ${notificationKey}, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+    ON DUPLICATE KEY UPDATE
+      read_at = CURRENT_TIMESTAMP(3),
+      updated_at = CURRENT_TIMESTAMP(3)
+  `;
+}
+
+function summarizeBindingChanges(previousBindings, nextBindings) {
+  const fields = ["phoneNumber", "wechatBound", "qqBound", "alipayBound"];
+
+  return fields
+    .filter((field) => previousBindings[field] !== nextBindings[field])
+    .reduce((changes, field) => {
+      changes[field] = {
+        from: previousBindings[field],
+        to: nextBindings[field]
+      };
+
+      return changes;
+    }, {});
 }
 
 async function getStatsByArticleIds(articleIds, currentUserId) {
@@ -646,98 +789,66 @@ router.get("/me/comments", requireAuth, async (req, res, next) => {
 router.get("/me/interactions", requireAuth, async (req, res, next) => {
   try {
     const userId = req.auth.userId;
-    const rows = await prisma.$queryRaw`
-      SELECT *
-      FROM (
-        SELECT
-          c.id AS eventId,
-          CASE
-            WHEN target.user_id = ${userId} THEN 'reply_to_my_comment'
-            ELSE 'comment_on_my_article'
-          END AS type,
-          c.created_at AS createdAt,
-          c.id AS commentId,
-          actor.id AS actorId,
-          actor.username AS actorUsername,
-          actor.role AS actorRole,
-          a.id AS articleId,
-          a.title AS articleTitle,
-          a.slug AS articleSlug
-        FROM comments c
-        INNER JOIN articles a ON a.id = c.article_id
-        INNER JOIN users actor ON actor.id = c.user_id
-        LEFT JOIN comments target ON target.id = c.reply_to_comment_id
-        WHERE c.user_id <> ${userId}
-          AND c.status = ${CommentStatus.APPROVED}
-          AND a.status = ${ArticleStatus.PUBLISHED}
-          AND (
-            target.user_id = ${userId}
-            OR (a.author_id = ${userId} AND (target.user_id IS NULL OR target.user_id <> ${userId}))
-          )
-        UNION ALL
-        SELECT
-          al.article_id AS eventId,
-          'like_my_article' AS type,
-          al.created_at AS createdAt,
-          NULL AS commentId,
-          actor.id AS actorId,
-          actor.username AS actorUsername,
-          actor.role AS actorRole,
-          a.id AS articleId,
-          a.title AS articleTitle,
-          a.slug AS articleSlug
-        FROM article_likes al
-        INNER JOIN articles a ON a.id = al.article_id
-        INNER JOIN users actor ON actor.id = al.user_id
-        WHERE a.author_id = ${userId}
-          AND a.status = ${ArticleStatus.PUBLISHED}
-          AND al.user_id <> ${userId}
-        UNION ALL
-        SELECT
-          af.article_id AS eventId,
-          'favorite_my_article' AS type,
-          af.created_at AS createdAt,
-          NULL AS commentId,
-          actor.id AS actorId,
-          actor.username AS actorUsername,
-          actor.role AS actorRole,
-          a.id AS articleId,
-          a.title AS articleTitle,
-          a.slug AS articleSlug
-        FROM article_favorites af
-        INNER JOIN articles a ON a.id = af.article_id
-        INNER JOIN users actor ON actor.id = af.user_id
-        WHERE a.author_id = ${userId}
-          AND a.status = ${ArticleStatus.PUBLISHED}
-          AND af.user_id <> ${userId}
-        UNION ALL
-        SELECT
-          cl.comment_id AS eventId,
-          'like_my_comment' AS type,
-          cl.created_at AS createdAt,
-          c.id AS commentId,
-          actor.id AS actorId,
-          actor.username AS actorUsername,
-          actor.role AS actorRole,
-          a.id AS articleId,
-          a.title AS articleTitle,
-          a.slug AS articleSlug
-        FROM comment_likes cl
-        INNER JOIN comments c ON c.id = cl.comment_id
-        INNER JOIN articles a ON a.id = c.article_id
-        INNER JOIN users actor ON actor.id = cl.user_id
-        WHERE c.user_id = ${userId}
-          AND c.parent_id IS NULL
-          AND c.status = ${CommentStatus.APPROVED}
-          AND a.status = ${ArticleStatus.PUBLISHED}
-          AND cl.user_id <> ${userId}
-      ) interactions
-      ORDER BY createdAt DESC
-      LIMIT ${MAX_PANEL_ITEMS}
-    `;
+    const rows = await getInteractionRows(userId);
+    const interactions = rows.map(mapInteraction);
 
     return res.json({
-      interactions: rows.map(mapInteraction)
+      interactions,
+      unreadCount: interactions.filter((interaction) => !interaction.isRead).length
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/me/interactions/read-all", requireAuth, async (req, res, next) => {
+  try {
+    const rows = await getInteractionRows(req.auth.userId);
+    const notificationKeys = [...new Set(rows.map((row) => row.notificationKey || notificationKeyFromRow(row)))];
+
+    await prisma.$transaction(
+      notificationKeys.map((notificationKey) => prisma.$executeRaw`
+        INSERT INTO user_notification_reads (user_id, notification_key, read_at, created_at, updated_at)
+        VALUES (${req.auth.userId}, ${notificationKey}, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+        ON DUPLICATE KEY UPDATE
+          read_at = CURRENT_TIMESTAMP(3),
+          updated_at = CURRENT_TIMESTAMP(3)
+      `)
+    );
+
+    return res.json({
+      ok: true,
+      changed: notificationKeys.length
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/me/interactions/:key/read", requireAuth, async (req, res, next) => {
+  try {
+    const notificationKey = String(req.params.key || "").trim();
+
+    if (!notificationKey) {
+      return res.status(400).json({
+        message: "通知标识无效。"
+      });
+    }
+
+    const rows = await getInteractionRows(req.auth.userId);
+    const exists = rows.some((row) => (row.notificationKey || notificationKeyFromRow(row)) === notificationKey);
+
+    if (!exists) {
+      return res.status(404).json({
+        message: "通知不存在或不可访问。"
+      });
+    }
+
+    await upsertNotificationRead(req.auth.userId, notificationKey);
+
+    return res.json({
+      ok: true,
+      notificationKey
     });
   } catch (error) {
     return next(error);
@@ -764,6 +875,30 @@ router.get("/me/sessions", requireAuth, async (req, res, next) => {
   }
 });
 
+router.get("/me/security-events", requireAuth, async (req, res, next) => {
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT
+        id,
+        event_type AS eventType,
+        ip_address AS ipAddress,
+        user_agent AS userAgent,
+        metadata,
+        created_at AS createdAt
+      FROM security_audit_events
+      WHERE user_id = ${req.auth.userId}
+      ORDER BY created_at DESC
+      LIMIT 5
+    `;
+
+    return res.json({
+      events: rows.map(formatSecurityAuditEvent)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.delete("/me/sessions/:id", requireAuth, async (req, res, next) => {
   try {
     const sessionId = Number(req.params.id);
@@ -774,15 +909,36 @@ router.delete("/me/sessions/:id", requireAuth, async (req, res, next) => {
       });
     }
 
-    const result = await prisma.userSession.updateMany({
-      where: {
-        id: sessionId,
-        userId: req.auth.userId,
-        isActive: true
-      },
-      data: {
-        isActive: false
+    const auditContext = requestAuditContext(req);
+    const result = await prisma.$transaction(async (tx) => {
+      const updateResult = await tx.userSession.updateMany({
+        where: {
+          id: sessionId,
+          userId: req.auth.userId,
+          isActive: true
+        },
+        data: {
+          isActive: false
+        }
+      });
+
+      if (updateResult.count > 0) {
+        await recordSecurityAuditEvent(
+          {
+            userId: req.auth.userId,
+            sessionId: req.auth.sessionId,
+            eventType: SECURITY_AUDIT_EVENTS.SESSION_REVOKED,
+            ...auditContext,
+            metadata: {
+              revokedSessionId: sessionId,
+              revokedCurrentSession: sessionId === req.auth.sessionId
+            }
+          },
+          tx
+        );
       }
+
+      return updateResult;
     });
 
     return res.json({
@@ -832,6 +988,7 @@ router.patch("/me/password", requireAuth, async (req, res, next) => {
     }
 
     const passwordHash = await hashPassword(newPassword);
+    const auditContext = requestAuditContext(req);
 
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
@@ -842,7 +999,7 @@ router.patch("/me/password", requireAuth, async (req, res, next) => {
           passwordHash
         }
       });
-      await tx.userSession.updateMany({
+      const deactivatedSessions = await tx.userSession.updateMany({
         where: {
           userId: req.auth.userId,
           isActive: true,
@@ -854,6 +1011,18 @@ router.patch("/me/password", requireAuth, async (req, res, next) => {
           isActive: false
         }
       });
+      await recordSecurityAuditEvent(
+        {
+          userId: req.auth.userId,
+          sessionId: req.auth.sessionId,
+          eventType: SECURITY_AUDIT_EVENTS.PASSWORD_CHANGED,
+          ...auditContext,
+          metadata: {
+            deactivatedSessionCount: deactivatedSessions.count
+          }
+        },
+        tx
+      );
     });
 
     return res.json({
@@ -891,16 +1060,43 @@ router.patch("/me/bindings", requireAuth, async (req, res, next) => {
       });
     }
 
-    await prisma.$executeRaw`
-      UPDATE users
-      SET
-        phone_number = ${phoneNumber},
-        wechat_bound = ${bindingBoolean(req.body?.wechatBound)},
-        qq_bound = ${bindingBoolean(req.body?.qqBound)},
-        alipay_bound = ${bindingBoolean(req.body?.alipayBound)},
-        updated_at = CURRENT_TIMESTAMP(3)
-      WHERE id = ${req.auth.userId}
-    `;
+    const previousBindings = await getUserBindings(req.auth.userId);
+    const nextBindings = {
+      phoneNumber,
+      wechatBound: bindingBoolean(req.body?.wechatBound),
+      qqBound: bindingBoolean(req.body?.qqBound),
+      alipayBound: bindingBoolean(req.body?.alipayBound)
+    };
+    const bindingChanges = summarizeBindingChanges(previousBindings, nextBindings);
+    const auditContext = requestAuditContext(req);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE users
+        SET
+          phone_number = ${nextBindings.phoneNumber},
+          wechat_bound = ${nextBindings.wechatBound},
+          qq_bound = ${nextBindings.qqBound},
+          alipay_bound = ${nextBindings.alipayBound},
+          updated_at = CURRENT_TIMESTAMP(3)
+        WHERE id = ${req.auth.userId}
+      `;
+
+      if (Object.keys(bindingChanges).length > 0) {
+        await recordSecurityAuditEvent(
+          {
+            userId: req.auth.userId,
+            sessionId: req.auth.sessionId,
+            eventType: SECURITY_AUDIT_EVENTS.BINDINGS_UPDATED,
+            ...auditContext,
+            metadata: {
+              changes: bindingChanges
+            }
+          },
+          tx
+        );
+      }
+    });
 
     const user = await prisma.user.findUnique({
       where: {

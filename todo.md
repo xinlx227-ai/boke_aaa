@@ -1,341 +1,228 @@
-# 私人博客项目交接报告
+# 用户中心安全闭环计划
 
-更新时间：2026-05-02
+更新时间：2026-06-06
+
+## 目标
+
+下一步完善用户中心里的三个安全相关能力：
+
+- 通知已读/未读状态
+- 会话设备名称解析
+- 更完整的安全审计
+
+这轮目标是做一个用户本人可见的小闭环：用户可以看到互动通知是否已读、能更清楚地识别当前登录设备，并能在安全设置中查看最近安全活动。
+
+## 明确不做
+
+- 不实现真实短信验证码。
+- 不实现微信/QQ/支付宝真实 OAuth。
+- 微信/QQ/支付宝继续只保存本地绑定标记。
+- 第一版不做管理员全站安全审计后台。
+- 第一版不把互动通知改成完整通知表。
 
 ## 当前状态
 
-项目已经从本地开发推进到线上可访问阶段。
+- 互动通知当前由 `/api/users/me/interactions` 从评论、文章点赞、文章收藏、评论点赞实时派生。
+- 当前没有通知表，也没有已读/未读状态。
+- `user_sessions` 已保存 `deviceId`、`ipAddress`、`userAgent`、`lastActiveAt` 和 `isActive`。
+- 前端目前只粗略展示 userAgent，不做完整设备名称解析。
+- 修改密码、注销会话、手机号/本地绑定状态变更目前没有统一安全审计记录。
 
-- 代码仓库：`https://gitee.com/xinlx227/my_first_blog.git`
-- 线上访问地址：`http://114.55.34.117`
-- 服务器：阿里云轻量应用服务器，华东 1（杭州）
-- 部署目录：`/www/wwwroot/private-blog`
-- 后端进程：PM2 管理，进程名 `private-blog-api`
-- 前端托管：Nginx 静态文件服务
-- 后端代理：Nginx 将 `/api/` 转发到 `http://127.0.0.1:3000/api/`
-- 上传文件访问：Nginx 将 `/uploads/` 映射到 `server/uploads/`
+## 实现方案
 
-## 已完成能力
+### 1. 通知已读/未读
 
-### 账号与登录
+保留现有互动通知实时派生逻辑，不复制通知正文，不重写评论/点赞/收藏写入链路。
 
-- 用户注册
-- 用户登录
-- 用户退出
-- bcrypt 密码加密
-- JWT 登录态
-- `user_sessions` 会话表
-- 同一用户最多 3 个设备在线
-- 第 4 个设备登录时，最早登录设备会被踢下线
-- 登录失效时前端会回到登录状态
+新增一张轻量已读状态表，用于记录当前用户对派生通知的阅读状态。
 
-### 文章系统
-
-- 管理员发布 Markdown 文章
-- 管理员编辑文章
-- 管理员删除文章
-- 文章 Markdown 原文保存到 `content_markdown`
-- 渲染后的安全 HTML 保存到 `content_html`
-- Markdown 渲染经过 XSS 清洗
-- 前台文章列表
-- 前台文章详情
-- 文章内容不会因为渲染丢失原文
-
-### 图片能力
-
-- 管理员可以上传文章图片
-- 图片保存在 `server/uploads/articles/{articleId}/`
-- 上传接口返回可直接粘贴到 Markdown 的图片语法
-- 前台文章详情可以显示文章图片
-- 线上 Nginx 已配置 `/uploads/` 访问路径
-
-### 批量导入
-
-- 管理员可以上传 `.zip`
-- zip 内 Markdown 文件按文件名前缀排序导入
-- 每个 Markdown 文件导入为一篇文章
-- Markdown 中引用的 `images/a.png` 会转换为系统可访问图片地址
-- 导入过程返回日志：
-  - 成功导入的文章
-  - 缺失图片
-  - 不支持的文件
-  - 单个文件失败原因
-- 单篇失败不会影响其他文章继续导入
-
-### 评论系统
-
-- 文章详情页显示评论列表
-- 未登录用户可以查看评论
-- 登录用户可以发表评论
-- 管理员可以删除评论
-- 评论表支持 `parent_id`，后续可以扩展回复功能
-
-### 阅读体验
-
-- 文章搜索：按标题和正文内容搜索
-- 分类：文章可绑定一个分类
-- 标签：文章可绑定多个标签
-- 前台可按分类或标签筛选文章
-- 文章详情页根据 Markdown 标题生成目录 TOC
-- TOC 可点击跳转章节
-- 移动端 TOC 可折叠
-
-### 移动端适配
-
-- 375px 宽度下避免横向滚动
-- 图片 `max-width: 100%; height: auto`
-- 顶部导航在手机端变成折叠菜单
-- 评论输入框保持在页面正常流中，不遮挡内容
-- 文章正文行距适合手机阅读
-
-### 提示组件
-
-- 页面上方居中显示提示
-- 1.8 秒后自动消失
-- 多次调用时新提示覆盖旧提示
-- 已缩小尺寸，适配 PC 和移动端
-
-## 线上部署关键命令
-
-### 拉取最新代码
-
-```bash
-cd /www/wwwroot/private-blog
-git pull
-```
-
-### 安装依赖
-
-```bash
-cd /www/wwwroot/private-blog
-npm install
-```
-
-### Prisma 生成与迁移
-
-如果提示 `@prisma/client did not initialize yet`，先执行：
-
-```bash
-cd /www/wwwroot/private-blog/server
-npx prisma generate
-```
-
-执行数据库迁移：
-
-```bash
-cd /www/wwwroot/private-blog/server
-npx prisma migrate deploy
-```
-
-### 构建前端
-
-```bash
-cd /www/wwwroot/private-blog
-npm run build --workspace client
-```
-
-### 后端临时启动
-
-```bash
-cd /www/wwwroot/private-blog/server
-npm run start
-```
-
-### PM2 常驻运行
-
-```bash
-cd /www/wwwroot/private-blog/server
-pm2 start src/server.js --name private-blog-api
-pm2 save
-```
-
-### 查看后端状态
-
-```bash
-pm2 status
-pm2 logs private-blog-api
-```
-
-### 重启后端
-
-```bash
-pm2 restart private-blog-api
-```
-
-### 重载 Nginx
-
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-## 重要问题记录
-
-### 1. 前端线上提示 Failed to fetch
-
-原因：
-
-- 前端最初写死了 `http://localhost:3000/api`
-- 用户公网访问时，浏览器里的 `localhost` 指向访问者自己的电脑，不是服务器
-
-处理：
-
-- 已改为相对路径 `/api`
-- 图片资源基地址也改为相对路径
-
-相关文件：
-
-- `client/src/App.vue`
-
-### 2. Prisma 在服务器上 ESM 导入报错
-
-原因：
-
-- Node 20 + Prisma CommonJS 包在服务器上不支持部分命名导入
-
-处理：
-
-- Prisma 相关导入已改为默认导入后解构
-
-相关文件：
-
-- `server/src/lib/prisma.js`
-- `server/src/routes/articles.js`
-- `server/src/routes/auth.js`
-- `server/src/routes/comments.js`
-
-### 3. Prisma Client 未生成
-
-报错：
+建议通知 key 使用稳定组合：
 
 ```text
-@prisma/client did not initialize yet. Please run "prisma generate"
+type:eventId:actorId
 ```
 
-处理：
+示例：
+
+```text
+comment_on_my_article:123:8
+like_my_article:42:9
+favorite_my_article:42:11
+like_my_comment:55:7
+reply_to_my_comment:91:6
+```
+
+接口建议：
+
+- `GET /api/users/me/interactions`：继续返回互动通知，同时增加 `isRead`、`readAt` 和 `unreadCount`。
+- `PATCH /api/users/me/interactions/:key/read`：标记单条通知为已读。
+- `PATCH /api/users/me/interactions/read-all`：标记当前用户所有已派生通知为已读。
+
+前端行为：
+
+- 用户面板通知列表显示未读标记。
+- 顶部通知按钮显示未读状态。
+- 未读通知卡片显示橙色红点，点击通知卡片标记该条已读并跳转到相关文章。
+- 评论相关通知跳转到文章详情后滚动到评论区，不做单条评论精准高亮。
+- 支持全部标记已读。
+
+### 2. 会话设备名称解析
+
+使用 `ua-parser-js` 解析 `user_sessions.user_agent`。
+
+后端在会话列表中返回友好设备信息，前端不再自己猜测设备名称。
+
+建议返回字段：
+
+```json
+{
+  "deviceName": "Chrome on Windows",
+  "browserName": "Chrome",
+  "browserVersion": "125",
+  "osName": "Windows",
+  "osVersion": "10",
+  "deviceType": "desktop"
+}
+```
+
+兼容规则：
+
+- 空 `userAgent` 返回 `未知设备`。
+- 无法识别浏览器时返回 `未知浏览器`。
+- 无法识别系统时返回 `未知系统`。
+- `deviceType` 默认使用 `desktop`，移动端识别为 `mobile` 或 `tablet`。
+
+前端行为：
+
+- 安全设置页设备列表优先展示 `deviceName`。
+- 次要信息展示 IP、最近活跃时间和是否当前设备。
+- 注销会话逻辑保持不变。
+
+### 3. 安全审计
+
+新增 `security_audit_events` 表，记录用户本人安全相关动作。
+
+第一版记录事件：
+
+- 登录成功
+- 退出登录
+- 修改密码
+- 注销会话
+- 手机号保存或清空
+- 微信/QQ/支付宝本地绑定状态变更
+
+建议字段：
+
+```text
+id
+user_id
+session_id
+event_type
+event_summary
+ip_address
+user_agent
+metadata
+created_at
+```
+
+接口建议：
+
+- `GET /api/users/me/security-events`：返回当前用户最近 5 条安全活动。
+
+前端行为：
+
+- 安全设置页在“第三方账号绑定”下面新增“最近安全活动”模块。
+- 每条记录展示事件名称、时间、设备摘要和 IP。
+- metadata 只用于补充展示，不暴露敏感 token、密码或真实密钥。
+
+## 数据迁移建议
+
+新增迁移：
+
+```text
+server/prisma/migrations/<timestamp>_user_center_security_loop/migration.sql
+```
+
+新增模型建议：
+
+```prisma
+model UserNotificationRead {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @map("user_id")
+  notificationKey String   @map("notification_key") @db.VarChar(191)
+  readAt          DateTime @default(now()) @map("read_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, notificationKey])
+  @@index([userId, readAt])
+  @@map("user_notification_reads")
+}
+
+model SecurityAuditEvent {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  sessionId    Int?     @map("session_id")
+  eventType    String   @map("event_type") @db.VarChar(80)
+  ipAddress    String?  @map("ip_address") @db.VarChar(45)
+  userAgent    String?  @map("user_agent") @db.VarChar(500)
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([eventType, createdAt])
+  @@map("security_audit_events")
+}
+```
+
+## 测试计划
+
+后端测试：
+
+- 互动通知默认未读。
+- 单条通知标记已读后返回 `isRead: true`。
+- 全部标记已读后 `unreadCount` 为 0。
+- 登录成功写入安全审计事件。
+- 已存在账号登录失败时写入安全审计事件，不存在账号不写入。
+- 退出登录写入安全审计事件。
+- 修改密码写入安全审计事件，并保持“其他设备退出登录”逻辑。
+- 注销会话写入安全审计事件。
+- 手机号和本地绑定状态变更写入安全审计事件。
+- 会话列表返回解析后的浏览器、系统、设备类型。
+- 空 `userAgent` 不报错，并返回未知设备信息。
+
+前端验证：
+
+- 通知列表展示未读状态。
+- 单条已读和全部已读交互后刷新状态正确。
+- 点击通知卡片后完成已读并跳转到文章；评论相关通知滚动到评论区。
+- 设备列表展示友好设备名称。
+- 第三方账号绑定下方展示最近 5 条安全事件。
+
+命令：
 
 ```bash
-cd /www/wwwroot/private-blog/server
-npx prisma generate
-```
-
-## 本地开发命令
-
-### 启动前后端
-
-```powershell
-npm run dev
-```
-
-### 只启动前端
-
-```powershell
-npm run dev:client
-```
-
-### 只启动后端
-
-```powershell
-npm run dev:server
-```
-
-### 后端测试
-
-```powershell
 npm test --workspace server
+npm run build
+npx prisma validate --schema prisma/schema.prisma
+git diff --check
 ```
 
-### 前端构建
+## 实施顺序
 
-```powershell
-npm run build --workspace client
-```
+1. 新增 Prisma schema 和 SQL migration。
+2. 安装并接入 `ua-parser-js`。
+3. 抽取通知 key 生成和已读状态合并逻辑。
+4. 增加通知已读接口。
+5. 增加安全审计写入 helper。
+6. 在登录、退出、改密、注销会话、绑定变更中写入审计事件。
+7. 增加安全审计查询接口。
+8. 更新用户面板前端通知列表、设备列表和安全活动模块。
+9. 补充后端测试。
+10. 运行验证命令。
 
-## 最近验证结果
+## 验收标准
 
-本地已验证：
-
-- `npm test --workspace server`：4 个测试通过
-- `npm run build --workspace client`：构建通过
-
-服务器已验证：
-
-- `curl http://127.0.0.1:3000/api/articles` 返回 `{"articles":[]}`
-- `curl http://114.55.34.117/api/articles` 返回 `{"articles":[]}`
-- 前端可以通过公网访问
-- Nginx `/api` 代理可用
-
-## 后续精细化修改建议
-
-### 优先级 P0：正式使用前建议完成
-
-- 创建正式管理员账号，并删除或禁用测试账号
-- 修改线上 `JWT_SECRET` 为更长的随机字符串
-- 检查 `server/.env` 不要提交到仓库
-- 确认阿里云安全组只开放必要端口：80、443、SSH 端口
-- 给数据库用户使用独立强密码，不要使用服务器登录密码
-
-### 优先级 P1：个人博客体验优化
-
-- 设计个人首页：
-  - 头像
-  - 昵称
-  - 简介
-  - 社交链接
-  - 最新文章
-- 增加“关于我”页面
-- 增加文章归档页，按年份和月份归类
-- 文章列表增加摘要、阅读时间、发布时间
-- 文章详情增加上一篇/下一篇
-- 标签和分类做成更精致的筛选栏
-- 评论区增加空状态、加载状态和删除确认
-
-### 优先级 P2：后台管理优化
-
-- 后台文章列表增加搜索、状态筛选、批量删除
-- Markdown 编辑器增加实时预览
-- 图片上传后增加图片库选择
-- 批量导入结果支持下载日志
-- 添加草稿/发布状态的清晰切换
-- 管理员首页增加统计：
-  - 文章数量
-  - 评论数量
-  - 分类数量
-  - 标签数量
-
-### 优先级 P3：安全与稳定性
-
-- 注册、登录、评论接口增加频率限制
-- 评论内容增加长度限制和更清晰的错误提示
-- 上传图片限制文件大小和 MIME 类型
-- zip 批量导入增加总大小限制
-- 增加后端请求日志
-- 增加数据库备份脚本
-- 配置 HTTPS；如果没有域名，先继续使用 HTTP
-
-### 优先级 P4：长期扩展
-
-- 评论回复功能
-- 评论审核功能
-- 文章置顶
-- 文章浏览量
-- 文章点赞
-- RSS 订阅
-- 站点地图 `sitemap.xml`
-- SEO meta 信息
-- 暗色模式
-- 主题色自定义
-
-## 下一次继续工作建议
-
-如果后续继续做个人精修，可以从下面三条路线选一条：
-
-1. 先做个人主页和关于页，让网站更像真正的个人博客。
-2. 先做后台 Markdown 编辑器预览和图片库，让写文章更舒服。
-3. 先做安全加固和备份脚本，让线上运行更放心。
-
-推荐下一步：
-
-```text
-请继续这个私人博客项目。先阅读 todo.md，然后帮我做个人首页和关于我页面，要求风格简洁、适合个人博客，并保持移动端适配。
-```
+- 通知已读/未读、设备解析、安全审计的计划完整可读。
+- 文档明确记录短信验证码和真实 OAuth 不做。
+- 后续实现时不需要重新决定第一版范围。
