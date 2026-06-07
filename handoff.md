@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和暗色模式补齐、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列，以及用户面板收藏、社交互动、安全设置和个人统计增量闭环。`codex/user-panel-features` 已 fast-forward 合并到 `main` 并推送到 `origin/main`，本地功能分支已删除。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和暗色模式补齐、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列，以及用户面板收藏、社交互动、安全设置、个人统计增量、通知已读/未读、会话设备解析和安全审计闭环。当前 `main` 与 `origin/main` 同步在 `87053f7 Add user center security features`，本地只剩 `main` 分支。
 
 ## 建议下个 Agent 使用的技能
 
@@ -14,12 +14,12 @@
 
 - 仓库路径：`D:\project\codex-project-boke`
 - 当前工作分支：`main`
-- 主线同步状态：`main` / `origin/main` 当前在 `5c889e1 Update handoff and README`
+- 主线同步状态：`main` / `origin/main` 当前在 `87053f7 Add user center security features`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover` 已合并进 `main` 并推送到 `origin/main`。
-- 当前功能提交：`8ccee52 完善用户面板功能与统计增量`，已在主线中
+- 当前功能提交：`87053f7 Add user center security features`，已在主线中
 - 本地只剩 `main` 分支；`codex/user-panel-features` 已删除
-- 当前工作区在文档收尾前是干净状态；`README.md` / `handoff.md` 会在本次 `$work-end` 中追加合并后文档提交。
+- 当前工作区在本次文档同步前是干净状态；本轮只更新 `README.md` / `handoff.md`，按用户要求不改 `todo.md`。
 
 继续工作前建议先执行：
 
@@ -41,7 +41,69 @@ git diff --check
 
 ## 项目概况
 
-这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、普通用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、文章编辑页路由隔离修复、真实阅读/点赞/收藏/热门排行统计能力、普通用户草稿投稿/管理员审核，以及用户面板收藏、社交互动、安全设置和个人统计增量闭环。
+这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、普通用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、文章编辑页路由隔离修复、真实阅读/点赞/收藏/热门排行统计能力、普通用户草稿投稿/管理员审核，以及用户面板收藏、社交互动、安全设置、个人统计增量、通知已读/未读、会话设备解析和安全审计闭环。
+
+## 本次完成：用户中心安全闭环
+
+工作分支：`main`。
+
+功能提交：
+
+- `87053f7 Add user center security features`
+
+改动文件：
+
+- `client/src/App.vue`
+- `client/src/style.css`
+- `package-lock.json`
+- `server/package.json`
+- `server/prisma/schema.prisma`
+- `server/prisma/migrations/20260607100000_user_center_security_loop/migration.sql`
+- `server/src/lib/device.js`
+- `server/src/lib/securityAudit.js`
+- `server/src/routes/auth.js`
+- `server/src/routes/users.js`
+- `server/test/articles.test.js`
+- `server/test/auth.test.js`
+- `todo.md`
+
+### 后端与数据
+
+- 新增依赖 `ua-parser-js`，通过 `server/src/lib/device.js` 将 `user_sessions.user_agent` 解析为 `deviceName`、浏览器、系统和设备类型。
+- 新增 `user_notification_reads` 表，记录派生互动通知的轻量已读状态；通知正文仍从评论、文章点赞、文章收藏和评论点赞实时派生，不复制到通知表。
+- `/api/users/me/interactions` 现在返回 `notificationKey`、`isRead`、`readAt` 和 `unreadCount`。
+- 新增 `PATCH /api/users/me/interactions/:key/read` 和 `PATCH /api/users/me/interactions/read-all`，支持单条已读和全部已读。
+- 新增 `security_audit_events` 表和 `server/src/lib/securityAudit.js`，记录登录成功、已存在账号登录失败、退出登录、修改密码、注销会话和本地绑定状态变更。
+- 新增 `GET /api/users/me/security-events`，返回当前用户最近 5 条安全活动。
+- 登录失败审计只针对已存在账号写入，不存在账号不写入，避免泄露账号探测信号。
+
+### 前端用户面板
+
+- 顶部通知入口和社交互动通知列表接入未读数；通知卡片显示未读状态。
+- 点击通知卡片会先标记该条已读，再跳转到相关文章；评论相关通知跳转后滚动到评论区。
+- 社交互动支持“全部已读”操作。
+- 安全设置设备列表优先展示后端返回的友好设备名称。
+- “第三方账号绑定”下方新增“最近安全活动”，展示事件、时间、设备摘要和 IP。
+
+### 边界
+
+- 仍不接真实短信验证码。
+- 仍不接真实微信/QQ/支付宝 OAuth，第三方账号继续只保存本地绑定标记。
+- 第一版不做管理员全站安全审计后台。
+- 互动通知保持实时派生，不改成完整通知表。
+
+### 验证
+
+新增后端测试覆盖互动通知默认未读、单条已读、全部已读、会话设备名称解析、空 userAgent 兜底、登录/退出/改密/会话注销/绑定变更审计事件，以及最近安全活动查询。
+
+建议本轮文档同步后执行：
+
+```bash
+npm test --workspace server
+npm run build
+npx prisma validate --schema prisma/schema.prisma
+git diff --check
+```
 
 ## 本次完成：完善用户面板功能与统计增量
 
@@ -86,7 +148,7 @@ git diff --check
 ### 边界
 
 - 第一版不接短信服务，不接真实微信/QQ/支付宝 OAuth。
-- 第一版不做通知已读/未读，不新增通知表。
+- 通知已读/未读已在后续安全闭环中完成，使用 `user_notification_reads` 记录派生通知的已读状态，不新增完整通知表。
 - “我的文章”沿用上一轮已完成的真实投稿列表，本轮只做必要联动刷新。
 - `npm run prisma:generate --workspace server` 曾在 Windows 上遇到 Prisma Client DLL rename 锁定问题；新增表访问使用 raw SQL，当前功能不依赖生成后的新 Prisma Client 模型。
 
@@ -339,15 +401,18 @@ git diff --check
   - `server/prisma/migrations/20260605110000_article_submission_workflow/migration.sql`
   - `server/prisma/migrations/20260606110000_user_panel_bindings/migration.sql`
   - `server/prisma/migrations/20260606113000_article_metric_events/migration.sql`
+  - `server/prisma/migrations/20260607100000_user_center_security_loop/migration.sql`
 - 后端发布接口首次发布时写入 `published_at`，再次发布不覆盖原首次发布时间。
 - `chapterOrder` 作为文章序号，新建默认当前文章总数 + 1；手动重排时会顺延其他文章。
 - 评论区接口仍主要使用 Prisma raw SQL 访问新评论点赞表/新回复目标字段，以降低本机 Prisma Client 生成被 Windows DLL 占用时的阻塞风险；`schema.prisma` 和迁移已完整更新。
 - 管理员概览接口和待审核队列接口新增在 `server/src/routes/articles.js`；待审核队列会读取 `PENDING_REVIEW` 文章。
 - 普通用户草稿/投稿接口也在 `server/src/routes/articles.js`；保存草稿和提交审核都复用 `articles` 表。
-- 用户中心接口新增在 `server/src/routes/users.js`；收藏、评论、互动通知、会话、密码和绑定状态都需要登录。
+- 用户中心接口新增在 `server/src/routes/users.js`；收藏、评论、互动通知、通知已读/未读、会话、密码、绑定状态和安全活动都需要登录。
+- 会话设备解析在 `server/src/lib/device.js`，安全审计写入与格式化在 `server/src/lib/securityAudit.js`。
 
 ## 最近重要提交
 
+- `87053f7 Add user center security features`：通知已读/未读、会话设备解析、安全审计事件、最近安全活动展示和相关测试。
 - `8ccee52 完善用户面板功能与统计增量`：用户面板收藏、收到的评论、互动通知、安全设置、会话管理、绑定状态和个人统计增量。
 - `2207bab Add article submission review workflow`：普通用户草稿投稿、即时预览、真实“我的文章”列表和管理员待审核队列。
 - `b26de92 Implement markdown toolbar uploads`：发布页 Markdown 工具栏真实插入和普通用户草稿图片上传。
@@ -362,6 +427,15 @@ git diff --check
 - `1a2f29b Add article statistics APIs`：真实统计 API 和前端接入。
 
 ## 最近验证
+
+最近用户中心安全闭环工作已合并到 `main`，新增后端用例覆盖默认未读、单条已读、全部已读、设备解析、安全审计写入和最近安全活动查询。建议本轮文档同步后执行完整验证：
+
+```bash
+npm test --workspace server
+npm run build
+npx prisma validate --schema prisma/schema.prisma
+git diff --check
+```
 
 最近用户面板功能工作已合并到 `main` 并执行：
 
@@ -426,7 +500,7 @@ sc.exe config MySQL start= demand
 
 ## 后续建议
 
-- 如需继续完善用户中心，可评估通知已读/未读、真实短信验证码、真实微信/QQ/支付宝 OAuth、会话设备名称解析和更完整的安全审计。
+- 如需继续完善用户中心，可评估真实短信验证码、真实微信/QQ/支付宝 OAuth、通知精确定位/高亮、更完整的安全审计筛选和管理员全站安全审计后台。
 - 投稿编辑器下一步建议接封面、SEO、高级设置、批量上传、真实自动保存或更完整的审核历史；是否需要富文本体验可等 Markdown 投稿链路稳定后再评估 Tiptap / ProseMirror。
 - 将管理后台用户管理、敏感评论、分类标签管理接入真实后端接口；内容审核阶段 2 已完成待审核队列，历史审核记录暂未做完整管理。
 - 基于 `site_visits` 做公开首页的真实趋势图；当前管理后台概览已用该数据做近 7 日访问柱状图，用户面板已接当前用户文章阅读趋势。
