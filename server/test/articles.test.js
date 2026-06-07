@@ -1973,6 +1973,18 @@ test("admin management APIs manage users, taxonomies, and published articles", a
       slug: `mgmt-tag-${suffix}`
     }
   });
+  const unusedCategory = await prisma.category.create({
+    data: {
+      name: `Mgmt Empty Category ${suffix}`,
+      slug: `mgmt-empty-category-${suffix}`
+    }
+  });
+  const unusedTag = await prisma.tag.create({
+    data: {
+      name: `Mgmt Empty Tag ${suffix}`,
+      slug: `mgmt-empty-tag-${suffix}`
+    }
+  });
   const article = await prisma.article.create({
     data: {
       authorId: user.user.id,
@@ -2077,6 +2089,17 @@ test("admin management APIs manage users, taxonomies, and published articles", a
     });
     assert.equal(categoryDeleteMismatch.status, 400);
 
+    const deleteUnusedCategory = await apiRequest(`/admin/categories/${unusedCategory.id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${admin.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({})
+    });
+    assert.equal(deleteUnusedCategory.status, 200);
+    assert.equal(deleteUnusedCategory.body.removedFromArticleCount, 0);
+
     const deleteCategory = await apiRequest(`/admin/categories/${category.id}`, {
       method: "DELETE",
       headers: {
@@ -2096,6 +2119,17 @@ test("admin management APIs manage users, taxonomies, and published articles", a
       }
     });
     assert.equal(articleWithoutCategory.categoryId, null);
+
+    const deleteUnusedTag = await apiRequest(`/admin/tags/${unusedTag.id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${admin.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({})
+    });
+    assert.equal(deleteUnusedTag.status, 200);
+    assert.equal(deleteUnusedTag.body.removedFromArticleCount, 0);
 
     const deleteTag = await apiRequest(`/admin/tags/${tag.id}`, {
       method: "DELETE",
@@ -2188,12 +2222,16 @@ test("admin management APIs manage users, taxonomies, and published articles", a
     });
     await prisma.category.deleteMany({
       where: {
-        slug: `mgmt-category-${suffix}`
+        slug: {
+          in: [`mgmt-category-${suffix}`, `mgmt-empty-category-${suffix}`]
+        }
       }
     });
     await prisma.tag.deleteMany({
       where: {
-        slug: `mgmt-tag-${suffix}`
+        slug: {
+          in: [`mgmt-tag-${suffix}`, `mgmt-empty-tag-${suffix}`]
+        }
       }
     });
   }

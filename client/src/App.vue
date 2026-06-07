@@ -70,6 +70,8 @@ const adminRejectNote = ref("");
 const adminReviewPreviewOpen = ref(false);
 const adminReviewPreviewMode = ref("review");
 const adminReviewPreviewArticle = ref(null);
+const adminUserPreviewOpen = ref(false);
+const adminUserPreview = ref(null);
 const adminUsers = ref([]);
 const adminTaxonomies = ref({
   categories: [],
@@ -3140,6 +3142,16 @@ function closeAdminReviewPreview() {
   adminReviewPreviewMode.value = "review";
 }
 
+function openAdminUserPreview(user) {
+  adminUserPreview.value = user;
+  adminUserPreviewOpen.value = true;
+}
+
+function closeAdminUserPreview() {
+  adminUserPreviewOpen.value = false;
+  adminUserPreview.value = null;
+}
+
 async function updateAdminUserDisabled(user) {
   if (!user?.id || user.role !== "USER") {
     setMessage("只能管理普通用户。");
@@ -3171,6 +3183,10 @@ async function updateAdminUserDisabled(user) {
     });
     setMessage(nextDisabled ? "用户已禁用并踢下线。" : "用户已启用。");
     await Promise.all([loadAdminUsers(), loadAdminOverview()]);
+    const refreshedUser = adminUserRows.value.find((item) => item.id === user.id);
+    if (adminUserPreviewOpen.value && refreshedUser) {
+      adminUserPreview.value = refreshedUser;
+    }
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -3210,6 +3226,9 @@ async function deleteAdminUser(user) {
     });
     setMessage(`用户「${user.username}」已删除。`);
     await Promise.all([loadAdminUsers(), loadAdminOverview(), loadPublishedArticles(), loadArticleFilters(), loadAdminManagedArticles()]);
+    if (adminUserPreviewOpen.value && adminUserPreview.value?.id === user.id) {
+      closeAdminUserPreview();
+    }
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -3370,16 +3389,16 @@ async function renameAdminCategory(category) {
 }
 
 async function deleteAdminCategory(category) {
-  const confirmName = confirmDangerAction({
-    label: "分类名称",
-    expected: category.name,
-    message:
-      category.articleCount > 0
-        ? `分类「${category.name}」正在被 ${category.articleCount} 篇文章使用。删除后这些文章会移除此分类，确定继续吗？`
-        : `确定删除分类「${category.name}」吗？`
-  });
+  const confirmName =
+    category.articleCount > 0
+      ? confirmDangerAction({
+          label: "分类名称",
+          expected: category.name,
+          message: `分类「${category.name}」正在被 ${category.articleCount} 篇文章使用。删除后这些文章会移除此分类，确定继续吗？`
+        })
+      : "";
 
-  if (!confirmName) {
+  if (category.articleCount > 0 && !confirmName) {
     return;
   }
 
@@ -3391,9 +3410,13 @@ async function deleteAdminCategory(category) {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
+      body: JSON.stringify(
         confirmName
-      })
+          ? {
+              confirmName
+            }
+          : {}
+      )
     });
     setMessage("分类已删除。");
     await Promise.all([loadAdminTaxonomies(), loadArticleFilters(), loadPublishedArticles(), loadAdminManagedArticles()]);
@@ -3476,16 +3499,16 @@ async function renameAdminTag(tag) {
 }
 
 async function deleteAdminTag(tag) {
-  const confirmName = confirmDangerAction({
-    label: "标签名称",
-    expected: tag.name,
-    message:
-      tag.articleCount > 0
-        ? `标签「${tag.name}」正在被 ${tag.articleCount} 篇文章使用。删除后这些文章会移除此标签，确定继续吗？`
-        : `确定删除标签「${tag.name}」吗？`
-  });
+  const confirmName =
+    tag.articleCount > 0
+      ? confirmDangerAction({
+          label: "标签名称",
+          expected: tag.name,
+          message: `标签「${tag.name}」正在被 ${tag.articleCount} 篇文章使用。删除后这些文章会移除此标签，确定继续吗？`
+        })
+      : "";
 
-  if (!confirmName) {
+  if (tag.articleCount > 0 && !confirmName) {
     return;
   }
 
@@ -3497,9 +3520,13 @@ async function deleteAdminTag(tag) {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
+      body: JSON.stringify(
         confirmName
-      })
+          ? {
+              confirmName
+            }
+          : {}
+      )
     });
     setMessage("标签已删除。");
     await Promise.all([loadAdminTaxonomies(), loadArticleFilters(), loadPublishedArticles(), loadAdminManagedArticles()]);
@@ -4564,6 +4591,97 @@ onBeforeUnmount(() => {
         <button type="button" @click="closeAdminReviewPreview">关闭</button>
       </footer>
     </section>
+  </div>
+
+  <div
+    v-if="view === 'admin' && adminUserPreviewOpen"
+    class="admin-user-preview-overlay"
+    role="presentation"
+    @click.self="closeAdminUserPreview"
+  >
+    <aside class="admin-user-preview-drawer" role="dialog" aria-modal="true" aria-labelledby="admin-user-preview-title">
+      <header>
+        <div class="admin-user-preview-identity">
+          <span class="admin-user-avatar" :style="{ backgroundColor: adminUserPreview?.color }">
+            {{ adminUserPreview?.username?.[0]?.toUpperCase() || '?' }}
+          </span>
+          <div>
+            <small>用户预览</small>
+            <h2 id="admin-user-preview-title">{{ adminUserPreview?.username || '未知用户' }}</h2>
+            <p>{{ adminUserPreview?.email || '未填写邮箱' }}</p>
+          </div>
+        </div>
+        <button type="button" aria-label="关闭用户预览" @click="closeAdminUserPreview">
+          <iconify-icon icon="mdi:close" width="24"></iconify-icon>
+        </button>
+      </header>
+
+      <main>
+        <section class="admin-user-preview-status">
+          <mark :class="{ 'is-disabled': adminUserPreview?.isDisabled }">{{ adminUserPreview?.statusLabel }}</mark>
+          <span>{{ adminUserPreview?.roleLabel }}</span>
+        </section>
+
+        <section class="admin-user-preview-grid">
+          <div>
+            <span>注册时间</span>
+            <strong>{{ adminUserPreview?.createdLabel || '-' }}</strong>
+          </div>
+          <div>
+            <span>更新时间</span>
+            <strong>{{ formatDate(adminUserPreview?.updatedAt) }}</strong>
+          </div>
+          <div>
+            <span>文章</span>
+            <strong>{{ formatCompactNumber(adminUserPreview?.stats?.articleCount || 0) }}</strong>
+          </div>
+          <div>
+            <span>评论</span>
+            <strong>{{ formatCompactNumber(adminUserPreview?.stats?.commentCount || 0) }}</strong>
+          </div>
+          <div>
+            <span>点赞</span>
+            <strong>{{ formatCompactNumber(adminUserPreview?.stats?.likeCount || 0) }}</strong>
+          </div>
+          <div>
+            <span>收藏</span>
+            <strong>{{ formatCompactNumber(adminUserPreview?.stats?.favoriteCount || 0) }}</strong>
+          </div>
+          <div>
+            <span>活跃会话</span>
+            <strong>{{ formatCompactNumber(adminUserPreview?.stats?.activeSessionCount || 0) }}</strong>
+          </div>
+          <div>
+            <span>用户 ID</span>
+            <strong>{{ adminUserPreview?.id || '-' }}</strong>
+          </div>
+        </section>
+
+        <p class="admin-user-preview-note">
+          {{ adminUserPreview?.role === 'ADMIN' ? '管理员账号受保护，不能在此禁用或删除。' : '普通用户可禁用或删除；删除会连带移除 TA 的文章、评论、点赞、收藏、会话等数据。' }}
+        </p>
+      </main>
+
+      <footer>
+        <button type="button" @click="closeAdminUserPreview">关闭</button>
+        <button
+          v-if="adminUserPreview?.role === 'USER'"
+          class="toggle"
+          type="button"
+          :disabled="adminUserActionId === adminUserPreview?.id"
+          @click="updateAdminUserDisabled(adminUserPreview)"
+        >
+          {{ adminUserPreview?.isDisabled ? "启用" : "禁用" }}
+        </button>
+        <button
+          v-if="adminUserPreview?.role === 'USER'"
+          class="danger"
+          type="button"
+          :disabled="adminUserActionId === adminUserPreview?.id"
+          @click="deleteAdminUser(adminUserPreview)"
+        >删除</button>
+      </footer>
+    </aside>
   </div>
 
   <div
@@ -5673,6 +5791,7 @@ onBeforeUnmount(() => {
                   <mark :class="{ 'is-disabled': user.isDisabled }">{{ user.statusLabel }}</mark>
                 </span>
                 <div class="admin-user-actions">
+                  <button class="view" type="button" :disabled="adminUserActionId === user.id" @click="openAdminUserPreview(user)">查看</button>
                   <button
                     v-if="user.role === 'USER'"
                     class="toggle"

@@ -707,7 +707,10 @@ router.delete("/categories/:id", async (req, res, next) => {
       });
     }
 
-    const confirmationError = requireConfirmation(category.name, req.body?.confirmName, "分类名称");
+    const confirmationError =
+      category._count.articles > 0
+        ? requireConfirmation(category.name, req.body?.confirmName, "分类名称")
+        : null;
 
     if (confirmationError) {
       return res.status(400).json({
@@ -889,7 +892,8 @@ router.delete("/tags/:id", async (req, res, next) => {
       });
     }
 
-    const confirmationError = requireConfirmation(tag.name, req.body?.confirmName, "标签名称");
+    const confirmationError =
+      tag._count.articles > 0 ? requireConfirmation(tag.name, req.body?.confirmName, "标签名称") : null;
 
     if (confirmationError) {
       return res.status(400).json({
