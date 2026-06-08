@@ -346,6 +346,14 @@ test("admin article publishing flow stores markdown, sanitizes HTML, uploads ima
   assert.equal(searchResult.status, 200);
   assert.ok(searchResult.body.articles.some((article) => article.slug === updatedSlug));
 
+  const categorySearchResult = await apiRequest("/articles?q=Guides");
+  assert.equal(categorySearchResult.status, 200);
+  assert.ok(categorySearchResult.body.articles.some((article) => article.slug === updatedSlug));
+
+  const tagSearchResult = await apiRequest("/articles?q=Vue");
+  assert.equal(tagSearchResult.status, 200);
+  assert.ok(tagSearchResult.body.articles.some((article) => article.slug === updatedSlug));
+
   const categoryResult = await apiRequest("/articles?category=guides");
   assert.equal(categoryResult.status, 200);
   assert.ok(categoryResult.body.articles.some((article) => article.slug === updatedSlug));
@@ -2074,6 +2082,12 @@ test("article stats APIs count real reads, reactions, favorites, comments, and p
   assert.equal(summary.status, 200);
   assert.ok(summary.body.summary.todayVisits >= 3);
   assert.ok(summary.body.summary.totalLikes >= 5);
+  assert.equal(summary.body.summary.visitTrend.length, 7);
+  assert.deepEqual(
+    summary.body.summary.visitTrend.map((item) => Object.keys(item)),
+    Array.from({ length: 7 }, () => ["date", "label", "value"])
+  );
+  assert.ok(summary.body.summary.visitTrend.at(-1).value >= 3);
 
   const popular = await apiRequest("/articles/popular?limit=2");
   assert.equal(popular.status, 200);

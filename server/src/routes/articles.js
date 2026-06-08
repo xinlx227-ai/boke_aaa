@@ -316,6 +316,37 @@ function getRecentShanghaiDayWindows(dayCount = 7, now = new Date()) {
   });
 }
 
+function buildVisitTrendFromRows(visitRows, recentWindows) {
+  const visitorsByDay = recentWindows.map(() => new Set());
+
+  for (const row of visitRows) {
+    const visitedAt = new Date(row.visitedAt);
+    const dayIndex = recentWindows.findIndex(
+      (window) => visitedAt >= window.start && visitedAt < window.end
+    );
+
+    if (dayIndex < 0) {
+      continue;
+    }
+
+    const visitorKey = row.userId
+      ? `user:${Number(row.userId)}`
+      : row.visitorId
+        ? `visitor:${row.visitorId}`
+        : null;
+
+    if (visitorKey) {
+      visitorsByDay[dayIndex].add(visitorKey);
+    }
+  }
+
+  return recentWindows.map((window, index) => ({
+    date: formatShanghaiDateKey(window.start),
+    label: formatShanghaiDayLabel(window.start),
+    value: visitorsByDay[index].size
+  }));
+}
+
 function normalizeVisitorId(value) {
   const visitorId = String(value || "").trim();
 
@@ -920,6 +951,65 @@ function articleInclude() {
   };
 }
 
+function articleSearchConditions(search) {
+  if (!search) {
+    return {};
+  }
+
+  return {
+    OR: [
+      {
+        title: {
+          contains: search
+        }
+      },
+      {
+        contentMarkdown: {
+          contains: search
+        }
+      },
+      {
+        category: {
+          is: {
+            OR: [
+              {
+                name: {
+                  contains: search
+                }
+              },
+              {
+                slug: {
+                  contains: search
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        tags: {
+          some: {
+            tag: {
+              OR: [
+                {
+                  name: {
+                    contains: search
+                  }
+                },
+                {
+                  slug: {
+                    contains: search
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  };
+}
+
 function buildPublicArticleWhere(query) {
   const search = String(query?.q || query?.search || "").trim();
   const category = String(query?.category || "").trim();
@@ -927,22 +1017,7 @@ function buildPublicArticleWhere(query) {
 
   return {
     status: ArticleStatus.PUBLISHED,
-    ...(search
-      ? {
-          OR: [
-            {
-              title: {
-                contains: search
-              }
-            },
-            {
-              contentMarkdown: {
-                contains: search
-              }
-            }
-          ]
-        }
-      : {}),
+    ...articleSearchConditions(search),
     ...(category
       ? {
           category: {
@@ -1222,13 +1297,30 @@ router.post("/site-visits", attachOptionalAuth, async (req, res, next) => {
 router.get("/stats/summary", async (_req, res, next) => {
   try {
     const dayWindow = getShanghaiDayWindow();
-    const [todayVisitRows, articleSummary] = await Promise.all([
+    const recentWindows = getRecentShanghaiDayWindows(7);
+    const firstWindow = recentWindows[0];
+    const lastWindow = recentWindows[recentWindows.length - 1];
+    const [todayVisitRows, visitRows, articleSummary] = await Promise.all([
       prisma.$queryRaw`
         SELECT COUNT(*) AS count
         FROM site_visits sv
         LEFT JOIN articles a ON a.id = sv.article_id
         WHERE sv.visited_at >= ${dayWindow.start}
           AND sv.visited_at < ${dayWindow.end}
+          AND (
+            sv.page_type = 'home'
+            OR (sv.page_type = 'article' AND a.status = ${ArticleStatus.PUBLISHED})
+          )
+      `,
+      prisma.$queryRaw`
+        SELECT
+          sv.user_id AS userId,
+          sv.visitor_id AS visitorId,
+          sv.visited_at AS visitedAt
+        FROM site_visits sv
+        LEFT JOIN articles a ON a.id = sv.article_id
+        WHERE sv.visited_at >= ${firstWindow.start}
+          AND sv.visited_at < ${lastWindow.end}
           AND (
             sv.page_type = 'home'
             OR (sv.page_type = 'article' AND a.status = ${ArticleStatus.PUBLISHED})
@@ -1243,7 +1335,8 @@ router.get("/stats/summary", async (_req, res, next) => {
         todayVisits,
         totalLikes: articleSummary.totalLikes,
         totalViews: articleSummary.totalViews,
-        totalFavorites: articleSummary.totalFavorites
+        totalFavorites: articleSummary.totalFavorites,
+        visitTrend: buildVisitTrendFromRows(visitRows, recentWindows)
       }
     });
   } catch (error) {
@@ -1810,29 +1903,6 @@ router.get("/admin/overview", requireAuth, requireRole("ADMIN"), async (_req, re
       `
     ]);
 
-    const visitorsByDay = recentWindows.map(() => new Set());
-
-    for (const row of visitRows) {
-      const visitedAt = new Date(row.visitedAt);
-      const dayIndex = recentWindows.findIndex(
-        (window) => visitedAt >= window.start && visitedAt < window.end
-      );
-
-      if (dayIndex < 0) {
-        continue;
-      }
-
-      const visitorKey = row.userId
-        ? `user:${Number(row.userId)}`
-        : row.visitorId
-          ? `visitor:${row.visitorId}`
-          : null;
-
-      if (visitorKey) {
-        visitorsByDay[dayIndex].add(visitorKey);
-      }
-    }
-
     return res.json({
       summary: {
         userCount,
@@ -1840,11 +1910,7 @@ router.get("/admin/overview", requireAuth, requireRole("ADMIN"), async (_req, re
         commentCount,
         todayVisits: Number(todayVisitRows[0]?.count || 0)
       },
-      visitTrend: recentWindows.map((window, index) => ({
-        date: formatShanghaiDateKey(window.start),
-        label: formatShanghaiDayLabel(window.start),
-        value: visitorsByDay[index].size
-      }))
+      visitTrend: buildVisitTrendFromRows(visitRows, recentWindows)
     });
   } catch (error) {
     return next(error);

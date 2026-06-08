@@ -36,6 +36,7 @@ let adminVisitChartInstance = null;
 let adminCategoryChartInstance = null;
 let userPanelReadChartInstance = null;
 let userPanelCategoryChartInstance = null;
+let trafficChartInstance = null;
 const currentUser = ref(null);
 const currentSession = ref(null);
 const publishedArticles = ref([]);
@@ -45,6 +46,12 @@ const userArticles = ref([]);
 const popularArticles = ref([]);
 const selectedArticle = ref(null);
 const comments = ref([]);
+const searchInput = ref("");
+const articleHeaderSearchInput = ref("");
+const searchPageInput = ref("");
+const searchQuery = ref("");
+const searchResults = ref([]);
+const searchLoading = ref(false);
 const categories = ref([]);
 const tags = ref([]);
 const importResult = ref(null);
@@ -52,7 +59,8 @@ const siteSummary = ref({
   todayVisits: 0,
   totalLikes: 0,
   totalViews: 0,
-  totalFavorites: 0
+  totalFavorites: 0,
+  visitTrend: []
 });
 const adminActiveTab = ref("overview");
 const adminMobileNavOpen = ref(false);
@@ -643,6 +651,16 @@ const latestPublishedArticles = computed(() => {
   return sortedPublishedArticles.value.slice(startIndex, startIndex + latestPageSize);
 });
 const featuredArticle = computed(() => sortedPublishedArticles.value[0] || null);
+const searchResultRows = computed(() =>
+  searchResults.value.map((article) => ({
+    ...article,
+    summaryText: articlePlainSummary(article),
+    categoryLabel: article.category?.name || "未分类",
+    authorLabel: article.author?.username || "未知作者",
+    dateLabel: articleDisplayDate(article),
+    statsLabel: `${formatCompactNumber(article.stats?.viewCount || 0)} 阅读 · ${formatCompactNumber(article.stats?.likeCount || 0)} 赞 · ${formatCompactNumber(article.stats?.favoriteCount || 0)} 收藏`
+  }))
+);
 const orderedPublishedArticles = computed(() =>
   [...publishedArticles.value].sort((firstArticle, secondArticle) => {
     const orderDiff = articleOrderValue(firstArticle) - articleOrderValue(secondArticle);
@@ -898,6 +916,12 @@ function createArticleReturnTarget() {
   if (view.value === "admin" && isAdmin.value) {
     return {
       hash: "admin"
+    };
+  }
+
+  if (view.value === "search") {
+    return {
+      hash: searchQuery.value ? `search?q=${encodeURIComponent(searchQuery.value)}` : "search"
     };
   }
 
@@ -1196,6 +1220,17 @@ function parseHash() {
     };
   }
 
+  if (hash.startsWith("search")) {
+    const queryString = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
+    const params = new URLSearchParams(queryString);
+
+    return {
+      viewName: "search",
+      slug: null,
+      query: params.get("q") || ""
+    };
+  }
+
   if (["article/new", "article-edit/new", "articleedit/new"].includes(hash)) {
     return {
       viewName: "articleEditor",
@@ -1234,6 +1269,32 @@ function setHash(nextHash) {
 
   window.location.hash = nextHash ? `#${nextHash}` : "";
   mobileMenuOpen.value = false;
+}
+
+function openSearchPage(query) {
+  const normalizedQuery = String(query || "").trim();
+
+  if (!normalizedQuery) {
+    return;
+  }
+
+  setHash(`search?q=${encodeURIComponent(normalizedQuery)}`);
+}
+
+function submitTopSearch() {
+  openSearchPage(searchInput.value);
+}
+
+function submitArticleHeaderSearch() {
+  openSearchPage(articleHeaderSearchInput.value);
+}
+
+function submitSearchPage() {
+  openSearchPage(searchPageInput.value);
+}
+
+function openSearchShell() {
+  setHash(searchQuery.value ? `search?q=${encodeURIComponent(searchQuery.value)}` : "search");
 }
 
 function showLoginForm() {
@@ -1385,7 +1446,15 @@ async function apiFetch(path, options = {}) {
 async function loadSiteSummary() {
   try {
     const payload = await apiFetch("/articles/stats/summary");
-    siteSummary.value = payload.summary;
+    siteSummary.value = {
+      todayVisits: 0,
+      totalLikes: 0,
+      totalViews: 0,
+      totalFavorites: 0,
+      visitTrend: [],
+      ...(payload.summary || {})
+    };
+    initTrafficChart();
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -1529,7 +1598,7 @@ async function loadArticleDetail(slug) {
 }
 
 function syncViewToHash() {
-  const { viewName, slug, articleId, authMode: nextAuthMode } = parseHash();
+  const { viewName, slug, articleId, authMode: nextAuthMode, query } = parseHash();
 
   if (nextAuthMode && !isAuthenticated.value) {
     authMode.value = nextAuthMode;
@@ -1573,6 +1642,13 @@ function syncViewToHash() {
   if (viewName === "article" && slug) {
     loadArticleDetail(slug);
     return;
+  }
+
+  if (viewName === "search") {
+    articleReturnTarget.value = null;
+    if (query !== searchQuery.value || (query && searchResults.value.length === 0)) {
+      loadSearchResults(query);
+    }
   }
 
   articleReturnTarget.value = null;
@@ -1623,6 +1699,30 @@ async function loadPublishedArticles() {
     }
   } finally {
     articleLoading.value = false;
+  }
+}
+
+async function loadSearchResults(query) {
+  const normalizedQuery = String(query || "").trim();
+  searchQuery.value = normalizedQuery;
+  searchPageInput.value = normalizedQuery;
+
+  if (!normalizedQuery) {
+    searchResults.value = [];
+    return;
+  }
+
+  searchLoading.value = true;
+
+  try {
+    const payload = await apiFetch(`/articles?q=${encodeURIComponent(normalizedQuery)}`);
+    searchResults.value = payload.articles || [];
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    searchLoading.value = false;
   }
 }
 
@@ -2348,6 +2448,8 @@ function openArticle(slug, returnTarget = null) {
 
 function openPublicHome() {
   articleReturnTarget.value = null;
+  searchInput.value = "";
+  articleHeaderSearchInput.value = "";
   setHash("");
 }
 
@@ -3977,6 +4079,13 @@ function shouldRecordHomeVisit() {
   return viewName === "public" && !nextAuthMode;
 }
 
+function disposeTrafficChart() {
+  if (trafficChartInstance) {
+    trafficChartInstance.dispose();
+    trafficChartInstance = null;
+  }
+}
+
 function disposeAdminCharts() {
   if (adminVisitChartInstance) {
     adminVisitChartInstance.dispose();
@@ -4334,6 +4443,7 @@ function resizeUserPanelCharts() {
 }
 
 function resizeCharts() {
+  trafficChartInstance?.resize();
   resizeAdminCharts();
   resizeUserPanelCharts();
 }
@@ -4343,13 +4453,24 @@ function initTrafficChart() {
     const el = trafficChartRef.value;
     if (!el || typeof echarts === "undefined") return;
     try {
-      const myChart = echarts.init(el);
-      myChart.setOption({
+      if (!trafficChartInstance || trafficChartInstance.getDom?.() !== el) {
+        trafficChartInstance?.dispose();
+        trafficChartInstance = echarts.init(el);
+      }
+
+      const trend = siteSummary.value.visitTrend?.length
+        ? siteSummary.value.visitTrend
+        : Array.from({ length: 7 }, (_item, index) => ({
+            label: `D-${6 - index}`,
+            value: 0
+          }));
+
+      trafficChartInstance.setOption({
         grid: { left: 0, right: 0, top: 10, bottom: 0 },
-        xAxis: { type: "category", data: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], show: false },
+        xAxis: { type: "category", data: trend.map((item) => item.label), show: false },
         yAxis: { type: "value", show: false },
         series: [{
-          data: [820, 932, 901, 934, 1290, 1330, 1320],
+          data: trend.map((item) => item.value),
           type: "line",
           smooth: true,
           symbol: "none",
@@ -4362,7 +4483,6 @@ function initTrafficChart() {
           }
         }]
       });
-      window.addEventListener("resize", () => myChart.resize());
     } catch (_e) {
       // ECharts 尚未加载完成，静默跳过
     }
@@ -4375,6 +4495,8 @@ watch(view, (newVal) => {
     if (shouldRecordHomeVisit()) {
       recordHomeVisit();
     }
+  } else {
+    disposeTrafficChart();
   }
 
   if (newVal === "articleEditor") {
@@ -4439,6 +4561,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("scroll", handleScroll);
   window.removeEventListener("resize", resizeCharts);
   window.removeEventListener("beforeunload", handleBeforeUnload);
+  disposeTrafficChart();
   disposeAdminCharts();
   disposeUserPanelCharts();
   if (messageTimer) {
@@ -4793,17 +4916,17 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <div class="article-header-search hidden md:flex">
+        <form class="article-header-search hidden md:flex" @submit.prevent="submitArticleHeaderSearch">
           <iconify-icon class="text-slate-400 mr-2 shrink-0" icon="mdi:magnify"></iconify-icon>
           <input
+            v-model.trim="articleHeaderSearchInput"
             aria-label="搜索文章、标签或关键词"
             class="bg-transparent border-none outline-none text-sm w-full placeholder:text-slate-400"
             placeholder="搜索文章、标签或关键词..."
-            readonly
-            type="text"
+            type="search"
           />
           <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 bg-white border border-slate-200 rounded ml-2">⌘K</kbd>
-        </div>
+        </form>
 
         <div class="article-header-actions">
           <div class="article-action-group">
@@ -4862,19 +4985,27 @@ onBeforeUnmount(() => {
           <span class="brand-logo-text compact">MyBlog <span>Pro</span></span>
         </div>
 
-        <div v-if="view !== 'admin'" class="hidden md:flex items-center bg-slate-100 rounded-full px-4 py-1.5 w-96 border border-transparent focus-within:border-orange-300 focus-within:bg-white transition-all">
+        <form v-if="view !== 'admin'" class="hidden md:flex items-center bg-slate-100 rounded-full px-4 py-1.5 w-96 border border-transparent focus-within:border-orange-300 focus-within:bg-white transition-all" @submit.prevent="submitTopSearch">
           <iconify-icon class="text-slate-400 mr-2 shrink-0" icon="mdi:magnify"></iconify-icon>
           <input
-            v-model.trim="filters.q"
+            v-model.trim="searchInput"
             class="bg-transparent border-none outline-none text-sm w-full placeholder:text-slate-400"
             placeholder="搜索文章、标签或关键词..."
-            type="text"
-            @keydown.enter="applyFilters"
+            type="search"
           />
           <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 bg-white border border-slate-200 rounded ml-2">⌘K</kbd>
-        </div>
+        </form>
 
         <div :class="view === 'admin' ? 'admin-topbar-actions' : 'flex items-center gap-4'">
+          <button
+            v-if="view !== 'admin'"
+            class="md:hidden p-2 text-slate-500 hover:text-orange-500 transition-colors"
+            title="搜索"
+            type="button"
+            @click="openSearchShell"
+          >
+            <iconify-icon icon="mdi:magnify" width="22"></iconify-icon>
+          </button>
           <button
             :class="view === 'admin' ? 'admin-topbar-icon-action' : 'p-2 text-slate-500 hover:text-orange-500 dark:text-slate-300 dark:hover:text-orange-300 transition-colors'"
             :title="isDarkMode ? '切换到亮色模式' : '切换到暗色模式'"
@@ -6086,11 +6217,11 @@ onBeforeUnmount(() => {
   <main
     v-else-if="!isUserPanelView && !isArticleEditorView"
     class="max-w-[1440px] mx-auto px-6 py-8 grid grid-cols-1 gap-8 items-start"
-    :class="view === 'article' ? 'article-detail-shell' : 'lg:grid-cols-[320px_minmax(0,1fr)]'"
+    :class="view === 'article' ? 'article-detail-shell' : view === 'search' ? 'search-page-layout' : 'lg:grid-cols-[320px_minmax(0,1fr)]'"
   >
     <!-- ===== 左侧操作区 (Sidebar) ===== -->
     <aside
-      v-if="view !== 'article' || selectedArticle"
+      v-if="view === 'public' || (view === 'article' && selectedArticle)"
       :class="view === 'article' ? ['article-left-sidebar scrollbar-hidden', { 'is-open': mobileMenuOpen }] : 'w-full flex flex-col gap-6 lg:self-stretch'"
     >
       <!-- 登录/注册卡片 -->
@@ -6448,6 +6579,73 @@ onBeforeUnmount(() => {
             </section>
           </aside>
         </div>
+      </template>
+
+      <template v-else-if="view === 'search'">
+        <section class="search-page-shell">
+          <div class="search-page-hero">
+            <div>
+              <span>Search</span>
+              <h1>搜索文章</h1>
+              <p>按标题、正文、分类或标签查找已发布内容。</p>
+            </div>
+            <form class="search-page-form" @submit.prevent="submitSearchPage">
+              <iconify-icon icon="mdi:magnify" width="22"></iconify-icon>
+              <input
+                v-model.trim="searchPageInput"
+                aria-label="搜索文章"
+                placeholder="输入关键词、分类或标签"
+                type="search"
+              />
+              <button type="submit">搜索</button>
+            </form>
+          </div>
+
+          <div class="search-page-summary">
+            <p v-if="searchQuery">
+              “{{ searchQuery }}” 共找到 <strong>{{ searchResultRows.length }}</strong> 篇文章
+            </p>
+            <p v-else>输入关键词开始搜索。</p>
+          </div>
+
+          <section class="search-results-panel">
+            <p v-if="searchLoading" class="search-empty-state">正在搜索...</p>
+            <div v-else-if="searchQuery && searchResultRows.length === 0" class="search-empty-state">
+              <iconify-icon icon="mdi:file-search-outline" width="46"></iconify-icon>
+              <strong>没有匹配结果</strong>
+              <span>换个关键词、分类或标签试试。</span>
+            </div>
+            <div v-else-if="!searchQuery" class="search-empty-state">
+              <iconify-icon icon="mdi:magnify" width="46"></iconify-icon>
+              <strong>搜索已发布文章</strong>
+              <span>搜索范围包含标题、正文、分类和标签。</span>
+            </div>
+            <template v-else>
+              <template v-for="article in searchResultRows" :key="article.id">
+                <article class="search-result-card" @click="openArticle(article.slug)">
+                  <div class="search-result-cover">
+                    <iconify-icon icon="mdi:file-document-edit-outline" width="34"></iconify-icon>
+                  </div>
+                  <div class="search-result-body">
+                    <div class="search-result-meta">
+                      <span>{{ article.categoryLabel }}</span>
+                      <time>{{ article.dateLabel }}</time>
+                    </div>
+                    <h2>{{ article.title }}</h2>
+                    <p>{{ article.summaryText }}</p>
+                    <div class="search-result-footer">
+                      <span>{{ article.authorLabel }}</span>
+                      <span>{{ article.statsLabel }}</span>
+                    </div>
+                    <div v-if="article.tags?.length" class="search-result-tags">
+                      <span v-for="tag in article.tags" :key="tag.id">{{ tag.name }}</span>
+                    </div>
+                  </div>
+                </article>
+              </template>
+            </template>
+          </section>
+        </section>
       </template>
 
       <!-- ========== LEGACY 视图 (旧 UI, 样式隔离) ========== -->
