@@ -6,6 +6,8 @@ const ASSET_BASE_URL = "";
 const TOKEN_STORAGE_KEY = "private-blog-token";
 const THEME_STORAGE_KEY = "private-blog-theme";
 const VISITOR_STORAGE_KEY = "private-blog-visitor-id";
+const DEFAULT_DOCUMENT_TITLE = document.title;
+const DEFAULT_META_DESCRIPTION = "私人博客系统 - 探索与记录";
 
 const view = ref("public");
 const authMode = ref("login");
@@ -38,6 +40,7 @@ let adminVisitChartInstance = null;
 let adminCategoryChartInstance = null;
 let userPanelReadChartInstance = null;
 let userPanelCategoryChartInstance = null;
+let trafficChartInstance = null;
 const currentUser = ref(null);
 const currentSession = ref(null);
 const publishedArticles = ref([]);
@@ -47,6 +50,12 @@ const userArticles = ref([]);
 const popularArticles = ref([]);
 const selectedArticle = ref(null);
 const comments = ref([]);
+const searchInput = ref("");
+const articleHeaderSearchInput = ref("");
+const searchPageInput = ref("");
+const searchQuery = ref("");
+const searchResults = ref([]);
+const searchLoading = ref(false);
 const categories = ref([]);
 const tags = ref([]);
 const importResult = ref(null);
@@ -54,7 +63,8 @@ const siteSummary = ref({
   todayVisits: 0,
   totalLikes: 0,
   totalViews: 0,
-  totalFavorites: 0
+  totalFavorites: 0,
+  visitTrend: []
 });
 const adminActiveTab = ref("overview");
 const adminMobileNavOpen = ref(false);
@@ -144,9 +154,9 @@ const articleEditorSettingsCollapsed = ref(false);
 const articleEditorSettingsOpen = ref(false);
 const articleEditorMoreMenuOpen = ref(false);
 const articleEditorSeoOpen = ref(false);
-const articleEditorCoverRatio = ref("16:9");
 const articleEditorMarkdownRef = ref(null);
 const articleEditorImageInputRef = ref(null);
+const articleEditorCoverInputRef = ref(null);
 const articleEditorImageModalOpen = ref(false);
 const articleEditorImageFiles = ref([]);
 const articleEditorImageSelection = ref({ start: 0, end: 0 });
@@ -248,6 +258,9 @@ const articleEditorForm = reactive({
   categoryName: "",
   tagNamesText: "Vue, Markdown",
   tagInput: "",
+  coverImageUrl: "",
+  coverAlt: "",
+  coverRatio: "16:9",
   seoTitle: "",
   seoKeywords: "",
   seoDescription: "",
@@ -472,11 +485,20 @@ const userPanelSecurityEventRows = computed(() =>
   })
 );
 const articleEditorTags = computed(() => tagTextToArray(articleEditorForm.tagNamesText));
+const articleEditorCoverPreviewUrl = computed(() => assetUrl(articleEditorForm.coverImageUrl));
 const articleEditorSnapshotValue = computed(() =>
   JSON.stringify({
     title: articleEditorForm.title,
     categoryName: articleEditorForm.categoryName,
     tagNamesText: articleEditorForm.tagNamesText,
+    coverImageUrl: articleEditorForm.coverImageUrl,
+    coverAlt: articleEditorForm.coverAlt,
+    coverRatio: articleEditorForm.coverRatio,
+    seoTitle: articleEditorForm.seoTitle,
+    seoKeywords: articleEditorForm.seoKeywords,
+    seoDescription: articleEditorForm.seoDescription,
+    allowComments: articleEditorForm.allowComments,
+    pinned: articleEditorForm.pinned,
     contentMarkdown: articleEditorForm.contentMarkdown
   })
 );
@@ -505,6 +527,7 @@ const selectedArticleReadTime = computed(() => {
   return `${estimatedMinutes} 分钟阅读`;
 });
 const selectedArticleSlug = computed(() => selectedArticle.value?.slug || "");
+const selectedArticleAllowsComments = computed(() => selectedArticle.value?.allowComments !== false);
 const isSelectedArticleLiked = computed(() => Boolean(selectedArticle.value?.stats?.likedByMe));
 const isSelectedArticleFavorited = computed(() => Boolean(selectedArticle.value?.stats?.favoritedByMe));
 const commentTotalCount = computed(() =>
@@ -657,6 +680,16 @@ const latestPublishedArticles = computed(() => {
   return sortedPublishedArticles.value.slice(startIndex, startIndex + latestPageSize);
 });
 const featuredArticle = computed(() => sortedPublishedArticles.value[0] || null);
+const searchResultRows = computed(() =>
+  searchResults.value.map((article) => ({
+    ...article,
+    summaryText: articlePlainSummary(article),
+    categoryLabel: article.category?.name || "未分类",
+    authorLabel: article.author?.username || "未知作者",
+    dateLabel: articleDisplayDate(article),
+    statsLabel: `${formatCompactNumber(article.stats?.viewCount || 0)} 阅读 · ${formatCompactNumber(article.stats?.likeCount || 0)} 赞 · ${formatCompactNumber(article.stats?.favoriteCount || 0)} 收藏`
+  }))
+);
 const orderedPublishedArticles = computed(() =>
   [...publishedArticles.value].sort((firstArticle, secondArticle) => {
     const orderDiff = articleOrderValue(firstArticle) - articleOrderValue(secondArticle);
@@ -685,6 +718,20 @@ watch(latestPageCount, (pageCount) => {
 
 function mapAssetUrls(html) {
   return String(html || "").replace(/(src|href)="\/uploads\//g, `$1="${ASSET_BASE_URL}/uploads/`);
+}
+
+function assetUrl(url) {
+  const value = String(url || "").trim();
+
+  if (!value) {
+    return "";
+  }
+
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith("data:")) {
+    return value;
+  }
+
+  return value.startsWith("/uploads/") ? `${ASSET_BASE_URL}${value}` : value;
 }
 
 function tagTextToArray(value) {
@@ -755,6 +802,12 @@ function replaceArticleInList(article) {
 }
 
 function articlePlainSummary(article) {
+  const seoDescription = String(article?.seoDescription || "").trim();
+
+  if (seoDescription) {
+    return seoDescription.length > 96 ? `${seoDescription.slice(0, 95)}...` : seoDescription;
+  }
+
   const markdown = String(article?.contentMarkdown || "")
     .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
@@ -927,6 +980,12 @@ function createArticleReturnTarget() {
   if (view.value === "admin" && isAdmin.value) {
     return {
       hash: "admin"
+    };
+  }
+
+  if (view.value === "search") {
+    return {
+      hash: searchQuery.value ? `search?q=${encodeURIComponent(searchQuery.value)}` : "search"
     };
   }
 
@@ -1225,6 +1284,17 @@ function parseHash() {
     };
   }
 
+  if (hash.startsWith("search")) {
+    const queryString = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
+    const params = new URLSearchParams(queryString);
+
+    return {
+      viewName: "search",
+      slug: null,
+      query: params.get("q") || ""
+    };
+  }
+
   if (["article/new", "article-edit/new", "articleedit/new"].includes(hash)) {
     return {
       viewName: "articleEditor",
@@ -1263,6 +1333,32 @@ function setHash(nextHash) {
 
   window.location.hash = nextHash ? `#${nextHash}` : "";
   mobileMenuOpen.value = false;
+}
+
+function openSearchPage(query) {
+  const normalizedQuery = String(query || "").trim();
+
+  if (!normalizedQuery) {
+    return;
+  }
+
+  setHash(`search?q=${encodeURIComponent(normalizedQuery)}`);
+}
+
+function submitTopSearch() {
+  openSearchPage(searchInput.value);
+}
+
+function submitArticleHeaderSearch() {
+  openSearchPage(articleHeaderSearchInput.value);
+}
+
+function submitSearchPage() {
+  openSearchPage(searchPageInput.value);
+}
+
+function openSearchShell() {
+  setHash(searchQuery.value ? `search?q=${encodeURIComponent(searchQuery.value)}` : "search");
 }
 
 function showLoginForm() {
@@ -1321,6 +1417,9 @@ function resetArticleEditorForm() {
   articleEditorForm.categoryName = "";
   articleEditorForm.tagNamesText = "";
   articleEditorForm.tagInput = "";
+  articleEditorForm.coverImageUrl = "";
+  articleEditorForm.coverAlt = "";
+  articleEditorForm.coverRatio = "16:9";
   articleEditorForm.seoTitle = "";
   articleEditorForm.seoKeywords = "";
   articleEditorForm.seoDescription = "";
@@ -1340,6 +1439,14 @@ function fillArticleEditorForm(article) {
   articleEditorForm.categoryName = article?.category?.name || "";
   articleEditorForm.tagNamesText = (article?.tags || []).map((tag) => tag.name).join(", ");
   articleEditorForm.tagInput = "";
+  articleEditorForm.coverImageUrl = article?.coverImageUrl || "";
+  articleEditorForm.coverAlt = article?.coverAlt || "";
+  articleEditorForm.coverRatio = article?.coverRatio || "16:9";
+  articleEditorForm.seoTitle = article?.seoTitle || "";
+  articleEditorForm.seoKeywords = article?.seoKeywords || "";
+  articleEditorForm.seoDescription = article?.seoDescription || "";
+  articleEditorForm.allowComments = article?.allowComments !== false;
+  articleEditorForm.pinned = Boolean(article?.isPinned);
   articleEditorForm.contentMarkdown = article?.contentMarkdown || "";
   articleEditorLoaded.value = true;
   saveArticleEditorSnapshot();
@@ -1414,7 +1521,15 @@ async function apiFetch(path, options = {}) {
 async function loadSiteSummary() {
   try {
     const payload = await apiFetch("/articles/stats/summary");
-    siteSummary.value = payload.summary;
+    siteSummary.value = {
+      todayVisits: 0,
+      totalLikes: 0,
+      totalViews: 0,
+      totalFavorites: 0,
+      visitTrend: [],
+      ...(payload.summary || {})
+    };
+    initTrafficChart();
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -1558,7 +1673,7 @@ async function loadArticleDetail(slug) {
 }
 
 function syncViewToHash() {
-  const { viewName, slug, articleId, authMode: nextAuthMode } = parseHash();
+  const { viewName, slug, articleId, authMode: nextAuthMode, query } = parseHash();
 
   if (nextAuthMode && !isAuthenticated.value) {
     authMode.value = nextAuthMode;
@@ -1616,6 +1731,13 @@ function syncViewToHash() {
     return;
   }
 
+  if (viewName === "search") {
+    articleReturnTarget.value = null;
+    if (query !== searchQuery.value || (query && searchResults.value.length === 0)) {
+      loadSearchResults(query);
+    }
+  }
+
   articleReturnTarget.value = null;
 
   if (viewName === "public" && !selectedArticle.value && sortedPublishedArticles.value.length > 0) {
@@ -1664,6 +1786,30 @@ async function loadPublishedArticles() {
     }
   } finally {
     articleLoading.value = false;
+  }
+}
+
+async function loadSearchResults(query) {
+  const normalizedQuery = String(query || "").trim();
+  searchQuery.value = normalizedQuery;
+  searchPageInput.value = normalizedQuery;
+
+  if (!normalizedQuery) {
+    searchResults.value = [];
+    return;
+  }
+
+  searchLoading.value = true;
+
+  try {
+    const payload = await apiFetch(`/articles?q=${encodeURIComponent(normalizedQuery)}`);
+    searchResults.value = payload.articles || [];
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    searchLoading.value = false;
   }
 }
 
@@ -2431,6 +2577,8 @@ function openArticle(slug, returnTarget = null) {
 
 function openPublicHome() {
   articleReturnTarget.value = null;
+  searchInput.value = "";
+  articleHeaderSearchInput.value = "";
   setHash("");
 }
 
@@ -2808,6 +2956,14 @@ function articleEditorRequestBody() {
     title: articleEditorForm.title,
     categoryName: articleEditorForm.categoryName,
     tagNames: tagTextToArray(articleEditorForm.tagNamesText),
+    coverImageUrl: articleEditorForm.coverImageUrl,
+    coverAlt: articleEditorForm.coverAlt,
+    coverRatio: articleEditorForm.coverRatio,
+    seoTitle: articleEditorForm.seoTitle,
+    seoKeywords: articleEditorForm.seoKeywords,
+    seoDescription: articleEditorForm.seoDescription,
+    allowComments: articleEditorForm.allowComments,
+    isPinned: articleEditorForm.pinned,
     contentMarkdown: articleEditorForm.contentMarkdown
   };
 }
@@ -3048,7 +3204,67 @@ function toggleArticleEditorSeo() {
 }
 
 function setArticleEditorCoverRatio(ratio) {
-  articleEditorCoverRatio.value = ratio;
+  articleEditorForm.coverRatio = ratio;
+}
+
+function chooseArticleEditorCover() {
+  if (articleEditorIsLocked.value) {
+    return;
+  }
+
+  articleEditorCoverInputRef.value?.click();
+}
+
+async function uploadArticleEditorCover(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+
+  if (!file) {
+    return;
+  }
+
+  if (!file.type.startsWith("image/")) {
+    setMessage("请选择图片文件。");
+    return;
+  }
+
+  uploadingImage.value = true;
+  setMessage("");
+
+  try {
+    const formData = new FormData();
+    formData.append("images", file);
+
+    const payload = await apiFetch("/articles/uploads/images", {
+      method: "POST",
+      body: formData
+    });
+    const image = payload.images?.[0];
+
+    if (!image?.imageUrl) {
+      setMessage("封面上传失败，请重试。");
+      return;
+    }
+
+    articleEditorForm.coverImageUrl = image.imageUrl;
+    articleEditorForm.coverAlt = articleEditorForm.coverAlt || image.originalName || "";
+    setMessage("封面已上传。");
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    uploadingImage.value = false;
+  }
+}
+
+function clearArticleEditorCover() {
+  if (articleEditorIsLocked.value) {
+    return;
+  }
+
+  articleEditorForm.coverImageUrl = "";
+  articleEditorForm.coverAlt = "";
 }
 
 function addArticleEditorTag(tagName = articleEditorForm.tagInput) {
@@ -3973,6 +4189,11 @@ async function submitComment() {
     return;
   }
 
+  if (!selectedArticleAllowsComments.value) {
+    setMessage("该文章已关闭评论。");
+    return;
+  }
+
   postingComment.value = true;
   setMessage("");
 
@@ -4090,6 +4311,13 @@ function handleBeforeUnload(event) {
 function shouldRecordHomeVisit() {
   const { viewName, authMode: nextAuthMode } = parseHash();
   return viewName === "public" && !nextAuthMode;
+}
+
+function disposeTrafficChart() {
+  if (trafficChartInstance) {
+    trafficChartInstance.dispose();
+    trafficChartInstance = null;
+  }
 }
 
 function disposeAdminCharts() {
@@ -4449,8 +4677,33 @@ function resizeUserPanelCharts() {
 }
 
 function resizeCharts() {
+  trafficChartInstance?.resize();
   resizeAdminCharts();
   resizeUserPanelCharts();
+}
+
+function ensureMetaDescriptionElement() {
+  let meta = document.querySelector('meta[name="description"]');
+
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.setAttribute("name", "description");
+    document.head.appendChild(meta);
+  }
+
+  return meta;
+}
+
+function syncDocumentSeo() {
+  if (view.value !== "article" || !selectedArticle.value) {
+    document.title = DEFAULT_DOCUMENT_TITLE;
+    ensureMetaDescriptionElement().setAttribute("content", DEFAULT_META_DESCRIPTION);
+    return;
+  }
+
+  const title = selectedArticle.value.seoTitle || selectedArticle.value.title || DEFAULT_DOCUMENT_TITLE;
+  document.title = title;
+  ensureMetaDescriptionElement().setAttribute("content", articlePlainSummary(selectedArticle.value));
 }
 
 function initTrafficChart() {
@@ -4458,13 +4711,24 @@ function initTrafficChart() {
     const el = trafficChartRef.value;
     if (!el || typeof echarts === "undefined") return;
     try {
-      const myChart = echarts.init(el);
-      myChart.setOption({
+      if (!trafficChartInstance || trafficChartInstance.getDom?.() !== el) {
+        trafficChartInstance?.dispose();
+        trafficChartInstance = echarts.init(el);
+      }
+
+      const trend = siteSummary.value.visitTrend?.length
+        ? siteSummary.value.visitTrend
+        : Array.from({ length: 7 }, (_item, index) => ({
+            label: `D-${6 - index}`,
+            value: 0
+          }));
+
+      trafficChartInstance.setOption({
         grid: { left: 0, right: 0, top: 10, bottom: 0 },
-        xAxis: { type: "category", data: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], show: false },
+        xAxis: { type: "category", data: trend.map((item) => item.label), show: false },
         yAxis: { type: "value", show: false },
         series: [{
-          data: [820, 932, 901, 934, 1290, 1330, 1320],
+          data: trend.map((item) => item.value),
           type: "line",
           smooth: true,
           symbol: "none",
@@ -4477,7 +4741,6 @@ function initTrafficChart() {
           }
         }]
       });
-      window.addEventListener("resize", () => myChart.resize());
     } catch (_e) {
       // ECharts 尚未加载完成，静默跳过
     }
@@ -4490,6 +4753,8 @@ watch(view, (newVal) => {
     if (shouldRecordHomeVisit()) {
       recordHomeVisit();
     }
+  } else {
+    disposeTrafficChart();
   }
 
   if (newVal === "articleEditor") {
@@ -4527,6 +4792,8 @@ watch([userPanelActiveTab, userPanelReadTrend, userPanelCategoryDistribution], (
   }
 });
 
+watch([view, selectedArticle], syncDocumentSeo);
+
 onMounted(async () => {
   applyThemeMode();
   window.addEventListener("hashchange", handleHashChange);
@@ -4554,6 +4821,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("scroll", handleScroll);
   window.removeEventListener("resize", resizeCharts);
   window.removeEventListener("beforeunload", handleBeforeUnload);
+  disposeTrafficChart();
   disposeAdminCharts();
   disposeUserPanelCharts();
   if (messageTimer) {
@@ -4908,17 +5176,17 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <div class="article-header-search hidden md:flex">
+        <form class="article-header-search hidden md:flex" @submit.prevent="submitArticleHeaderSearch">
           <iconify-icon class="text-slate-400 mr-2 shrink-0" icon="mdi:magnify"></iconify-icon>
           <input
+            v-model.trim="articleHeaderSearchInput"
             aria-label="搜索文章、标签或关键词"
             class="bg-transparent border-none outline-none text-sm w-full placeholder:text-slate-400"
             placeholder="搜索文章、标签或关键词..."
-            readonly
-            type="text"
+            type="search"
           />
           <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 bg-white border border-slate-200 rounded ml-2">⌘K</kbd>
-        </div>
+        </form>
 
         <div class="article-header-actions">
           <div class="article-action-group">
@@ -4977,19 +5245,27 @@ onBeforeUnmount(() => {
           <span class="brand-logo-text compact">MyBlog <span>Pro</span></span>
         </div>
 
-        <div v-if="view !== 'admin'" class="hidden md:flex items-center bg-slate-100 rounded-full px-4 py-1.5 w-96 border border-transparent focus-within:border-orange-300 focus-within:bg-white transition-all">
+        <form v-if="view !== 'admin'" class="hidden md:flex items-center bg-slate-100 rounded-full px-4 py-1.5 w-96 border border-transparent focus-within:border-orange-300 focus-within:bg-white transition-all" @submit.prevent="submitTopSearch">
           <iconify-icon class="text-slate-400 mr-2 shrink-0" icon="mdi:magnify"></iconify-icon>
           <input
-            v-model.trim="filters.q"
+            v-model.trim="searchInput"
             class="bg-transparent border-none outline-none text-sm w-full placeholder:text-slate-400"
             placeholder="搜索文章、标签或关键词..."
-            type="text"
-            @keydown.enter="applyFilters"
+            type="search"
           />
           <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 bg-white border border-slate-200 rounded ml-2">⌘K</kbd>
-        </div>
+        </form>
 
         <div :class="view === 'admin' ? 'admin-topbar-actions' : 'flex items-center gap-4'">
+          <button
+            v-if="view !== 'admin'"
+            class="md:hidden p-2 text-slate-500 hover:text-orange-500 transition-colors"
+            title="搜索"
+            type="button"
+            @click="openSearchShell"
+          >
+            <iconify-icon icon="mdi:magnify" width="22"></iconify-icon>
+          </button>
           <button
             :class="view === 'admin' ? 'admin-topbar-icon-action' : 'p-2 text-slate-500 hover:text-orange-500 dark:text-slate-300 dark:hover:text-orange-300 transition-colors'"
             :title="isDarkMode ? '切换到亮色模式' : '切换到暗色模式'"
@@ -5580,22 +5856,36 @@ onBeforeUnmount(() => {
             <h3>文章封面</h3>
             <span>建议 16:9</span>
           </div>
-          <button class="article-editor-cover-dropzone" type="button" @click="showArticleEditorPlaceholder('封面上传')">
-            <iconify-icon icon="mdi:image-plus-outline" width="34"></iconify-icon>
-            <strong>点击或拖拽上传封面</strong>
-            <small>支持 JPG、PNG、WebP</small>
+          <button
+            class="article-editor-cover-dropzone"
+            type="button"
+            :disabled="articleEditorIsLocked || uploadingImage"
+            @click="chooseArticleEditorCover"
+          >
+            <img v-if="articleEditorCoverPreviewUrl" :alt="articleEditorForm.coverAlt || '文章封面'" :src="articleEditorCoverPreviewUrl" />
+            <template v-else>
+              <iconify-icon icon="mdi:image-plus-outline" width="34"></iconify-icon>
+              <strong>点击上传封面</strong>
+              <small>支持 JPG、PNG、WebP</small>
+            </template>
           </button>
+          <input ref="articleEditorCoverInputRef" class="sr-only" type="file" accept="image/*" @change="uploadArticleEditorCover" />
+          <label class="article-editor-cover-alt">
+            <span>封面替代文本</span>
+            <input v-model.trim="articleEditorForm.coverAlt" placeholder="描述封面内容" type="text" :disabled="articleEditorIsLocked" />
+          </label>
           <div class="article-editor-ratio-group" aria-label="封面比例">
             <button
               v-for="ratio in ['16:9', '4:3', '1:1']"
               :key="ratio"
-              :class="{ 'is-active': articleEditorCoverRatio === ratio }"
+              :class="{ 'is-active': articleEditorForm.coverRatio === ratio }"
               type="button"
+              :disabled="articleEditorIsLocked"
               @click="setArticleEditorCoverRatio(ratio)"
             >
               {{ ratio }}
             </button>
-            <button type="button" title="重新上传" @click="showArticleEditorPlaceholder('重新上传封面')">
+            <button type="button" title="移除封面" :disabled="articleEditorIsLocked || !articleEditorForm.coverImageUrl" @click="clearArticleEditorCover">
               <iconify-icon icon="mdi:refresh" width="16"></iconify-icon>
             </button>
           </div>
@@ -6201,11 +6491,11 @@ onBeforeUnmount(() => {
   <main
     v-else-if="!isUserPanelView && !isArticleEditorView"
     class="max-w-[1440px] mx-auto px-6 py-8 grid grid-cols-1 gap-8 items-start"
-    :class="view === 'article' ? 'article-detail-shell' : 'lg:grid-cols-[320px_minmax(0,1fr)]'"
+    :class="view === 'article' ? 'article-detail-shell' : view === 'search' ? 'search-page-layout' : 'lg:grid-cols-[320px_minmax(0,1fr)]'"
   >
     <!-- ===== 左侧操作区 (Sidebar) ===== -->
     <aside
-      v-if="view !== 'article' || selectedArticle"
+      v-if="view === 'public' || (view === 'article' && selectedArticle)"
       :class="view === 'article' ? ['article-left-sidebar scrollbar-hidden', { 'is-open': mobileMenuOpen }] : 'w-full flex flex-col gap-6 lg:self-stretch'"
     >
       <!-- 登录/注册卡片 -->
@@ -6458,7 +6748,9 @@ onBeforeUnmount(() => {
                     @click="openArticle(article.slug)"
                   >
                     <div class="h-48 overflow-hidden relative bg-gradient-to-br from-orange-100 to-amber-50 flex items-center justify-center">
-                      <iconify-icon icon="mdi:file-document-edit-outline" width="48" class="text-orange-300"></iconify-icon>
+                      <img v-if="article.coverImageUrl" class="latest-article-cover-image" :alt="article.coverAlt || article.title" :src="assetUrl(article.coverImageUrl)" />
+                      <iconify-icon v-else icon="mdi:file-document-edit-outline" width="48" class="text-orange-300"></iconify-icon>
+                      <span v-if="article.isPinned" class="absolute top-4 right-4 px-2 py-1 bg-orange-500 text-white text-[10px] font-bold rounded-md shadow-sm">置顶</span>
                       <span class="absolute top-4 left-4 px-2 py-1 bg-white/90 backdrop-blur text-[10px] font-bold rounded-md shadow-sm">{{ article.category?.name || '未分类' }}</span>
                     </div>
                     <div class="p-6 flex-1 flex flex-col">
@@ -6565,6 +6857,74 @@ onBeforeUnmount(() => {
         </div>
       </template>
 
+      <template v-else-if="view === 'search'">
+        <section class="search-page-shell">
+          <div class="search-page-hero">
+            <div>
+              <span>Search</span>
+              <h1>搜索文章</h1>
+              <p>按标题、正文、分类或标签查找已发布内容。</p>
+            </div>
+            <form class="search-page-form" @submit.prevent="submitSearchPage">
+              <iconify-icon icon="mdi:magnify" width="22"></iconify-icon>
+              <input
+                v-model.trim="searchPageInput"
+                aria-label="搜索文章"
+                placeholder="输入关键词、分类或标签"
+                type="search"
+              />
+              <button type="submit">搜索</button>
+            </form>
+          </div>
+
+          <div class="search-page-summary">
+            <p v-if="searchQuery">
+              “{{ searchQuery }}” 共找到 <strong>{{ searchResultRows.length }}</strong> 篇文章
+            </p>
+            <p v-else>输入关键词开始搜索。</p>
+          </div>
+
+          <section class="search-results-panel">
+            <p v-if="searchLoading" class="search-empty-state">正在搜索...</p>
+            <div v-else-if="searchQuery && searchResultRows.length === 0" class="search-empty-state">
+              <iconify-icon icon="mdi:file-search-outline" width="46"></iconify-icon>
+              <strong>没有匹配结果</strong>
+              <span>换个关键词、分类或标签试试。</span>
+            </div>
+            <div v-else-if="!searchQuery" class="search-empty-state">
+              <iconify-icon icon="mdi:magnify" width="46"></iconify-icon>
+              <strong>搜索已发布文章</strong>
+              <span>搜索范围包含标题、正文、分类和标签。</span>
+            </div>
+            <template v-else>
+              <template v-for="article in searchResultRows" :key="article.id">
+                <article class="search-result-card" @click="openArticle(article.slug)">
+                  <div class="search-result-cover">
+                    <img v-if="article.coverImageUrl" :alt="article.coverAlt || article.title" :src="assetUrl(article.coverImageUrl)" />
+                    <iconify-icon v-else icon="mdi:file-document-edit-outline" width="34"></iconify-icon>
+                  </div>
+                  <div class="search-result-body">
+                    <div class="search-result-meta">
+                      <span>{{ article.categoryLabel }}</span>
+                      <time>{{ article.dateLabel }}</time>
+                    </div>
+                    <h2>{{ article.title }}</h2>
+                    <p>{{ article.summaryText }}</p>
+                    <div class="search-result-footer">
+                      <span>{{ article.authorLabel }}</span>
+                      <span>{{ article.statsLabel }}</span>
+                    </div>
+                    <div v-if="article.tags?.length" class="search-result-tags">
+                      <span v-for="tag in article.tags" :key="tag.id">{{ tag.name }}</span>
+                    </div>
+                  </div>
+                </article>
+              </template>
+            </template>
+          </section>
+        </section>
+      </template>
+
       <!-- ========== LEGACY 视图 (旧 UI, 样式隔离) ========== -->
       <template v-else>
         <div class="legacy-ui w-full">
@@ -6612,7 +6972,8 @@ onBeforeUnmount(() => {
               <p>{{ selectedArticle.category?.name || '未分类' }} · 作者 {{ selectedArticleAuthorName }}</p>
             </div>
             <div class="article-hero-icon">
-              <iconify-icon icon="mdi:file-document-outline" width="58"></iconify-icon>
+              <img v-if="selectedArticle.coverImageUrl" :alt="selectedArticle.coverAlt || selectedArticle.title" :src="assetUrl(selectedArticle.coverImageUrl)" />
+              <iconify-icon v-else icon="mdi:file-document-outline" width="58"></iconify-icon>
               <span class="file-icon-fallback hero" aria-hidden="true"></span>
             </div>
           </section>
@@ -6676,10 +7037,13 @@ onBeforeUnmount(() => {
               <iconify-icon icon="mdi:comment-outline" width="32"></iconify-icon>
               <h2>评论 ({{ commentTotalCount }})</h2>
             </div>
-            <form v-if="isAuthenticated && !activeReplyTarget" class="article-comment-form" @submit.prevent="submitComment">
+            <form v-if="selectedArticleAllowsComments && isAuthenticated && !activeReplyTarget" class="article-comment-form" @submit.prevent="submitComment">
               <textarea v-model.trim="commentForm.content" :disabled="postingComment" maxlength="2000" placeholder="写下你的评论..." required />
               <button :disabled="postingComment || !commentForm.content" type="submit">{{ postingComment ? "发布中..." : "发表评论" }}</button>
             </form>
+            <div v-else-if="!selectedArticleAllowsComments" class="article-login-hint">
+              该文章已关闭评论。
+            </div>
             <div v-else-if="!isAuthenticated" class="article-login-hint">
               登录后可以发表评论。
               <button type="button" @click="showLoginForm">去登录</button>
@@ -6708,14 +7072,14 @@ onBeforeUnmount(() => {
                       <iconify-icon :icon="comment.likedByMe ? 'mdi:thumb-up' : 'mdi:thumb-up-outline'" width="16"></iconify-icon>
                       {{ comment.likeCount || 0 }}
                     </button>
-                    <button type="button" @click="startReply(comment)">
+                    <button v-if="selectedArticleAllowsComments" type="button" @click="startReply(comment)">
                       回复
                     </button>
                     <button v-if="isAdmin" type="button" @click="deleteComment(comment)">删除</button>
                   </div>
 
                   <form
-                    v-if="isAuthenticated && isReplyingTo(comment)"
+                    v-if="selectedArticleAllowsComments && isAuthenticated && isReplyingTo(comment)"
                     class="article-comment-form article-reply-form"
                     @submit.prevent="submitComment"
                   >
@@ -6742,11 +7106,11 @@ onBeforeUnmount(() => {
                           {{ reply.content }}
                         </p>
                         <div class="article-comment-actions">
-                          <button type="button" @click="startReply(comment, reply)">回复</button>
+                          <button v-if="selectedArticleAllowsComments" type="button" @click="startReply(comment, reply)">回复</button>
                           <button v-if="isAdmin" type="button" @click="deleteComment(reply)">删除</button>
                         </div>
                         <form
-                          v-if="isAuthenticated && isReplyingTo(comment, reply)"
+                          v-if="selectedArticleAllowsComments && isAuthenticated && isReplyingTo(comment, reply)"
                           class="article-comment-form article-reply-form"
                           @submit.prevent="submitComment"
                         >

@@ -346,6 +346,14 @@ test("admin article publishing flow stores markdown, sanitizes HTML, uploads ima
   assert.equal(searchResult.status, 200);
   assert.ok(searchResult.body.articles.some((article) => article.slug === updatedSlug));
 
+  const categorySearchResult = await apiRequest("/articles?q=Guides");
+  assert.equal(categorySearchResult.status, 200);
+  assert.ok(categorySearchResult.body.articles.some((article) => article.slug === updatedSlug));
+
+  const tagSearchResult = await apiRequest("/articles?q=Vue");
+  assert.equal(tagSearchResult.status, 200);
+  assert.ok(tagSearchResult.body.articles.some((article) => article.slug === updatedSlug));
+
   const categoryResult = await apiRequest("/articles?category=guides");
   assert.equal(categoryResult.status, 200);
   assert.ok(categoryResult.body.articles.some((article) => article.slug === updatedSlug));
@@ -602,6 +610,189 @@ test("regular users can save drafts, submit for review, withdraw, and delete edi
   await prisma.user.delete({
     where: {
       email: `submission_${suffix}@example.com`
+    }
+  });
+});
+
+test("article submission metadata persists and drives public comments and pinning", async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const userAccount = await createRegisteredUser({
+    username: `metadata_user_${suffix}`,
+    email: `metadata_user_${suffix}@example.com`
+  });
+  const adminAccount = await createRegisteredUser({
+    username: `metadata_admin_${suffix}`,
+    email: `metadata_admin_${suffix}@example.com`,
+    role: "ADMIN"
+  });
+  const commenterAccount = await createRegisteredUser({
+    username: `metadata_commenter_${suffix}`,
+    email: `metadata_commenter_${suffix}@example.com`
+  });
+  const categoryName = `Metadata ${suffix}`;
+
+  const createDraftResult = await apiRequest("/articles/drafts", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      title: `Metadata Draft ${suffix}`,
+      categoryName,
+      tagNames: ["SEO", "Cover"],
+      coverImageUrl: "/uploads/article-drafts/metadata-cover.png",
+      coverAlt: "Metadata cover alt",
+      coverRatio: "4:3",
+      seoTitle: "Metadata SEO Title",
+      seoKeywords: "metadata,seo",
+      seoDescription: "Metadata SEO description.",
+      allowComments: false,
+      isPinned: true,
+      contentMarkdown: "# Metadata Draft\n\nMetadata body."
+    })
+  });
+
+  assert.equal(createDraftResult.status, 201);
+  assert.equal(createDraftResult.body.article.coverImageUrl, "/uploads/article-drafts/metadata-cover.png");
+  assert.equal(createDraftResult.body.article.coverAlt, "Metadata cover alt");
+  assert.equal(createDraftResult.body.article.coverRatio, "4:3");
+  assert.equal(createDraftResult.body.article.seoTitle, "Metadata SEO Title");
+  assert.equal(createDraftResult.body.article.seoKeywords, "metadata,seo");
+  assert.equal(createDraftResult.body.article.seoDescription, "Metadata SEO description.");
+  assert.equal(createDraftResult.body.article.allowComments, false);
+  assert.equal(createDraftResult.body.article.isPinned, true);
+  const metadataCategory = createDraftResult.body.article.category;
+
+  const draftId = createDraftResult.body.article.id;
+  const loadedDraftResult = await apiRequest(`/articles/drafts/${draftId}`, {
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`
+    }
+  });
+
+  assert.equal(loadedDraftResult.status, 200);
+  assert.equal(loadedDraftResult.body.article.coverImageUrl, "/uploads/article-drafts/metadata-cover.png");
+  assert.equal(loadedDraftResult.body.article.seoDescription, "Metadata SEO description.");
+
+  const submitResult = await apiRequest(`/articles/drafts/${draftId}/submit`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      title: `Metadata Published ${suffix}`,
+      categoryName,
+      tagNames: ["SEO", "Cover"],
+      contentMarkdown: "# Metadata Published\n\nMetadata published body."
+    })
+  });
+
+  assert.equal(submitResult.status, 200);
+  assert.equal(submitResult.body.article.status, "PENDING_REVIEW");
+  assert.equal(submitResult.body.article.coverImageUrl, "/uploads/article-drafts/metadata-cover.png");
+  assert.equal(submitResult.body.article.allowComments, false);
+  assert.equal(submitResult.body.article.isPinned, true);
+
+  const olderArticle = await prisma.article.create({
+    data: {
+      authorId: adminAccount.user.id,
+      title: `Older Metadata Article ${suffix}`,
+      slug: `older-metadata-${suffix}`,
+      contentMarkdown: "# Older Metadata",
+      contentHtml: "<h1>Older Metadata</h1>",
+      chapterOrder: 1,
+      categoryId: metadataCategory.id,
+      status: "PUBLISHED",
+      publishedAt: new Date(Date.now() - 60 * 60 * 1000)
+    }
+  });
+  await prisma.article.create({
+    data: {
+      authorId: adminAccount.user.id,
+      title: `Newer Metadata Article ${suffix}`,
+      slug: `newer-metadata-${suffix}`,
+      contentMarkdown: "# Newer Metadata",
+      contentHtml: "<h1>Newer Metadata</h1>",
+      chapterOrder: 2,
+      categoryId: metadataCategory.id,
+      status: "PUBLISHED",
+      publishedAt: new Date()
+    }
+  });
+
+  const approveResult = await apiRequest(`/articles/admin/reviews/${draftId}/approve`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${adminAccount.token}`
+    }
+  });
+
+  assert.equal(approveResult.status, 200);
+  assert.equal(approveResult.body.article.status, "PUBLISHED");
+  assert.equal(approveResult.body.article.coverImageUrl, "/uploads/article-drafts/metadata-cover.png");
+  assert.equal(approveResult.body.article.seoDescription, "Metadata SEO description.");
+  assert.equal(approveResult.body.article.allowComments, false);
+  assert.equal(approveResult.body.article.isPinned, true);
+
+  const publicDetailResult = await apiRequest(`/articles/${approveResult.body.article.slug}`);
+  assert.equal(publicDetailResult.status, 200);
+  assert.equal(publicDetailResult.body.article.coverImageUrl, "/uploads/article-drafts/metadata-cover.png");
+  assert.equal(publicDetailResult.body.article.seoTitle, "Metadata SEO Title");
+  assert.equal(publicDetailResult.body.article.allowComments, false);
+
+  await prisma.article.update({
+    where: {
+      id: draftId
+    },
+    data: {
+      publishedAt: new Date(Date.now() - 2 * 60 * 60 * 1000)
+    }
+  });
+
+  const blockedComment = await apiRequest(`/comments/articles/${approveResult.body.article.slug}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${commenterAccount.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      content: "Should be blocked."
+    })
+  });
+  assert.equal(blockedComment.status, 403);
+
+  const publicListResult = await apiRequest(`/articles?category=${encodeURIComponent(metadataCategory.slug)}`);
+  assert.equal(publicListResult.status, 200);
+  assert.equal(publicListResult.body.articles[0].id, draftId);
+
+  const searchResult = await apiRequest(`/articles?q=${encodeURIComponent(categoryName)}`);
+  assert.equal(searchResult.status, 200);
+  assert.ok(searchResult.body.articles.some((article) => article.id === draftId));
+  assert.equal(searchResult.body.articles[0].slug, `newer-metadata-${suffix}`);
+
+  await prisma.article.deleteMany({
+    where: {
+      id: {
+        in: [draftId, olderArticle.id]
+      }
+    }
+  });
+  await prisma.article.deleteMany({
+    where: {
+      slug: `newer-metadata-${suffix}`
+    }
+  });
+  await prisma.user.deleteMany({
+    where: {
+      email: {
+        in: [
+          `metadata_user_${suffix}@example.com`,
+          `metadata_admin_${suffix}@example.com`,
+          `metadata_commenter_${suffix}@example.com`
+        ]
+      }
     }
   });
 });
@@ -2109,6 +2300,12 @@ test("article stats APIs count real reads, reactions, favorites, comments, and p
   assert.equal(summary.status, 200);
   assert.ok(summary.body.summary.todayVisits >= 3);
   assert.ok(summary.body.summary.totalLikes >= 5);
+  assert.equal(summary.body.summary.visitTrend.length, 7);
+  assert.deepEqual(
+    summary.body.summary.visitTrend.map((item) => Object.keys(item)),
+    Array.from({ length: 7 }, () => ["date", "label", "value"])
+  );
+  assert.ok(summary.body.summary.visitTrend.at(-1).value >= 3);
 
   const popular = await apiRequest("/articles/popular?limit=2");
   assert.equal(popular.status, 200);

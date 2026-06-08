@@ -1,8 +1,60 @@
 # Handoff: codex-project-boke 当前状态
 
+## 2026-06-08 最新快照：公开搜索、文章元数据闭环与审核待办入口
+
+- 当前工作分支：`main`
+- 最新功能提交：`7554433 Add admin review task notification bell`、`9190994 Add public search page and visit trend`、`aa5a50e Add article editor metadata workflow`
+- 本次 `$merge-main codex/public-search-editor-plan` 已把公开搜索、真实访问趋势和文章元数据闭环合并进 `main`，并保留已合并的管理员审核待办通知铃铛。
+
+### 本轮已完成
+
+- 公开搜索页已完成：`#search?q=...` 可展示已发布文章结果，顶部搜索、文章详情搜索和移动端搜索都会进入该页。
+- 后端 `GET /api/articles` 的搜索范围已扩展到标题、正文、分类名称/slug、标签名称/slug，并仍只返回 `PUBLISHED` 文章。
+- 首页阅读趋势已改为真实 `summary.visitTrend`，按最近 7 个 `Asia/Shanghai` 自然日从 `site_visits` 聚合，匿名用户按 `visitorId` 去重，登录用户按 `userId` 去重。
+- 文章编辑器已接入真实封面上传、封面说明、封面比例、SEO 标题、SEO 关键词、SEO 描述、允许评论和置顶设置。
+- 文章元数据会从草稿保存、提交审核、管理员通过发布一路保留，并在用户文章列表、管理员审核、公开文章列表、搜索结果和文章详情中返回。
+- `allowComments=false` 时，前端隐藏评论输入和回复入口，后端会拒绝新评论；历史评论仍可阅读。
+- `isPinned=true` 时，公开首页列表优先展示置顶文章；搜索结果保持关键词相关顺序，不额外置顶。
+- 文章详情页会使用 `seoTitle` 更新 document title，并用 `seoDescription` 或摘要更新 meta description。
+- 管理员全站通知图标已作为内容审核待办入口，待审核文章或敏感评论存在时显示红点，并可进入内容审核页定位待处理队列。
+
+### 关键改动文件
+
+- `client/src/App.vue`
+- `client/src/style.css`
+- `server/prisma/schema.prisma`
+- `server/prisma/migrations/20260608143000_article_editor_metadata/migration.sql`
+- `server/src/routes/articles.js`
+- `server/src/routes/comments.js`
+- `server/src/routes/admin.js`
+- `server/src/routes/users.js`
+- `server/test/articles.test.js`
+
+### 验证与数据库
+
+已通过：
+
+```bash
+npm test --workspace server
+npm run build
+npx prisma validate --schema prisma/schema.prisma
+git diff --check
+```
+
+- 合并前后 `codex/public-search-editor-plan` / `main` 后端测试均为 13/13 通过。
+- 本地测试库 `private_blog_test` 已通过迁移应用 `20260608143000_article_editor_metadata`。
+- 本地开发库 `private_blog` 也已应用同一迁移；用户此前遇到的 `cover_image_url` 缺列错误已通过迁移解决，并已用 `http://127.0.0.1:3000/api/articles` 验证新字段返回。
+- 如果新环境再次出现 `private_blog.articles.cover_image_url` 缺列，进入 `server` 目录执行 `npx prisma migrate deploy --schema prisma/schema.prisma`，或在仓库根目录执行项目封装的 Prisma deploy 命令。
+
+### 下一步建议
+
+- 合并完成后如需继续新一轮工作，先确认 `main` 与 `origin/main` 同步，再从最新 `main` 创建新分支。
+- 新一轮规划前先查看 `todo.md`，阶段一和阶段二已实现；搜索高亮、搜索历史、自动补全、完整审核历史、真实自动保存等仍按此前范围裁剪暂不做。
+- 推荐技能：`$merge-main` 用于合并推送清理，`$work-began` 用于新会话接续，`$grill-me` 用于新计划范围追问。
+
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环，以及管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口和管理员审核待办通知铃铛。当前工作分支是 `codex/admin-review-notification-bell`，基于 `main` / `origin/main` 的 `08deb82`，功能提交 `7554433 Add admin review task notification bell` 已完成但尚未合并或推送。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环、管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口、管理员审核待办通知铃铛、公开搜索页、真实 7 日访问趋势，以及文章封面/SEO/评论开关/置顶的草稿到发布闭环。当前工作分支是 `main`，`codex/public-search-editor-plan` 已完成合并验证。
 
 ## 建议下个 Agent 使用的技能
 
@@ -13,15 +65,15 @@
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前工作分支：`codex/admin-review-notification-bell`
-- 主线同步状态：`main` 与 `origin/main` 均在 `08deb82 Update handoff and README`
-- 当前功能提交：`7554433 Add admin review task notification bell`
+- 当前工作分支：`main`
+- 主线同步状态：`codex/public-search-editor-plan` 已合并到 `main`，合并验证通过；完成推送后 `main` 应与 `origin/main` 同步
+- 当前功能提交：`7554433 Add admin review task notification bell`、`9190994 Add public search page and visit trend`、`aa5a50e Add article editor metadata workflow`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover`、`codex/admin-ui-improvements` 已合并进 `main` 并推送到 `origin/main`。
-- 本轮功能分支 `codex/admin-review-notification-bell` 尚未合并或推送
-- 本轮从 `main` / `origin/main` 的 `08deb82` 创建功能分支
-- 本轮按用户要求不改 `todo.md`
-- 本次 `$work-end` 提交 `README.md` / `handoff.md` 文档收尾；功能实现已提交为 `7554433`
+- `codex/admin-review-notification-bell` 已合并并推送，功能提交为 `7554433`
+- `codex/public-search-editor-plan` 包含 `9190994`、`aa5a50e` 和文档提交 `35904c2`，已合并到 `main`
+- `todo.md` 在 `codex/public-search-editor-plan` 中已更新为阶段完成后的规划状态
+- 本次合并解决了 `README.md` / `handoff.md` 文档冲突，并按 `$merge-main` 流程完成合并验证
 
 继续工作前建议先执行：
 
@@ -324,7 +376,7 @@ npx prisma validate --schema prisma/schema.prisma
 - `articles` 新增 `submitted_at`、`reviewed_at`、`reviewer_id`、`review_note`，并建立审核人外键。
 - 普通用户写作入口复用发布页，新增 `#article/edit/:id` 作为草稿/投稿编辑入口。
 - 不自动创建空草稿；只有手动保存草稿或提交审核时才创建/更新数据库记录。
-- 阶段 1 只保存标题、正文、后端生成并尽量稳定的 slug、分类、标签和状态；封面、SEO、高级设置、批量上传继续是 UI 占位。
+- 阶段 1 当时只保存标题、正文、后端生成并尽量稳定的 slug、分类、标签和状态；当前分支已在阶段 2 补齐封面、SEO、高级设置持久化，底部批量上传仍按后续范围处理。
 - 草稿校验宽松，提交审核校验严格；提交时会提醒用户提交后文章锁定。
 - 提交后锁定编辑，待审核文章允许随时撤回到草稿；普通用户只能删除自己的草稿和被驳回文章。
 - 用户面板“我的文章”已接真实列表，不再使用静态占位。
@@ -385,7 +437,7 @@ git diff --check
 
 ### 边界
 
-- 本轮没有接入真实投稿、保存草稿、预览、发布、封面上传或底部“批量上传文章”功能。
+- 该历史轮次没有接入真实投稿、保存草稿、预览、发布、封面上传或底部“批量上传文章”功能；当前分支已补齐投稿/草稿/预览/发布和封面元数据，底部批量上传仍按后续范围处理。
 - “数学公式”只插入 LaTeX 文本模板，当前 Markdown 渲染端仍未接 KaTeX/MathJax。
 - 图片上传是真实文件上传，但当前属于普通用户草稿图片，不和正式文章记录关联；后续投稿后端完成后再决定迁移或绑定策略。
 
@@ -486,7 +538,7 @@ git diff --check
 - 正文编辑继续使用 `textarea`，输入、聚焦和视图切换时同步高度；正文框不做内部滚动。
 - 工具栏已经支持真实 Markdown 插入；图片入口走普通用户草稿图片上传接口，不走管理员文章图片接口。
 - 发布页暗色模式为整页一致的深蓝灰写作主题，左侧设置区比正文区稍亮。
-- 封面、分类、标签、SEO、高级设置、预览、发布、批量上传、保存草稿仍为 UI 占位，不接真实投稿后端。
+- 该历史轮次中封面、分类、标签、SEO、高级设置、预览、发布、批量上传、保存草稿仍为 UI 占位；当前分支已补齐投稿后端和封面/SEO/高级设置持久化，底部批量上传仍按后续范围处理。
 
 ## 已完成：普通用户面板新 UI
 
@@ -650,11 +702,11 @@ sc.exe config MySQL start= demand
 ## 后续建议
 
 - 如需继续完善用户中心，可评估真实短信验证码、真实微信/QQ/支付宝 OAuth、通知精确定位/高亮、更完整的安全审计筛选和管理员全站安全审计后台。
-- 投稿编辑器下一步建议接封面、SEO、高级设置、批量上传、真实自动保存或更完整的审核历史；是否需要富文本体验可等 Markdown 投稿链路稳定后再评估 Tiptap / ProseMirror。
+- 投稿编辑器下一步建议补充底部批量上传、真实自动保存或更完整的审核历史；是否需要富文本体验可等 Markdown 投稿链路稳定后再评估 Tiptap / ProseMirror。
 - 管理后台用户管理后续可补充批量操作和管理员权限管理；当前仅允许管理 `USER`，已提供右侧抽屉查看基础详情与统计。
 - 管理后台已发布文章后续可补充编辑入口、批量下架和审核历史联动；当前只做列表、预览、上下架和删除。
 - 敏感评论当前已接本地规则检测和后台处理队列；后续可补充规则配置、审核历史、批量处理和更细的风险等级。
-- 基于 `site_visits` 做公开首页的真实趋势图；当前管理后台概览已用该数据做近 7 日访问柱状图，用户面板已接当前用户文章阅读趋势。
+- 公开首页和管理后台概览均已基于 `site_visits` 展示近 7 日访问趋势，用户面板已接当前用户文章阅读趋势；后续可补充访问来源、页面路径分布和趋势筛选。
 - 补充评论分页、评论审核，以及敏感词/敏感话题检测流程。
 - 修复评论删除边界：删除主评论时递归清理历史多层回复，或先迁移历史 `parent_id` 到一层结构。
 - 给 `comment_likes` 增加 `(user_id, comment_id)` 复合索引，优化用户态 `likedByMe` 查询。

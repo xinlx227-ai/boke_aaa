@@ -62,6 +62,14 @@ model Article {
   slug             String           @unique @db.VarChar(220)
   contentMarkdown  String           @map("content_markdown") @db.LongText
   contentHtml      String           @map("content_html") @db.LongText
+  coverImageUrl    String?          @map("cover_image_url") @db.VarChar(255)
+  coverAlt         String?          @map("cover_alt") @db.VarChar(255)
+  coverRatio       String?          @default("16:9") @map("cover_ratio") @db.VarChar(20)
+  seoTitle         String?          @map("seo_title") @db.VarChar(200)
+  seoKeywords      String?          @map("seo_keywords") @db.VarChar(255)
+  seoDescription   String?          @map("seo_description") @db.VarChar(500)
+  allowComments    Boolean          @default(true) @map("allow_comments")
+  isPinned         Boolean          @default(false) @map("is_pinned")
   chapterOrder     Int              @default(0) @map("chapter_order")
   status           ArticleStatus    @default(DRAFT)
   publishedAt      DateTime?        @map("published_at")
@@ -88,6 +96,7 @@ model Article {
   @@index([categoryId])
   @@index([reviewerId])
   @@index([status, publishedAt])
+  @@index([status, isPinned, publishedAt])
   @@map("articles")
 }
 
