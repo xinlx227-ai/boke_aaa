@@ -6,15 +6,15 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前工作分支 | `codex/admin-ui-improvements` |
+| 当前工作分支 | `main` |
 | 最新 UI 工作 | 全站暗色模式已重构为 CSS 变量主题系统；管理员/用户面板/文章详情/编辑器/弹窗统一深灰蓝暗色基线，降低橙色面积并保留语义强调；管理按钮按预览蓝、发布绿、下架橙、删除红表达操作意图 |
 | 最新功能工作 | 管理员真实管理闭环：用户搜索/筛选/禁用/启用/硬删除，分类标签新增/改名/删除，已发布文章搜索/分类筛选/预览/下架/重新发布/删除，敏感评论真实审核队列/忽略/删除 |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes`、`article_metric_events`、`user_notification_reads`、`security_audit_events`，以及 `users.is_disabled` 和评论 `moderation_*` 审核字段 |
-| 最近验证 | 2026-06-08：`codex/admin-ui-improvements` 已执行 `npm test --workspace server`、`npm run build`、`node --env-file=.env.test ..\node_modules\prisma\build\index.js validate --schema prisma\schema.prisma`、`git diff --check`；后端测试 12/12 通过，`diff --check` 仅 LF/CRLF 提示 |
-| 合并状态 | 当前功能分支基于 `d4d2039 Update handoff and README`；本地 `main` 领先 `origin/main` 1 个文档提交，`origin/main` 仍在 `87053f7 Add user center security features` |
+| 最近验证 | 2026-06-08：`codex/admin-ui-improvements` 已 fast-forward 合并到 `main`，合并前后已执行 `npm test --workspace server`、`npm run build`、`node --env-file=.env.test ..\node_modules\prisma\build\index.js validate --schema prisma\schema.prisma`、`git diff --check`；后端测试 12/12 通过 |
+| 合并状态 | `main` 已推送到 `origin/main`，当前提交为 `ebd0132 Implement comment moderation and dark theme polish`；本地功能分支 `codex/admin-ui-improvements` 已删除 |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
@@ -526,16 +526,16 @@ npm run build
 
 当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、普通用户草稿/投稿/撤回/删除、未保存内容预览、管理员待审列表/通过/驳回、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、评论回复、评论敏感检测队列/忽略/删除、评论点赞/取消、评论作者禁止自赞、回复禁止点赞、文章序号、首次发布时间、阅读去重、点赞/收藏登录限制、热门排行、全站 summary、用户面板收藏列表、收到的评论、互动通知、通知已读/未读、修改密码、会话管理、设备解析、手机号唯一性、本地绑定状态、安全审计、管理员用户禁用/硬删除、分类标签删除关联处理、已发布文章下架/重新发布等流程。
 
-当前管理员真实管理功能在 `codex/admin-ui-improvements` 上已验证：
+当前管理员真实管理功能已合并到 `main` 并验证：
 
 ```bash
 npm test --workspace server
 npm run build
-npx prisma validate --schema prisma/schema.prisma
+node --env-file=.env.test ..\node_modules\prisma\build\index.js validate --schema prisma\schema.prisma
 git diff --check
 ```
 
-说明：本轮新增 `users.is_disabled`、评论 `moderation_*` 字段和 `/api/admin/*` 管理接口。开发库和测试库均已执行 `npm run prisma:deploy --workspace server` 或等效 `prisma migrate deploy`。`npm run prisma:generate --workspace server` 曾因 Windows Prisma Client DLL rename 被占用失败；新增禁用字段和评论审核字段运行时使用 raw SQL 读写，不阻塞当前功能。
+说明：本轮新增 `users.is_disabled`、评论 `moderation_*` 字段和 `/api/admin/*` 管理接口。开发库和测试库均已执行 `npm run prisma:deploy --workspace server` 或等效 `prisma migrate deploy`。`npm run prisma:generate --workspace server` 曾因 Windows Prisma Client DLL rename 被占用失败；新增禁用字段和评论审核字段运行时使用 raw SQL 读写，不阻塞当前功能。`prisma validate` 在默认沙箱曾遇到 `EPERM: operation not permitted, lstat 'C:\Users\27871'`，按权限流程在真实工作区重跑后通过。
 
 最近用户中心安全闭环工作已合并到 `main`：
 

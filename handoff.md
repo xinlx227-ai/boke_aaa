@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环，以及管理员用户管理、分类标签管理、已发布文章管理和敏感评论审核真实接口。当前工作分支是 `codex/admin-ui-improvements`，基于 `d4d2039 Update handoff and README`。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环，以及管理员用户管理、分类标签管理、已发布文章管理和敏感评论审核真实接口。当前工作分支是 `main`，已同步到 `origin/main`。
 
 ## 建议下个 Agent 使用的技能
 
@@ -13,14 +13,14 @@
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前工作分支：`codex/admin-ui-improvements`
-- 主线同步状态：本地 `main` 在 `d4d2039 Update handoff and README`，领先 `origin/main` 1 个文档提交；`origin/main` 仍在 `87053f7 Add user center security features`
+- 当前工作分支：`main`
+- 主线同步状态：`main` 已推送到 `origin/main`，当前功能提交为 `ebd0132 Implement comment moderation and dark theme polish`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
-- `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover` 已合并进 `main` 并推送到 `origin/main`。
-- 当前功能分支：`codex/admin-ui-improvements`，本轮实现和文档更新由功能分支提交承载
+- `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover`、`codex/admin-ui-improvements` 已合并进 `main` 并推送到 `origin/main`。
+- 当前功能分支 `codex/admin-ui-improvements` 已 fast-forward 合并进 `main`，本地分支已删除
 - 本轮开始前先在 `main` 提交了文档同步：`d4d2039 Update handoff and README`，再从该点创建功能分支
 - 本轮按用户要求不改 `todo.md`
-- 本次 `$work-end` 只提交 `README.md` / `handoff.md` 文档收尾；代码和迁移实现改动仍留在工作树中等待后续功能提交。
+- 本次 `$work-end` 只提交 `README.md` / `handoff.md` 文档收尾；代码和迁移实现已在 `ebd0132` 合并到主线。
 
 继续工作前建议先执行：
 
@@ -46,7 +46,7 @@ git diff --check
 
 ## 本次完成：管理员真实管理闭环
 
-工作分支：`codex/admin-ui-improvements`。
+工作分支：`codex/admin-ui-improvements`，已 fast-forward 合并到 `main` 并推送到 `origin/main`。
 
 本节记录本轮实现和文档更新。
 
@@ -495,6 +495,10 @@ git diff --check
 
 ## 最近重要提交
 
+- `ebd0132 Implement comment moderation and dark theme polish`：管理员真实管理闭环、敏感评论审核队列、暗色主题与管理按钮语义化收尾，已合并并推送到 `main`。
+- `62736d9 Update handoff and README`：管理员真实管理闭环实现前后的文档同步。
+- `a781309 Polish admin management interactions`：管理后台交互和按钮语义化调整。
+- `dc44946 Add admin management features`：用户管理、分类标签、已发布文章管理和 `/api/admin/*` 基础能力。
 - `d4d2039 Update handoff and README`：本轮功能分支前在 `main` 上提交的文档同步基点。
 - `87053f7 Add user center security features`：通知已读/未读、会话设备解析、安全审计事件、最近安全活动展示和相关测试。
 - `8ccee52 完善用户面板功能与统计增量`：用户面板收藏、收到的评论、互动通知、安全设置、会话管理、绑定状态和个人统计增量。
@@ -512,7 +516,7 @@ git diff --check
 
 ## 最近验证
 
-当前 `codex/admin-ui-improvements` 已执行：
+当前 `main` 已在合并 `codex/admin-ui-improvements` 前后执行：
 
 ```bash
 npx prisma validate --schema prisma/schema.prisma
