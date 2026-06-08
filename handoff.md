@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环，以及管理员用户管理、分类标签管理、已发布文章管理和敏感评论审核真实接口。当前工作分支是 `main`，已同步到 `origin/main`。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环，以及管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口和管理员审核待办通知铃铛。当前工作分支是 `codex/admin-review-notification-bell`，基于 `main` / `origin/main` 的 `08deb82`，功能提交 `7554433 Add admin review task notification bell` 已完成但尚未合并或推送。
 
 ## 建议下个 Agent 使用的技能
 
@@ -13,14 +13,15 @@
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前工作分支：`main`
-- 主线同步状态：`main` 已推送到 `origin/main`，当前功能提交为 `ebd0132 Implement comment moderation and dark theme polish`
+- 当前工作分支：`codex/admin-review-notification-bell`
+- 主线同步状态：`main` 与 `origin/main` 均在 `08deb82 Update handoff and README`
+- 当前功能提交：`7554433 Add admin review task notification bell`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover`、`codex/admin-ui-improvements` 已合并进 `main` 并推送到 `origin/main`。
-- 当前功能分支 `codex/admin-ui-improvements` 已 fast-forward 合并进 `main`，本地分支已删除
-- 本轮开始前先在 `main` 提交了文档同步：`d4d2039 Update handoff and README`，再从该点创建功能分支
+- 本轮功能分支 `codex/admin-review-notification-bell` 尚未合并或推送
+- 本轮从 `main` / `origin/main` 的 `08deb82` 创建功能分支
 - 本轮按用户要求不改 `todo.md`
-- 本次 `$work-end` 只提交 `README.md` / `handoff.md` 文档收尾；代码和迁移实现已在 `ebd0132` 合并到主线。
+- 本次 `$work-end` 提交 `README.md` / `handoff.md` 文档收尾；功能实现已提交为 `7554433`
 
 继续工作前建议先执行：
 
@@ -42,7 +43,56 @@ git diff --check
 
 ## 项目概况
 
-这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、普通用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、文章编辑页路由隔离修复、真实阅读/点赞/收藏/热门排行统计能力、普通用户草稿投稿/管理员审核、用户面板收藏/社交/安全闭环，以及管理员用户管理、分类标签管理和已发布文章管理真实接口。
+这是一个 Vue 3 + Vite + Tailwind CSS 前端、Express + Prisma + MySQL 后端的私有博客系统。已具备认证、文章发布、Markdown 渲染、安全 HTML、图片上传、zip 批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、普通用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、文章编辑页路由隔离修复、真实阅读/点赞/收藏/热门排行统计能力、普通用户草稿投稿/管理员审核、用户面板收藏/社交/安全闭环，以及管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核和审核待办通知铃铛真实接口。
+
+## 本次完成：管理员审核待办通知铃铛
+
+工作分支：`codex/admin-review-notification-bell`。
+
+功能提交：
+
+- `7554433 Add admin review task notification bell`
+
+改动文件：
+
+- `client/src/App.vue`
+- `server/src/routes/admin.js`
+- `server/test/articles.test.js`
+- `README.md`
+- `handoff.md`
+
+### 行为与边界
+
+- 管理员账号的全站顶部通知图标复用为内容审核待办入口，不再走普通用户互动通知入口。
+- 待审核文章或敏感评论任一队列存在待处理项时显示红点；红点不显示数量。
+- 点击通知图标进入管理后台“内容审核”，优先定位待审核文章；如果没有待审核文章但有敏感评论，则定位敏感评论区域。
+- 预览待审核文章不会清除红点；通过/驳回文章、忽略/删除敏感评论后会刷新待办状态。
+- 没有做轮询；待办状态在登录/初始化、进入审核入口和关键审核动作后刷新。
+
+### 后端与测试
+
+- 新增轻量接口：`GET /api/admin/review-tasks/summary`。
+- 接口复用现有管理后台数据源，返回 `pendingArticleCount`、`flaggedCommentCount` 和 `hasPendingReview`。
+- 接口会先执行敏感评论 backfill，再统计 `PENDING_REVIEW` 文章和 `APPROVED + FLAGGED` 评论。
+- `server/test/articles.test.js` 已补充待审核文章队列与敏感评论队列的汇总接口断言。
+
+### 验证
+
+已执行：
+
+```bash
+npm test --workspace server
+npm run build
+npx prisma validate --schema prisma/schema.prisma
+git diff --check
+```
+
+结果：
+
+- `npm test --workspace server` 通过，后端测试 12/12。
+- `npm run build` 通过。
+- `npx prisma validate --schema prisma/schema.prisma` 在默认沙箱先遇到 `EPERM: operation not permitted, lstat 'C:\Users\27871'`，按权限流程在真实工作区重跑后通过。
+- `git diff --check` 通过，仅输出 LF/CRLF 提示。
 
 ## 本次完成：管理员真实管理闭环
 

@@ -1,20 +1,20 @@
 # Private Blog System - 私有博客系统
 
-一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、用户/管理员工作台视觉统一与 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、真实阅读/点赞/收藏/热门排行统计能力、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环，以及管理员用户管理、分类标签管理、已发布文章管理和敏感评论审核真实接口。
+一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、搜索、分类、标签、目录、首页排序、文章详情页新 UI、用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、用户/管理员工作台视觉统一与 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、真实阅读/点赞/收藏/热门排行统计能力、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环，以及管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口和管理员审核待办通知铃铛。
 
 ## 当前状态
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前工作分支 | `main` |
+| 当前工作分支 | `codex/admin-review-notification-bell` |
 | 最新 UI 工作 | 全站暗色模式已重构为 CSS 变量主题系统；管理员/用户面板/文章详情/编辑器/弹窗统一深灰蓝暗色基线，降低橙色面积并保留语义强调；管理按钮按预览蓝、发布绿、下架橙、删除红表达操作意图 |
-| 最新功能工作 | 管理员真实管理闭环：用户搜索/筛选/禁用/启用/硬删除，分类标签新增/改名/删除，已发布文章搜索/分类筛选/预览/下架/重新发布/删除，敏感评论真实审核队列/忽略/删除 |
+| 最新功能工作 | 管理员审核待办通知铃铛：管理员全站通知图标作为内容审核待办入口，待审核文章或敏感评论存在时显示红点；点击进入内容审核并优先定位待审核文章，无待审核文章时定位敏感评论；新增轻量接口 `GET /api/admin/review-tasks/summary` |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes`、`article_metric_events`、`user_notification_reads`、`security_audit_events`，以及 `users.is_disabled` 和评论 `moderation_*` 审核字段 |
-| 最近验证 | 2026-06-08：`codex/admin-ui-improvements` 已 fast-forward 合并到 `main`，合并前后已执行 `npm test --workspace server`、`npm run build`、`node --env-file=.env.test ..\node_modules\prisma\build\index.js validate --schema prisma\schema.prisma`、`git diff --check`；后端测试 12/12 通过 |
-| 合并状态 | `main` 已推送到 `origin/main`，当前提交为 `ebd0132 Implement comment moderation and dark theme polish`；本地功能分支 `codex/admin-ui-improvements` 已删除 |
+| 最近验证 | 2026-06-08：`codex/admin-review-notification-bell` 已执行 `npm test --workspace server`、`npm run build`、`npx prisma validate --schema prisma/schema.prisma`、`git diff --check`；后端测试 12/12 通过，Prisma 校验在真实工作区通过 |
+| 合并状态 | 当前功能提交 `7554433 Add admin review task notification bell` 位于 `codex/admin-review-notification-bell`，基于 `main` / `origin/main` 的 `08deb82`；尚未合并或推送 |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
@@ -66,6 +66,7 @@
 - 普通用户不能手动编辑 slug，后端自动生成并尽量保持稳定；提交审核前进行严格必填校验，保存草稿校验较宽松；提交后文章锁定，需撤回到草稿才能继续修改。
 - 文章编辑页主路由已阻止公开首页主内容链路继续渲染，不会在编辑器下方再出现旧版用户页面 UI。
 - 管理后台已重构为独立后台 UI，顶部导航沿用首页的 `MyBlog Pro` 品牌、明暗切换、通知和用户胶囊；管理员页面顶部不显示搜索框，布局宽度、左侧栏色彩和顶部栏图标/账号区已向用户面板对齐。
+- 管理员账号的顶部通知图标已改为内容审核待办入口：待审核文章或敏感评论存在时显示红点；点击进入管理后台“内容审核”，优先定位待审核文章，无待审核文章时定位敏感评论。
 - 管理后台左侧导航包含站点概览、用户管理、已发布文章、内容审核、分类标签；移动端使用抽屉式导航。
 - 管理后台默认进入站点概览，统计卡尽量复用真实数据：注册账号数、文章数、评论数、今日访问。
 - 管理后台“近7日访问趋势”使用 ECharts 柱状图，按 `Asia/Shanghai` 自然日展示 `MM-DD` 日期；匿名用户按 `visitorId` 去重，登录用户按 `userId` 去重，只统计首页和文章页访问。
@@ -409,6 +410,7 @@ npm test --workspace server
 - `GET /api/admin/articles`
 - `PATCH /api/admin/articles/:id/status`
 - `DELETE /api/admin/articles/:id`
+- `GET /api/admin/review-tasks/summary`
 - `GET /api/admin/comments/moderation`
 - `PATCH /api/admin/comments/:id/moderation/ignore`
 - `DELETE /api/admin/comments/:id`
@@ -524,7 +526,18 @@ npm test --workspace server
 npm run build
 ```
 
-当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、普通用户草稿/投稿/撤回/删除、未保存内容预览、管理员待审列表/通过/驳回、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、评论回复、评论敏感检测队列/忽略/删除、评论点赞/取消、评论作者禁止自赞、回复禁止点赞、文章序号、首次发布时间、阅读去重、点赞/收藏登录限制、热门排行、全站 summary、用户面板收藏列表、收到的评论、互动通知、通知已读/未读、修改密码、会话管理、设备解析、手机号唯一性、本地绑定状态、安全审计、管理员用户禁用/硬删除、分类标签删除关联处理、已发布文章下架/重新发布等流程。
+当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、普通用户草稿/投稿/撤回/删除、未保存内容预览、管理员待审列表/通过/驳回、管理员审核待办汇总接口、批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、评论回复、评论敏感检测队列/忽略/删除、评论点赞/取消、评论作者禁止自赞、回复禁止点赞、文章序号、首次发布时间、阅读去重、点赞/收藏登录限制、热门排行、全站 summary、用户面板收藏列表、收到的评论、互动通知、通知已读/未读、修改密码、会话管理、设备解析、手机号唯一性、本地绑定状态、安全审计、管理员用户禁用/硬删除、分类标签删除关联处理、已发布文章下架/重新发布等流程。
+
+当前管理员审核待办通知铃铛工作已在 `codex/admin-review-notification-bell` 验证：
+
+```bash
+npm test --workspace server
+npm run build
+npx prisma validate --schema prisma/schema.prisma
+git diff --check
+```
+
+说明：本轮新增 `/api/admin/review-tasks/summary` 轻量汇总接口，复用现有待审核文章和敏感评论队列数据。`prisma validate` 在默认沙箱仍会遇到 `EPERM: operation not permitted, lstat 'C:\Users\27871'`，按权限流程在真实工作区重跑后通过；`git diff --check` 仅输出 LF/CRLF 提示。
 
 当前管理员真实管理功能已合并到 `main` 并验证：
 
