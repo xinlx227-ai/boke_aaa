@@ -694,6 +694,16 @@ test("admins can approve or reject pending user submissions", async () => {
   assert.ok(reviewListResult.body.articles.some((article) => article.id === approveTarget.id));
   assert.ok(reviewListResult.body.articles.some((article) => article.id === rejectTarget.id));
 
+  const taskSummaryResult = await apiRequest("/admin/review-tasks/summary", {
+    headers: {
+      Authorization: `Bearer ${adminAccount.token}`
+    }
+  });
+  assert.equal(taskSummaryResult.status, 200);
+  assert.ok(taskSummaryResult.body.reviewTasks.hasPendingReview);
+  assert.ok(taskSummaryResult.body.reviewTasks.pendingArticleCount >= 2);
+  const pendingArticleCountBeforeReview = taskSummaryResult.body.reviewTasks.pendingArticleCount;
+
   const approveResult = await apiRequest(`/articles/admin/reviews/${approveTarget.id}/approve`, {
     method: "POST",
     headers: {
@@ -763,6 +773,14 @@ test("admins can approve or reject pending user submissions", async () => {
   assert.equal(reviewListAfterResult.status, 200);
   assert.equal(reviewListAfterResult.body.articles.some((article) => article.id === approveTarget.id), false);
   assert.equal(reviewListAfterResult.body.articles.some((article) => article.id === rejectTarget.id), false);
+
+  const taskSummaryAfterResult = await apiRequest("/admin/review-tasks/summary", {
+    headers: {
+      Authorization: `Bearer ${adminAccount.token}`
+    }
+  });
+  assert.equal(taskSummaryAfterResult.status, 200);
+  assert.equal(taskSummaryAfterResult.body.reviewTasks.pendingArticleCount, pendingArticleCountBeforeReview - 2);
 
   await prisma.user.deleteMany({
     where: {
@@ -1298,6 +1316,15 @@ test("admins can review real sensitive comment queue", async () => {
     assert.ok(queuedReply.moderation.reasons.includes("违法风险"));
     assert.ok(queuedReply.moderation.keywords.includes("博彩"));
 
+    const riskSummary = await apiRequest("/admin/review-tasks/summary", {
+      headers: {
+        Authorization: `Bearer ${admin.token}`
+      }
+    });
+    assert.equal(riskSummary.status, 200);
+    assert.ok(riskSummary.body.reviewTasks.hasPendingReview);
+    assert.ok(riskSummary.body.reviewTasks.flaggedCommentCount >= 3);
+
     const ignoreResult = await apiRequest(`/admin/comments/${flaggedComment.body.comment.id}/moderation/ignore`, {
       method: "PATCH",
       headers: {
@@ -1316,6 +1343,14 @@ test("admins can review real sensitive comment queue", async () => {
       afterIgnoreQueue.body.comments.some((comment) => comment.id === flaggedComment.body.comment.id),
       false
     );
+
+    const riskSummaryAfterIgnore = await apiRequest("/admin/review-tasks/summary", {
+      headers: {
+        Authorization: `Bearer ${admin.token}`
+      }
+    });
+    assert.equal(riskSummaryAfterIgnore.status, 200);
+    assert.ok(riskSummaryAfterIgnore.body.reviewTasks.flaggedCommentCount >= 2);
 
     const publicAfterIgnore = await apiRequest(`/comments/articles/${articleSlug}`);
     assert.equal(publicAfterIgnore.status, 200);

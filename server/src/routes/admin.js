@@ -353,6 +353,17 @@ async function loadFlaggedSensitiveComments() {
   return rows.map(formatAdminModerationComment);
 }
 
+async function countFlaggedSensitiveComments() {
+  const rows = await prisma.$queryRaw`
+    SELECT COUNT(*) AS count
+    FROM comments
+    WHERE status = ${CommentStatus.APPROVED}
+      AND moderation_status = ${COMMENT_MODERATION_STATUS.FLAGGED}
+  `;
+
+  return Number(rows[0]?.count || 0);
+}
+
 async function deleteCommentWithReplies(commentId, tx = prisma) {
   const comment = await tx.comment.findUnique({
     where: {
@@ -389,6 +400,31 @@ router.get("/comments/moderation", async (_req, res, next) => {
     return res.json({
       comments,
       backfilledCount: backfilledCommentIds.length
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/review-tasks/summary", async (_req, res, next) => {
+  try {
+    await backfillSensitiveComments();
+
+    const [pendingArticleCount, flaggedCommentCount] = await Promise.all([
+      prisma.article.count({
+        where: {
+          status: ArticleStatus.PENDING_REVIEW
+        }
+      }),
+      countFlaggedSensitiveComments()
+    ]);
+
+    return res.json({
+      reviewTasks: {
+        pendingArticleCount,
+        flaggedCommentCount,
+        hasPendingReview: pendingArticleCount > 0 || flaggedCommentCount > 0
+      }
     });
   } catch (error) {
     return next(error);

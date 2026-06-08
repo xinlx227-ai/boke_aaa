@@ -27,6 +27,8 @@ const message = ref("");
 const trafficChartRef = ref(null);
 const adminVisitChartRef = ref(null);
 const adminCategoryChartRef = ref(null);
+const adminReviewArticleSectionRef = ref(null);
+const adminReviewCommentSectionRef = ref(null);
 const userPanelReadChartRef = ref(null);
 const userPanelCategoryChartRef = ref(null);
 const articleCommentsCardRef = ref(null);
@@ -88,6 +90,12 @@ const adminOverview = ref({
   },
   visitTrend: []
 });
+const adminReviewTaskSummary = ref({
+  pendingArticleCount: 0,
+  flaggedCommentCount: 0,
+  hasPendingReview: false
+});
+const pendingAdminReviewFocus = ref("");
 const returnArticleSlugAfterLogin = ref("");
 const activeReplyTarget = ref(null);
 const expandedReplyCommentIds = ref(new Set());
@@ -433,6 +441,12 @@ const userPanelInteractionRows = computed(() =>
   }))
 );
 const hasUnreadNotifications = computed(() => userPanelUnreadCount.value > 0);
+const hasAdminReviewTasks = computed(() => Boolean(adminReviewTaskSummary.value.hasPendingReview));
+const hasTopbarNoticeDot = computed(() => (isAdmin.value ? hasAdminReviewTasks.value : hasUnreadNotifications.value));
+const notificationButtonTitle = computed(() => (isAdmin.value ? "内容审核待办" : "通知"));
+const notificationButtonAriaLabel = computed(() =>
+  isAdmin.value && hasAdminReviewTasks.value ? "内容审核有待处理事项" : notificationButtonTitle.value
+);
 const userPanelActiveSessionCount = computed(() => userPanelSessions.value.length || userPanelSummary.value.activeSessionCount || 0);
 const userPanelSessionRows = computed(() =>
   userPanelSessions.value.map((session) => ({
@@ -877,6 +891,21 @@ function scrollToArticleComments() {
 function scrollToUserPanelNoticeCard() {
   nextTick(() => {
     userPanelNoticeCardRef.value?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  });
+}
+
+function scrollToAdminReviewFocus() {
+  const targetRef = pendingAdminReviewFocus.value === "comments"
+    ? adminReviewCommentSectionRef
+    : adminReviewArticleSectionRef;
+
+  pendingAdminReviewFocus.value = "";
+
+  nextTick(() => {
+    targetRef.value?.scrollIntoView({
       behavior: "smooth",
       block: "start"
     });
@@ -1560,6 +1589,18 @@ function syncViewToHash() {
     }
   }
 
+  if (viewName === "admin") {
+    if (adminActiveTab.value === "review") {
+      loadAdminReviews().then(() => {
+        if (pendingAdminReviewFocus.value) {
+          scrollToAdminReviewFocus();
+        }
+      });
+    } else {
+      refreshAdminCurrentTab();
+    }
+  }
+
   if (viewName === "articleEditor") {
     if (articleId && articleEditorArticleId.value !== articleId) {
       loadArticleEditorDraft(articleId);
@@ -1985,6 +2026,11 @@ async function loadAdminReviews() {
   if (!isAdmin.value) {
     adminReviewArticles.value = [];
     adminRiskComments.value = [];
+    adminReviewTaskSummary.value = {
+      pendingArticleCount: 0,
+      flaggedCommentCount: 0,
+      hasPendingReview: false
+    };
     return;
   }
 
@@ -1997,12 +2043,41 @@ async function loadAdminReviews() {
     ]);
     adminReviewArticles.value = reviewPayload.articles || [];
     adminRiskComments.value = moderationPayload.comments || [];
+    adminReviewTaskSummary.value = {
+      pendingArticleCount: adminReviewArticles.value.length,
+      flaggedCommentCount: adminRiskComments.value.length,
+      hasPendingReview: adminReviewArticles.value.length > 0 || adminRiskComments.value.length > 0
+    };
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
     }
   } finally {
     adminReviewLoading.value = false;
+  }
+}
+
+async function refreshAdminReviewTaskSummary() {
+  if (!isAdmin.value) {
+    adminReviewTaskSummary.value = {
+      pendingArticleCount: 0,
+      flaggedCommentCount: 0,
+      hasPendingReview: false
+    };
+    return;
+  }
+
+  try {
+    const payload = await apiFetch("/admin/review-tasks/summary");
+    adminReviewTaskSummary.value = {
+      pendingArticleCount: Number(payload.reviewTasks?.pendingArticleCount || 0),
+      flaggedCommentCount: Number(payload.reviewTasks?.flaggedCommentCount || 0),
+      hasPendingReview: Boolean(payload.reviewTasks?.hasPendingReview)
+    };
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
   }
 }
 
@@ -2018,7 +2093,15 @@ async function loadProfile() {
     currentUser.value = payload.user;
     currentSession.value = payload.session;
     if (payload.user.role === "ADMIN") {
-      await Promise.all([loadAdminArticles(), loadAdminOverview(), loadAdminReviews(), loadAdminUsers(), loadAdminTaxonomies(), loadAdminManagedArticles()]);
+      await Promise.all([
+        loadAdminArticles(),
+        loadAdminOverview(),
+        loadAdminReviews(),
+        loadAdminUsers(),
+        loadAdminTaxonomies(),
+        loadAdminManagedArticles(),
+        refreshAdminReviewTaskSummary()
+      ]);
     } else {
       await refreshUserPanelNotificationState();
     }
@@ -2393,7 +2476,28 @@ function closeUserPanelMobileNav() {
   userPanelMobileNavOpen.value = false;
 }
 
+async function openAdminReviewTasks() {
+  if (view.value === "articleEditor" && articleEditorHasUnsavedChanges.value && !confirmLeaveArticleEditor()) {
+    return;
+  }
+
+  articleEditorMoreMenuOpen.value = false;
+  mobileMenuOpen.value = false;
+  adminActiveTab.value = "review";
+  adminMobileNavOpen.value = false;
+  window.location.hash = "#admin";
+  await Promise.all([loadAdminReviews(), refreshAdminReviewTaskSummary()]);
+  pendingAdminReviewFocus.value = adminReviewTaskSummary.value.pendingArticleCount > 0 ? "articles" : "comments";
+  await nextTick();
+  scrollToAdminReviewFocus();
+}
+
 function openUserPanelNotifications() {
+  if (isAdmin.value) {
+    openAdminReviewTasks();
+    return;
+  }
+
   if (view.value === "articleEditor" && articleEditorHasUnsavedChanges.value && !confirmLeaveArticleEditor()) {
     return;
   }
@@ -3052,12 +3156,22 @@ function setAdminTab(tabId) {
 async function loadAdminRiskComments() {
   if (!isAdmin.value) {
     adminRiskComments.value = [];
+    adminReviewTaskSummary.value = {
+      pendingArticleCount: 0,
+      flaggedCommentCount: 0,
+      hasPendingReview: false
+    };
     return;
   }
 
   try {
     const payload = await apiFetch("/admin/comments/moderation");
     adminRiskComments.value = payload.comments || [];
+    adminReviewTaskSummary.value = {
+      pendingArticleCount: adminReviewTaskSummary.value.pendingArticleCount || adminReviewArticles.value.length,
+      flaggedCommentCount: adminRiskComments.value.length,
+      hasPendingReview: (adminReviewTaskSummary.value.pendingArticleCount || adminReviewArticles.value.length) > 0 || adminRiskComments.value.length > 0
+    };
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -3554,7 +3668,7 @@ async function approveAdminReviewArticle(article) {
     });
     setMessage("文章已审核通过并发布。");
     closeAdminReviewPreview();
-    await Promise.all([loadAdminReviews(), loadAdminArticles(), loadPublishedArticles(), refreshPublicStats()]);
+    await Promise.all([loadAdminReviews(), loadAdminArticles(), loadPublishedArticles(), refreshPublicStats(), refreshAdminReviewTaskSummary()]);
     if (payload.article?.slug) {
       replaceArticleInList(payload.article);
     }
@@ -3605,7 +3719,7 @@ async function rejectAdminReviewArticle() {
     setMessage("文章已驳回，原因已同步给用户。");
     closeAdminRejectDialog();
     closeAdminReviewPreview();
-    await Promise.all([loadAdminReviews(), loadAdminArticles()]);
+    await Promise.all([loadAdminReviews(), loadAdminArticles(), refreshAdminReviewTaskSummary()]);
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -3628,7 +3742,7 @@ async function ignoreAdminRiskComment(comment) {
       method: "PATCH"
     });
     setMessage("已忽略这条敏感评论提示。");
-    await loadAdminRiskComments();
+    await Promise.all([loadAdminRiskComments(), refreshAdminReviewTaskSummary()]);
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -3660,6 +3774,7 @@ async function deleteAdminRiskComment(comment) {
     setMessage(comment.type === "reply" ? "敏感回复已删除。" : "敏感评论已删除。");
     await Promise.all([
       loadAdminRiskComments(),
+      refreshAdminReviewTaskSummary(),
       loadAdminOverview(),
       selectedArticle.value?.slug ? loadComments(selectedArticle.value.slug) : Promise.resolve(),
       userPanelActiveTab.value === "social" ? loadUserPanelSocial() : Promise.resolve()
@@ -4829,9 +4944,9 @@ onBeforeUnmount(() => {
           >
             <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
           </button>
-          <button v-if="isAuthenticated" class="p-2 text-slate-500 hover:text-orange-500 transition-colors relative" title="通知" type="button" @click="openUserPanelNotifications">
+          <button v-if="isAuthenticated" class="p-2 text-slate-500 hover:text-orange-500 transition-colors relative" :title="notificationButtonTitle" :aria-label="notificationButtonAriaLabel" type="button" @click="openUserPanelNotifications">
             <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
-            <span v-if="hasUnreadNotifications" class="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white"></span>
+            <span v-if="hasTopbarNoticeDot" class="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white"></span>
           </button>
 
           <template v-if="!isAuthenticated">
@@ -4883,9 +4998,9 @@ onBeforeUnmount(() => {
           >
             <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
           </button>
-          <button v-if="isAuthenticated" :class="view === 'admin' ? 'admin-topbar-icon-action' : 'p-2 text-slate-500 hover:text-orange-500 transition-colors relative'" title="通知" type="button" @click="openUserPanelNotifications">
+          <button v-if="isAuthenticated" :class="view === 'admin' ? 'admin-topbar-icon-action' : 'p-2 text-slate-500 hover:text-orange-500 transition-colors relative'" :title="notificationButtonTitle" :aria-label="notificationButtonAriaLabel" type="button" @click="openUserPanelNotifications">
             <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
-            <span v-if="hasUnreadNotifications" :class="view === 'admin' ? 'admin-topbar-notice-dot' : 'absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white'"></span>
+            <span v-if="hasTopbarNoticeDot" :class="view === 'admin' ? 'admin-topbar-notice-dot' : 'absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white'"></span>
           </button>
           <div :class="view === 'admin' ? 'admin-topbar-divider' : 'h-8 w-[1px] bg-slate-200 mx-1'"></div>
 
@@ -4941,9 +5056,9 @@ onBeforeUnmount(() => {
         >
           <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
         </button>
-        <button class="user-panel-icon-action" type="button" title="通知" @click="openUserPanelNotifications">
+        <button class="user-panel-icon-action" type="button" :title="notificationButtonTitle" :aria-label="notificationButtonAriaLabel" @click="openUserPanelNotifications">
           <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
-          <span v-if="hasUnreadNotifications"></span>
+          <span v-if="hasTopbarNoticeDot"></span>
         </button>
         <div class="user-panel-account">
           <span class="user-panel-avatar">{{ currentUserInitial }}</span>
@@ -5431,9 +5546,9 @@ onBeforeUnmount(() => {
         >
           <iconify-icon :icon="isDarkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="22"></iconify-icon>
         </button>
-        <button class="user-panel-icon-action" type="button" title="通知" @click="openUserPanelNotifications">
+        <button class="user-panel-icon-action" type="button" :title="notificationButtonTitle" :aria-label="notificationButtonAriaLabel" @click="openUserPanelNotifications">
           <iconify-icon icon="mdi:bell-outline" width="22"></iconify-icon>
-          <span v-if="hasUnreadNotifications"></span>
+          <span v-if="hasTopbarNoticeDot"></span>
         </button>
         <div class="user-panel-account">
           <span class="user-panel-avatar">{{ currentUserInitial }}</span>
@@ -5938,7 +6053,7 @@ onBeforeUnmount(() => {
         </template>
 
         <template v-else-if="adminActiveTab === 'review'">
-          <section class="admin-card admin-review-card">
+          <section ref="adminReviewArticleSectionRef" class="admin-card admin-review-card">
             <div class="admin-card-header">
               <h2>
                 <iconify-icon icon="mdi:file-document-check-outline" width="24"></iconify-icon>
@@ -5977,7 +6092,7 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <section class="admin-card admin-review-card">
+          <section ref="adminReviewCommentSectionRef" class="admin-card admin-review-card">
             <div class="admin-card-header">
               <h2>
                 <iconify-icon icon="mdi:comment-alert-outline" width="24"></iconify-icon>
