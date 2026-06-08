@@ -2,7 +2,7 @@
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和暗色模式补齐、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环，以及管理员用户管理、分类标签管理和已发布文章管理真实接口。当前工作分支是 `codex/admin-ui-improvements`，基于 `d4d2039 Update handoff and README`。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环，以及管理员用户管理、分类标签管理、已发布文章管理和敏感评论审核真实接口。当前工作分支是 `codex/admin-ui-improvements`，基于 `d4d2039 Update handoff and README`。
 
 ## 建议下个 Agent 使用的技能
 
@@ -20,6 +20,7 @@
 - 当前功能分支：`codex/admin-ui-improvements`，本轮实现和文档更新由功能分支提交承载
 - 本轮开始前先在 `main` 提交了文档同步：`d4d2039 Update handoff and README`，再从该点创建功能分支
 - 本轮按用户要求不改 `todo.md`
+- 本次 `$work-end` 只提交 `README.md` / `handoff.md` 文档收尾；代码和迁移实现改动仍留在工作树中等待后续功能提交。
 
 继续工作前建议先执行：
 
@@ -55,10 +56,13 @@ git diff --check
 - `client/src/style.css`
 - `server/prisma/schema.prisma`
 - `server/prisma/migrations/20260607113000_admin_management_loop/migration.sql`
+- `server/prisma/migrations/20260608110000_comment_moderation_queue/migration.sql`
 - `server/src/lib/auth.js`
+- `server/src/lib/commentModeration.js`
 - `server/src/middleware/auth.js`
 - `server/src/routes/auth.js`
 - `server/src/routes/admin.js`
+- `server/src/routes/comments.js`
 - `server/src/routes/index.js`
 - `server/test/articles.test.js`
 - `README.md`
@@ -72,6 +76,8 @@ git diff --check
 - 已发布文章管理范围为列表、搜索/分类筛选、预览、下架/重新发布和删除，不做编辑。
 - 下架复用现有 `ARCHIVED` 状态，重新发布恢复为 `PUBLISHED`。
 - 管理列表不做分页，使用滚动区域；用户和文章筛选走后端查询。
+- 敏感评论第一版使用本地规则/关键词检测进入真实审核队列，当前只做待处理队列、忽略和删除，不做完整审核历史管理。
+- 全站暗色模式采用 CSS 变量主题系统，重点统一暗色页面底色、卡片面、表单面、边框、文字层级和语义色；浅色模式基本保持原观感。
 
 ### 后端与数据
 
@@ -80,8 +86,11 @@ git diff --check
 - 新增管理接口：`GET /api/admin/users`、`PATCH /api/admin/users/:id/disabled`、`DELETE /api/admin/users/:id`。
 - 新增分类标签接口：`GET /api/admin/taxonomies`、`POST/PATCH/DELETE /api/admin/categories`、`POST/PATCH/DELETE /api/admin/tags`。
 - 新增已发布文章接口：`GET /api/admin/articles`、`PATCH /api/admin/articles/:id/status`、`DELETE /api/admin/articles/:id`。
+- 新增敏感评论审核字段：`comments.moderation_status`、`moderation_reason`、`moderation_keywords`、`moderated_at`、`moderator_id`，迁移文件为 `server/prisma/migrations/20260608110000_comment_moderation_queue/migration.sql`。
+- 新增 `server/src/lib/commentModeration.js`，评论创建时通过 `detectCommentModeration()` 写入 `FLAGGED` 队列信息。
+- 新增敏感评论接口：`GET /api/admin/comments/moderation`、`PATCH /api/admin/comments/:id/moderation/ignore`、`DELETE /api/admin/comments/:id`。
 - 禁用用户会停用该用户活跃会话；登录时拒绝禁用账号，已有 token 通过 `requireAuth` 时也会被拦截。
-- 当前 Prisma Client 生成曾遇到 Windows DLL rename 锁定，因此 `is_disabled` 的运行时读写使用 raw SQL；`schema.prisma` 和迁移仍已完整更新。
+- 当前 Prisma Client 生成曾遇到 Windows DLL rename 锁定，因此 `is_disabled` 和评论审核字段的运行时读写使用 raw SQL；`schema.prisma` 和迁移仍已完整更新。
 - 开发库 `private_blog` 和测试库 `private_blog_test` 均已应用 `20260607113000_admin_management_loop`。
 
 ### 前端管理后台
@@ -91,6 +100,9 @@ git diff --check
 - 分类标签页改为真实数据：分类/标签新增、重命名、删除，并显示被多少文章使用；分类管理和标签管理各自独立滚动，互不拉伸。
 - 所有管理列表不分页，采用列表内部滚动区域。
 - 删除用户和文章仍使用二次确认并要求输入目标用户名/标题；分类和标签仅在正在被文章使用时要求输入名称确认，未被使用时直接删除。
+- “敏感评论”从静态 UI 示例改为真实审核队列，展示评论/回复内容、命中原因、关键词、作者、文章和时间，并支持忽略或删除。
+- 已发布文章操作按钮按预览蓝、发布绿、下架橙、删除红区分语义；用户管理禁用/删除和敏感评论按钮保持较小的紧凑尺寸。
+- 暗色主题在 `client/src/style.css` 增加 `:root` / `.dark` 变量，迁移管理员、用户面板、文章详情、编辑器、弹窗、遗留 UI 和 Tailwind 模板冲突色；暗色下减少大面积橙色，保留少量暖橙强调。
 
 ### 验证
 
@@ -106,8 +118,8 @@ git diff --check
 结果：
 
 - `npx prisma validate --schema prisma/schema.prisma` 在默认沙箱先遇到 `EPERM: operation not permitted, lstat 'C:\Users\27871'`，按权限流程在真实工作区重跑后通过。
-- `npm test --workspace server` 通过，后端测试 11/11。
-- `npm run build` 在默认沙箱先遇到已知 Vite/Rollup 绝对路径问题，按权限流程在真实工作区重跑后通过。
+- `npm test --workspace server` 通过，后端测试 12/12，包含真实敏感评论队列、忽略和删除用例。
+- `npm run build` 通过。
 - `git diff --check` 仅输出 LF/CRLF 提示。
 
 ## 本次完成：用户中心安全闭环
@@ -372,7 +384,7 @@ git diff --check
 
 - 本轮只改前端 UI 和文档，不新增后端接口、不改数据库、不改权限模型。
 - 用户面板中的“我的收藏”“社交互动”“安全设置”已接入真实接口；第三方账号绑定仍仅为本地状态标记。
-- 当时管理后台用户管理、敏感评论、分类标签管理仍是 UI 占位和提示交互；当前 `codex/admin-ui-improvements` 已补齐用户管理和分类标签真实接口，敏感评论仍是占位。
+- 当时管理后台用户管理、敏感评论、分类标签管理仍是 UI 占位和提示交互；当前 `codex/admin-ui-improvements` 已补齐用户管理、分类标签和敏感评论真实接口。
 
 ## 本次完成：管理员后台新 UI
 
@@ -405,7 +417,7 @@ git diff --check
 - 文章分类分布基于已发布文章分类聚合；分类标签页读取现有 `categories` / `tags` 展示。
 - 用户管理页当时只做 UI：搜索、筛选、查看、禁用、删除按钮统一提示后续接入；当前 `codex/admin-ui-improvements` 已接真实用户管理接口并新增 `users.is_disabled`。
 - 内容审核页当时只做 UI：待审核文章使用静态示例数据，通过/驳回按钮只提示后续接入投稿审核流程；后续文章草稿投稿分支已接真实待审核队列。
-- “敏感评论”当前为 UI 示例，不是后端检测结果；忽略/删除按钮只提示后续接入。
+- “敏感评论”当时为 UI 示例，不是后端检测结果；当前 `codex/admin-ui-improvements` 已将其接入真实审核队列。
 - 分类标签新增、编辑、删除当时为 UI 占位；当前 `codex/admin-ui-improvements` 已接真实新增、改名和删除接口。
 
 ### 图表切换修复
@@ -452,10 +464,11 @@ git diff --check
 - 详情页评论区已支持主评论点赞、回复输入框、默认 2 条回复和展开/收起。
 - 普通用户面板已重构为新 UI，不再通过 `.legacy-ui` 渲染。
 - 普通用户面板暗色模式已补齐为深蓝灰工作台风格。
+- 全站暗色模式已重构为 `client/src/style.css` 中的 `:root` / `.dark` CSS 变量主题系统；管理员、用户面板、文章详情、编辑器、弹窗和常见 Tailwind 冲突色统一为中性深灰蓝暗色基线，橙色面积已降低并保留在激活态/按钮/提示等语义强调上。
 - 发布新文章页面已重构为独立专注写作 UI。
 - 管理后台已改为独立新 UI：顶部导航按首页/用户面板新 UI，左侧保留站点概览、用户管理、内容审核、分类标签；管理员顶部搜索框已移除，布局宽度和侧栏色彩已向用户面板对齐。
 - 管理后台站点概览已接入只读统计接口，近 7 日访问趋势为 ECharts 柱状图并显示 `MM-DD` 日期，文章分类分布为 ECharts 环形图。
-- 管理后台用户管理、敏感评论、分类标签管理当前先做 UI 和提示交互；内容审核已接真实待审核队列。
+- 管理后台用户管理、已发布文章、分类标签和敏感评论均已接真实接口；内容审核已接真实待审核文章队列。
 
 ## 后端与数据状态
 
@@ -508,7 +521,7 @@ npm run build
 git diff --check
 ```
 
-说明：`prisma validate` 默认沙箱先遇到 `EPERM: operation not permitted, lstat 'C:\Users\27871'`，真实工作区重跑通过；`npm run build` 默认沙箱先遇到已知 Vite/Rollup 绝对路径问题，真实工作区重跑通过；后端测试 11/11 通过；`git diff --check` 仅 LF/CRLF 提示。
+说明：`prisma validate` 默认沙箱先遇到 `EPERM: operation not permitted, lstat 'C:\Users\27871'`，真实工作区重跑通过；`npm run build` 通过；后端测试 12/12 通过；`git diff --check` 仅 LF/CRLF 提示。
 
 最近用户中心安全闭环工作已合并到 `main`，新增后端用例覆盖默认未读、单条已读、全部已读、设备解析、安全审计写入和最近安全活动查询。建议本轮文档同步后执行完整验证：
 
@@ -586,7 +599,7 @@ sc.exe config MySQL start= demand
 - 投稿编辑器下一步建议接封面、SEO、高级设置、批量上传、真实自动保存或更完整的审核历史；是否需要富文本体验可等 Markdown 投稿链路稳定后再评估 Tiptap / ProseMirror。
 - 管理后台用户管理后续可补充批量操作和管理员权限管理；当前仅允许管理 `USER`，已提供右侧抽屉查看基础详情与统计。
 - 管理后台已发布文章后续可补充编辑入口、批量下架和审核历史联动；当前只做列表、预览、上下架和删除。
-- 将管理后台敏感评论处理接入真实检测/审核后端；内容审核阶段 2 已完成待审核队列，历史审核记录暂未做完整管理。
+- 敏感评论当前已接本地规则检测和后台处理队列；后续可补充规则配置、审核历史、批量处理和更细的风险等级。
 - 基于 `site_visits` 做公开首页的真实趋势图；当前管理后台概览已用该数据做近 7 日访问柱状图，用户面板已接当前用户文章阅读趋势。
 - 补充评论分页、评论审核，以及敏感词/敏感话题检测流程。
 - 修复评论删除边界：删除主评论时递归清理历史多层回复，或先迁移历史 `parent_id` 到一层结构。
