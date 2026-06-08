@@ -3,7 +3,7 @@
 ## 2026-06-08 最新快照：公开搜索、文章元数据闭环与审核待办入口
 
 - 当前工作分支：`main`
-- 最新主线提交：`0aec025 Merge codex/public-search-editor-plan`
+- 最新主线提交：`cc361a1 Update handoff and README`
 - 最新功能提交：`7554433 Add admin review task notification bell`、`9190994 Add public search page and visit trend`、`aa5a50e Add article editor metadata workflow`
 - 本次 `$merge-main codex/public-search-editor-plan` 已把公开搜索、真实访问趋势和文章元数据闭环合并进 `main`，并保留已合并的管理员审核待办通知铃铛。
 
@@ -67,7 +67,7 @@ git diff --check
 
 - 仓库路径：`D:\project\codex-project-boke`
 - 当前工作分支：`main`
-- 主线同步状态：`main` 与 `origin/main` 已同步到 `0aec025 Merge codex/public-search-editor-plan`
+- 主线同步状态：`main` 与 `origin/main` 已同步到 `cc361a1 Update handoff and README`
 - 当前功能提交：`7554433 Add admin review task notification bell`、`9190994 Add public search page and visit trend`、`aa5a50e Add article editor metadata workflow`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover`、`codex/admin-ui-improvements` 已合并进 `main` 并推送到 `origin/main`。

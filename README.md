@@ -14,7 +14,7 @@
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes`、`article_metric_events`、`user_notification_reads`、`security_audit_events`，以及 `users.is_disabled`、评论 `moderation_*` 审核字段和首页 `summary.visitTrend` 真实访问趋势 |
 | 最近验证 | 2026-06-08：`codex/public-search-editor-plan` 合并前后已执行 `npm test --workspace server`、`npm run build`、`npx prisma validate --schema prisma/schema.prisma`、`git diff --check`；后端测试 13/13 通过，Prisma 校验在真实工作区通过 |
-| 合并状态 | `codex/admin-review-notification-bell` 与 `codex/public-search-editor-plan` 均已合并并推送；`main` 与 `origin/main` 同步于 `0aec025` |
+| 合并状态 | `codex/admin-review-notification-bell` 与 `codex/public-search-editor-plan` 均已合并并推送；`main` 与 `origin/main` 同步于 `cc361a1` |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
