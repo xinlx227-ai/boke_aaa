@@ -1,205 +1,203 @@
-# 用户中心安全闭环计划
+# 公开搜索、首页趋势与投稿编辑器元信息规划
 
-更新时间：2026-06-06
+更新时间：2026-06-08
 
 ## 目标
 
-下一步完善用户中心里的三个安全相关能力：
+分两阶段补齐公开阅读和投稿编辑体验：
 
-- 通知已读/未读状态
-- 会话设备名称解析
-- 更完整的安全审计
+- 阶段一：补齐公开阅读体验，做独立搜索页，并把公开首页“阅读趋势”改成真实访问数据。
+- 阶段二：补齐投稿编辑器元信息，让封面、SEO、允许评论、置顶文章从草稿保存到审核发布，再在公开页面和搜索结果中生效。
 
-这轮目标是做一个用户本人可见的小闭环：用户可以看到互动通知是否已读、能更清楚地识别当前登录设备，并能在安全设置中查看最近安全活动。
+## 阶段一：独立搜索页 + 公开首页真实趋势图
 
-## 明确不做
+### 独立搜索页
 
-- 不实现真实短信验证码。
-- 不实现微信/QQ/支付宝真实 OAuth。
-- 微信/QQ/支付宝继续只保存本地绑定标记。
-- 第一版不做管理员全站安全审计后台。
-- 第一版不把互动通知改成完整通知表。
+新增前端视图 `#search?q=关键词`。
 
-## 当前状态
+顶部搜索框行为：
 
-- 互动通知当前由 `/api/users/me/interactions` 从评论、文章点赞、文章收藏、评论点赞实时派生。
-- 当前没有通知表，也没有已读/未读状态。
-- `user_sessions` 已保存 `deviceId`、`ipAddress`、`userAgent`、`lastActiveAt` 和 `isActive`。
-- 前端目前只粗略展示 userAgent，不做完整设备名称解析。
-- 修改密码、注销会话、手机号/本地绑定状态变更目前没有统一安全审计记录。
+- 首页顶部搜索框输入后按回车进入搜索页。
+- 文章详情页顶部搜索框从只读占位改成可输入，按回车进入同一个搜索页。
+- 搜索页自身也提供搜索输入框，支持再次搜索。
+- 移动端使用紧凑搜索入口或搜索输入进入同一个搜索页。
 
-## 实现方案
+搜索页内容：
 
-### 1. 通知已读/未读
+- 显示当前关键词。
+- 显示结果数量。
+- 无结果时显示空状态。
+- 结果卡片展示标题、分类、标签、摘要、发布时间、阅读/点赞/收藏等已有统计。
+- 点击结果进入文章详情页。
 
-保留现有互动通知实时派生逻辑，不复制通知正文，不重写评论/点赞/收藏写入链路。
+后端搜索能力：
 
-新增一张轻量已读状态表，用于记录当前用户对派生通知的阅读状态。
+- 继续复用 `GET /api/articles?q=&category=&tag=`，不新增并行搜索接口。
+- 关键词匹配范围扩展为标题、正文、分类名称/slug、标签名称/slug。
+- 只返回 `PUBLISHED` 文章。
 
-建议通知 key 使用稳定组合：
+第一版不做：
 
-```text
-type:eventId:actorId
-```
+- 搜索高亮。
+- 搜索历史。
+- 自动补全。
 
-示例：
+### 公开首页真实趋势图
 
-```text
-comment_on_my_article:123:8
-like_my_article:42:9
-favorite_my_article:42:11
-like_my_comment:55:7
-reply_to_my_comment:91:6
-```
+扩展 `GET /api/articles/stats/summary`，在现有 `summary` 中增加 `visitTrend`。
 
-接口建议：
-
-- `GET /api/users/me/interactions`：继续返回互动通知，同时增加 `isRead`、`readAt` 和 `unreadCount`。
-- `PATCH /api/users/me/interactions/:key/read`：标记单条通知为已读。
-- `PATCH /api/users/me/interactions/read-all`：标记当前用户所有已派生通知为已读。
-
-前端行为：
-
-- 用户面板通知列表显示未读标记。
-- 顶部通知按钮显示未读状态。
-- 未读通知卡片显示橙色红点，点击通知卡片标记该条已读并跳转到相关文章。
-- 评论相关通知跳转到文章详情后滚动到评论区，不做单条评论精准高亮。
-- 支持全部标记已读。
-
-### 2. 会话设备名称解析
-
-使用 `ua-parser-js` 解析 `user_sessions.user_agent`。
-
-后端在会话列表中返回友好设备信息，前端不再自己猜测设备名称。
-
-建议返回字段：
+返回格式：
 
 ```json
 {
-  "deviceName": "Chrome on Windows",
-  "browserName": "Chrome",
-  "browserVersion": "125",
-  "osName": "Windows",
-  "osVersion": "10",
-  "deviceType": "desktop"
+  "summary": {
+    "todayVisits": 0,
+    "totalLikes": 0,
+    "totalViews": 0,
+    "totalFavorites": 0,
+    "visitTrend": [
+      {
+        "date": "2026-06-02",
+        "label": "06-02",
+        "value": 0
+      }
+    ]
+  }
 }
 ```
 
-兼容规则：
+统计口径：
 
-- 空 `userAgent` 返回 `未知设备`。
-- 无法识别浏览器时返回 `未知浏览器`。
-- 无法识别系统时返回 `未知系统`。
-- `deviceType` 默认使用 `desktop`，移动端识别为 `mobile` 或 `tablet`。
+- 使用近 7 个 `Asia/Shanghai` 自然日。
+- `label` 使用 `MM-DD`。
+- 数据来自 `site_visits`。
+- 统计首页和已发布文章页访问。
+- 匿名访客按 `visitorId` 去重。
+- 登录用户按 `userId` 去重。
+- 与管理后台概览的近 7 日访问趋势口径保持一致。
 
 前端行为：
 
-- 安全设置页设备列表优先展示 `deviceName`。
-- 次要信息展示 IP、最近活跃时间和是否当前设备。
-- 注销会话逻辑保持不变。
+- 公开首页右侧“阅读趋势”图表使用真实 `visitTrend` 渲染。
+- 无数据时显示 0 值趋势。
+- 下方“今日阅读”和“总点赞”继续使用现有真实统计。
+- 不再使用静态占位数据。
 
-### 3. 安全审计
+## 阶段二：投稿编辑器封面、SEO、高级设置闭环
 
-新增 `security_audit_events` 表，记录用户本人安全相关动作。
+### 数据模型
 
-第一版记录事件：
+给文章新增元信息字段：
 
-- 登录成功
-- 退出登录
-- 修改密码
-- 注销会话
-- 手机号保存或清空
-- 微信/QQ/支付宝本地绑定状态变更
+- `coverImageUrl` / `cover_image_url`
+- `coverAlt` / `cover_alt`
+- `coverRatio` / `cover_ratio`
+- `seoTitle` / `seo_title`
+- `seoKeywords` / `seo_keywords`
+- `seoDescription` / `seo_description`
+- `allowComments` / `allow_comments`，默认 `true`
+- `isPinned` / `is_pinned`，默认 `false`
 
-建议字段：
+需要新增 Prisma migration，并同步更新 Prisma schema。
 
-```text
-id
-user_id
-session_id
-event_type
-event_summary
-ip_address
-user_agent
-metadata
-created_at
-```
+### 投稿草稿接口
 
-接口建议：
+扩展这些接口读写并返回新增元信息：
 
-- `GET /api/users/me/security-events`：返回当前用户最近 5 条安全活动。
+- `POST /api/articles/drafts`
+- `PATCH /api/articles/drafts/:id`
+- `POST /api/articles/drafts/:id/submit`
+- `GET /api/articles/drafts/:id`
+- `GET /api/articles/me`
 
-前端行为：
+规则保持不变：
 
-- 安全设置页在“第三方账号绑定”下面新增“最近安全活动”模块。
-- 每条记录展示事件名称、时间、设备摘要和 IP。
-- metadata 只用于补充展示，不暴露敏感 token、密码或真实密钥。
+- 不自动创建空草稿。
+- 只在用户手动保存草稿或提交审核时创建/更新文章记录。
+- 提交后文章锁定。
+- 修改已提交文章必须先撤回到草稿。
 
-## 数据迁移建议
+### 封面上传
 
-新增迁移：
+封面第一版复用现有普通用户图片上传入口：
 
-```text
-server/prisma/migrations/<timestamp>_user_center_security_loop/migration.sql
-```
+- 上传成功后把返回的图片 URL 写入 `coverImageUrl`。
+- 封面比例按钮写入 `coverRatio`，默认 `16:9`。
+- 可保存 `coverAlt`，用于图片替代文本。
+- 不强制把封面绑定到 `article_images`。
+- 不迁移已有正文图片到封面字段。
 
-新增模型建议：
+### SEO 设置
 
-```prisma
-model UserNotificationRead {
-  id              Int      @id @default(autoincrement())
-  userId          Int      @map("user_id")
-  notificationKey String   @map("notification_key") @db.VarChar(191)
-  readAt          DateTime @default(now()) @map("read_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+投稿编辑器保存：
 
-  @@unique([userId, notificationKey])
-  @@index([userId, readAt])
-  @@map("user_notification_reads")
-}
+- `seoTitle`
+- `seoKeywords`
+- `seoDescription`
 
-model SecurityAuditEvent {
-  id           Int      @id @default(autoincrement())
-  userId       Int      @map("user_id")
-  sessionId    Int?     @map("session_id")
-  eventType    String   @map("event_type") @db.VarChar(80)
-  ipAddress    String?  @map("ip_address") @db.VarChar(45)
-  userAgent    String?  @map("user_agent") @db.VarChar(500)
-  metadata     Json?
-  createdAt    DateTime @default(now()) @map("created_at")
+公开展示：
 
-  @@index([userId, createdAt])
-  @@index([eventType, createdAt])
-  @@map("security_audit_events")
-}
-```
+- 文章详情页 `<title>` 优先使用 `seoTitle`。
+- meta description 优先使用 `seoDescription`。
+- SEO 字段为空时回退到文章标题和正文摘要。
+
+搜索结果：
+
+- 摘要优先使用 `seoDescription`。
+- 为空时回退到正文截断摘要。
+
+### 高级设置
+
+第一版保留现有 UI 中的两个开关：
+
+- 允许评论：`allowComments`
+- 置顶文章：`isPinned`
+
+生效规则：
+
+- `allowComments=false` 时，文章详情页隐藏评论输入入口，并提示该文章已关闭评论。
+- `allowComments=false` 时，后端拒绝新评论。
+- `isPinned=true` 时，公开首页文章排序优先置顶，再按发布时间排序。
+- 搜索页不做置顶优先，只按搜索结果的现有时间排序展示。
+
+因为文章发布前经过管理员审核，第一版不额外新增后台置顶开关。
+
+### 公开展示
+
+发布后的公开文章对象返回新增字段。
+
+消费范围：
+
+- 首页最新发布卡片使用 `coverImageUrl`。
+- 搜索结果卡片使用 `coverImageUrl`。
+- 文章详情页使用 `coverImageUrl`。
+- 无封面时沿用现有占位视觉。
 
 ## 测试计划
 
 后端测试：
 
-- 互动通知默认未读。
-- 单条通知标记已读后返回 `isRead: true`。
-- 全部标记已读后 `unreadCount` 为 0。
-- 登录成功写入安全审计事件。
-- 已存在账号登录失败时写入安全审计事件，不存在账号不写入。
-- 退出登录写入安全审计事件。
-- 修改密码写入安全审计事件，并保持“其他设备退出登录”逻辑。
-- 注销会话写入安全审计事件。
-- 手机号和本地绑定状态变更写入安全审计事件。
-- 会话列表返回解析后的浏览器、系统、设备类型。
-- 空 `userAgent` 不报错，并返回未知设备信息。
+- 公开搜索可匹配标题、正文、分类名称/slug、标签名称/slug。
+- 搜索不返回非发布文章。
+- `GET /api/articles/stats/summary` 返回 7 天趋势。
+- 趋势空数据补 0。
+- 趋势日期按 `Asia/Shanghai` 自然日生成。
+- 草稿保存、读取、提交、撤回后保留封面、SEO、高级设置字段。
+- `allowComments=false` 时创建评论被拒绝。
+- `isPinned=true` 的文章在公开首页列表优先排序。
 
 前端验证：
 
-- 通知列表展示未读状态。
-- 单条已读和全部已读交互后刷新状态正确。
-- 点击通知卡片后完成已读并跳转到文章；评论相关通知滚动到评论区。
-- 设备列表展示友好设备名称。
-- 第三方账号绑定下方展示最近 5 条安全事件。
+- 首页顶部搜索回车进入 `#search?q=...`。
+- 文章详情顶部搜索可用，并进入同一个搜索页。
+- 搜索页刷新后仍能根据 URL 查询结果。
+- 搜索页空结果、再次搜索、点击结果进入文章详情都正常。
+- 首页趋势图显示真实数据并兼容空数据。
+- 投稿编辑器保存后刷新仍保留封面、SEO 和高级设置。
+- 投稿提交审核后编辑器锁定。
+- 撤回后可继续修改元信息。
 
-命令：
+常规验证命令：
 
 ```bash
 npm test --workspace server
@@ -208,21 +206,12 @@ npx prisma validate --schema prisma/schema.prisma
 git diff --check
 ```
 
-## 实施顺序
+## 明确不做
 
-1. 新增 Prisma schema 和 SQL migration。
-2. 安装并接入 `ua-parser-js`。
-3. 抽取通知 key 生成和已读状态合并逻辑。
-4. 增加通知已读接口。
-5. 增加安全审计写入 helper。
-6. 在登录、退出、改密、注销会话、绑定变更中写入审计事件。
-7. 增加安全审计查询接口。
-8. 更新用户面板前端通知列表、设备列表和安全活动模块。
-9. 补充后端测试。
-10. 运行验证命令。
-
-## 验收标准
-
-- 通知已读/未读、设备解析、安全审计的计划完整可读。
-- 文档明确记录短信验证码和真实 OAuth 不做。
-- 后续实现时不需要重新决定第一版范围。
+- 阶段一不做搜索高亮、搜索历史、自动补全。
+- 阶段一不新增独立搜索 API。
+- 阶段二不做富文本编辑器迁移。
+- 阶段二不做真实自动保存。
+- 阶段二不做完整审核历史管理。
+- 阶段二不把封面强制归入 `article_images`。
+- 阶段二不迁移已有正文图片为封面。
