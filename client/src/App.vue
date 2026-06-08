@@ -6,6 +6,8 @@ const ASSET_BASE_URL = "";
 const TOKEN_STORAGE_KEY = "private-blog-token";
 const THEME_STORAGE_KEY = "private-blog-theme";
 const VISITOR_STORAGE_KEY = "private-blog-visitor-id";
+const DEFAULT_DOCUMENT_TITLE = document.title;
+const DEFAULT_META_DESCRIPTION = "私人博客系统 - 探索与记录";
 
 const view = ref("public");
 const authMode = ref("login");
@@ -144,9 +146,9 @@ const articleEditorSettingsCollapsed = ref(false);
 const articleEditorSettingsOpen = ref(false);
 const articleEditorMoreMenuOpen = ref(false);
 const articleEditorSeoOpen = ref(false);
-const articleEditorCoverRatio = ref("16:9");
 const articleEditorMarkdownRef = ref(null);
 const articleEditorImageInputRef = ref(null);
+const articleEditorCoverInputRef = ref(null);
 const articleEditorImageModalOpen = ref(false);
 const articleEditorImageFiles = ref([]);
 const articleEditorImageSelection = ref({ start: 0, end: 0 });
@@ -248,6 +250,9 @@ const articleEditorForm = reactive({
   categoryName: "",
   tagNamesText: "Vue, Markdown",
   tagInput: "",
+  coverImageUrl: "",
+  coverAlt: "",
+  coverRatio: "16:9",
   seoTitle: "",
   seoKeywords: "",
   seoDescription: "",
@@ -466,11 +471,20 @@ const userPanelSecurityEventRows = computed(() =>
   })
 );
 const articleEditorTags = computed(() => tagTextToArray(articleEditorForm.tagNamesText));
+const articleEditorCoverPreviewUrl = computed(() => assetUrl(articleEditorForm.coverImageUrl));
 const articleEditorSnapshotValue = computed(() =>
   JSON.stringify({
     title: articleEditorForm.title,
     categoryName: articleEditorForm.categoryName,
     tagNamesText: articleEditorForm.tagNamesText,
+    coverImageUrl: articleEditorForm.coverImageUrl,
+    coverAlt: articleEditorForm.coverAlt,
+    coverRatio: articleEditorForm.coverRatio,
+    seoTitle: articleEditorForm.seoTitle,
+    seoKeywords: articleEditorForm.seoKeywords,
+    seoDescription: articleEditorForm.seoDescription,
+    allowComments: articleEditorForm.allowComments,
+    pinned: articleEditorForm.pinned,
     contentMarkdown: articleEditorForm.contentMarkdown
   })
 );
@@ -499,6 +513,7 @@ const selectedArticleReadTime = computed(() => {
   return `${estimatedMinutes} 分钟阅读`;
 });
 const selectedArticleSlug = computed(() => selectedArticle.value?.slug || "");
+const selectedArticleAllowsComments = computed(() => selectedArticle.value?.allowComments !== false);
 const isSelectedArticleLiked = computed(() => Boolean(selectedArticle.value?.stats?.likedByMe));
 const isSelectedArticleFavorited = computed(() => Boolean(selectedArticle.value?.stats?.favoritedByMe));
 const commentTotalCount = computed(() =>
@@ -691,6 +706,20 @@ function mapAssetUrls(html) {
   return String(html || "").replace(/(src|href)="\/uploads\//g, `$1="${ASSET_BASE_URL}/uploads/`);
 }
 
+function assetUrl(url) {
+  const value = String(url || "").trim();
+
+  if (!value) {
+    return "";
+  }
+
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith("data:")) {
+    return value;
+  }
+
+  return value.startsWith("/uploads/") ? `${ASSET_BASE_URL}${value}` : value;
+}
+
 function tagTextToArray(value) {
   return String(value || "")
     .split(",")
@@ -759,6 +788,12 @@ function replaceArticleInList(article) {
 }
 
 function articlePlainSummary(article) {
+  const seoDescription = String(article?.seoDescription || "").trim();
+
+  if (seoDescription) {
+    return seoDescription.length > 96 ? `${seoDescription.slice(0, 95)}...` : seoDescription;
+  }
+
   const markdown = String(article?.contentMarkdown || "")
     .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
@@ -1353,6 +1388,9 @@ function resetArticleEditorForm() {
   articleEditorForm.categoryName = "";
   articleEditorForm.tagNamesText = "";
   articleEditorForm.tagInput = "";
+  articleEditorForm.coverImageUrl = "";
+  articleEditorForm.coverAlt = "";
+  articleEditorForm.coverRatio = "16:9";
   articleEditorForm.seoTitle = "";
   articleEditorForm.seoKeywords = "";
   articleEditorForm.seoDescription = "";
@@ -1372,6 +1410,14 @@ function fillArticleEditorForm(article) {
   articleEditorForm.categoryName = article?.category?.name || "";
   articleEditorForm.tagNamesText = (article?.tags || []).map((tag) => tag.name).join(", ");
   articleEditorForm.tagInput = "";
+  articleEditorForm.coverImageUrl = article?.coverImageUrl || "";
+  articleEditorForm.coverAlt = article?.coverAlt || "";
+  articleEditorForm.coverRatio = article?.coverRatio || "16:9";
+  articleEditorForm.seoTitle = article?.seoTitle || "";
+  articleEditorForm.seoKeywords = article?.seoKeywords || "";
+  articleEditorForm.seoDescription = article?.seoDescription || "";
+  articleEditorForm.allowComments = article?.allowComments !== false;
+  articleEditorForm.pinned = Boolean(article?.isPinned);
   articleEditorForm.contentMarkdown = article?.contentMarkdown || "";
   articleEditorLoaded.value = true;
   saveArticleEditorSnapshot();
@@ -2806,6 +2852,14 @@ function articleEditorRequestBody() {
     title: articleEditorForm.title,
     categoryName: articleEditorForm.categoryName,
     tagNames: tagTextToArray(articleEditorForm.tagNamesText),
+    coverImageUrl: articleEditorForm.coverImageUrl,
+    coverAlt: articleEditorForm.coverAlt,
+    coverRatio: articleEditorForm.coverRatio,
+    seoTitle: articleEditorForm.seoTitle,
+    seoKeywords: articleEditorForm.seoKeywords,
+    seoDescription: articleEditorForm.seoDescription,
+    allowComments: articleEditorForm.allowComments,
+    isPinned: articleEditorForm.pinned,
     contentMarkdown: articleEditorForm.contentMarkdown
   };
 }
@@ -3046,7 +3100,67 @@ function toggleArticleEditorSeo() {
 }
 
 function setArticleEditorCoverRatio(ratio) {
-  articleEditorCoverRatio.value = ratio;
+  articleEditorForm.coverRatio = ratio;
+}
+
+function chooseArticleEditorCover() {
+  if (articleEditorIsLocked.value) {
+    return;
+  }
+
+  articleEditorCoverInputRef.value?.click();
+}
+
+async function uploadArticleEditorCover(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+
+  if (!file) {
+    return;
+  }
+
+  if (!file.type.startsWith("image/")) {
+    setMessage("请选择图片文件。");
+    return;
+  }
+
+  uploadingImage.value = true;
+  setMessage("");
+
+  try {
+    const formData = new FormData();
+    formData.append("images", file);
+
+    const payload = await apiFetch("/articles/uploads/images", {
+      method: "POST",
+      body: formData
+    });
+    const image = payload.images?.[0];
+
+    if (!image?.imageUrl) {
+      setMessage("封面上传失败，请重试。");
+      return;
+    }
+
+    articleEditorForm.coverImageUrl = image.imageUrl;
+    articleEditorForm.coverAlt = articleEditorForm.coverAlt || image.originalName || "";
+    setMessage("封面已上传。");
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    uploadingImage.value = false;
+  }
+}
+
+function clearArticleEditorCover() {
+  if (articleEditorIsLocked.value) {
+    return;
+  }
+
+  articleEditorForm.coverImageUrl = "";
+  articleEditorForm.coverAlt = "";
 }
 
 function addArticleEditorTag(tagName = articleEditorForm.tagInput) {
@@ -3960,6 +4074,11 @@ async function submitComment() {
     return;
   }
 
+  if (!selectedArticleAllowsComments.value) {
+    setMessage("该文章已关闭评论。");
+    return;
+  }
+
   postingComment.value = true;
   setMessage("");
 
@@ -4448,6 +4567,30 @@ function resizeCharts() {
   resizeUserPanelCharts();
 }
 
+function ensureMetaDescriptionElement() {
+  let meta = document.querySelector('meta[name="description"]');
+
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.setAttribute("name", "description");
+    document.head.appendChild(meta);
+  }
+
+  return meta;
+}
+
+function syncDocumentSeo() {
+  if (view.value !== "article" || !selectedArticle.value) {
+    document.title = DEFAULT_DOCUMENT_TITLE;
+    ensureMetaDescriptionElement().setAttribute("content", DEFAULT_META_DESCRIPTION);
+    return;
+  }
+
+  const title = selectedArticle.value.seoTitle || selectedArticle.value.title || DEFAULT_DOCUMENT_TITLE;
+  document.title = title;
+  ensureMetaDescriptionElement().setAttribute("content", articlePlainSummary(selectedArticle.value));
+}
+
 function initTrafficChart() {
   nextTick(() => {
     const el = trafficChartRef.value;
@@ -4533,6 +4676,8 @@ watch([userPanelActiveTab, userPanelReadTrend, userPanelCategoryDistribution], (
     renderUserPanelCharts();
   }
 });
+
+watch([view, selectedArticle], syncDocumentSeo);
 
 onMounted(async () => {
   applyThemeMode();
@@ -5596,22 +5741,36 @@ onBeforeUnmount(() => {
             <h3>文章封面</h3>
             <span>建议 16:9</span>
           </div>
-          <button class="article-editor-cover-dropzone" type="button" @click="showArticleEditorPlaceholder('封面上传')">
-            <iconify-icon icon="mdi:image-plus-outline" width="34"></iconify-icon>
-            <strong>点击或拖拽上传封面</strong>
-            <small>支持 JPG、PNG、WebP</small>
+          <button
+            class="article-editor-cover-dropzone"
+            type="button"
+            :disabled="articleEditorIsLocked || uploadingImage"
+            @click="chooseArticleEditorCover"
+          >
+            <img v-if="articleEditorCoverPreviewUrl" :alt="articleEditorForm.coverAlt || '文章封面'" :src="articleEditorCoverPreviewUrl" />
+            <template v-else>
+              <iconify-icon icon="mdi:image-plus-outline" width="34"></iconify-icon>
+              <strong>点击上传封面</strong>
+              <small>支持 JPG、PNG、WebP</small>
+            </template>
           </button>
+          <input ref="articleEditorCoverInputRef" class="sr-only" type="file" accept="image/*" @change="uploadArticleEditorCover" />
+          <label class="article-editor-cover-alt">
+            <span>封面替代文本</span>
+            <input v-model.trim="articleEditorForm.coverAlt" placeholder="描述封面内容" type="text" :disabled="articleEditorIsLocked" />
+          </label>
           <div class="article-editor-ratio-group" aria-label="封面比例">
             <button
               v-for="ratio in ['16:9', '4:3', '1:1']"
               :key="ratio"
-              :class="{ 'is-active': articleEditorCoverRatio === ratio }"
+              :class="{ 'is-active': articleEditorForm.coverRatio === ratio }"
               type="button"
+              :disabled="articleEditorIsLocked"
               @click="setArticleEditorCoverRatio(ratio)"
             >
               {{ ratio }}
             </button>
-            <button type="button" title="重新上传" @click="showArticleEditorPlaceholder('重新上传封面')">
+            <button type="button" title="移除封面" :disabled="articleEditorIsLocked || !articleEditorForm.coverImageUrl" @click="clearArticleEditorCover">
               <iconify-icon icon="mdi:refresh" width="16"></iconify-icon>
             </button>
           </div>
@@ -6474,7 +6633,9 @@ onBeforeUnmount(() => {
                     @click="openArticle(article.slug)"
                   >
                     <div class="h-48 overflow-hidden relative bg-gradient-to-br from-orange-100 to-amber-50 flex items-center justify-center">
-                      <iconify-icon icon="mdi:file-document-edit-outline" width="48" class="text-orange-300"></iconify-icon>
+                      <img v-if="article.coverImageUrl" class="latest-article-cover-image" :alt="article.coverAlt || article.title" :src="assetUrl(article.coverImageUrl)" />
+                      <iconify-icon v-else icon="mdi:file-document-edit-outline" width="48" class="text-orange-300"></iconify-icon>
+                      <span v-if="article.isPinned" class="absolute top-4 right-4 px-2 py-1 bg-orange-500 text-white text-[10px] font-bold rounded-md shadow-sm">置顶</span>
                       <span class="absolute top-4 left-4 px-2 py-1 bg-white/90 backdrop-blur text-[10px] font-bold rounded-md shadow-sm">{{ article.category?.name || '未分类' }}</span>
                     </div>
                     <div class="p-6 flex-1 flex flex-col">
@@ -6624,7 +6785,8 @@ onBeforeUnmount(() => {
               <template v-for="article in searchResultRows" :key="article.id">
                 <article class="search-result-card" @click="openArticle(article.slug)">
                   <div class="search-result-cover">
-                    <iconify-icon icon="mdi:file-document-edit-outline" width="34"></iconify-icon>
+                    <img v-if="article.coverImageUrl" :alt="article.coverAlt || article.title" :src="assetUrl(article.coverImageUrl)" />
+                    <iconify-icon v-else icon="mdi:file-document-edit-outline" width="34"></iconify-icon>
                   </div>
                   <div class="search-result-body">
                     <div class="search-result-meta">
@@ -6695,7 +6857,8 @@ onBeforeUnmount(() => {
               <p>{{ selectedArticle.category?.name || '未分类' }} · 作者 {{ selectedArticleAuthorName }}</p>
             </div>
             <div class="article-hero-icon">
-              <iconify-icon icon="mdi:file-document-outline" width="58"></iconify-icon>
+              <img v-if="selectedArticle.coverImageUrl" :alt="selectedArticle.coverAlt || selectedArticle.title" :src="assetUrl(selectedArticle.coverImageUrl)" />
+              <iconify-icon v-else icon="mdi:file-document-outline" width="58"></iconify-icon>
               <span class="file-icon-fallback hero" aria-hidden="true"></span>
             </div>
           </section>
@@ -6759,10 +6922,13 @@ onBeforeUnmount(() => {
               <iconify-icon icon="mdi:comment-outline" width="32"></iconify-icon>
               <h2>评论 ({{ commentTotalCount }})</h2>
             </div>
-            <form v-if="isAuthenticated && !activeReplyTarget" class="article-comment-form" @submit.prevent="submitComment">
+            <form v-if="selectedArticleAllowsComments && isAuthenticated && !activeReplyTarget" class="article-comment-form" @submit.prevent="submitComment">
               <textarea v-model.trim="commentForm.content" :disabled="postingComment" maxlength="2000" placeholder="写下你的评论..." required />
               <button :disabled="postingComment || !commentForm.content" type="submit">{{ postingComment ? "发布中..." : "发表评论" }}</button>
             </form>
+            <div v-else-if="!selectedArticleAllowsComments" class="article-login-hint">
+              该文章已关闭评论。
+            </div>
             <div v-else-if="!isAuthenticated" class="article-login-hint">
               登录后可以发表评论。
               <button type="button" @click="showLoginForm">去登录</button>
@@ -6791,14 +6957,14 @@ onBeforeUnmount(() => {
                       <iconify-icon :icon="comment.likedByMe ? 'mdi:thumb-up' : 'mdi:thumb-up-outline'" width="16"></iconify-icon>
                       {{ comment.likeCount || 0 }}
                     </button>
-                    <button type="button" @click="startReply(comment)">
+                    <button v-if="selectedArticleAllowsComments" type="button" @click="startReply(comment)">
                       回复
                     </button>
                     <button v-if="isAdmin" type="button" @click="deleteComment(comment)">删除</button>
                   </div>
 
                   <form
-                    v-if="isAuthenticated && isReplyingTo(comment)"
+                    v-if="selectedArticleAllowsComments && isAuthenticated && isReplyingTo(comment)"
                     class="article-comment-form article-reply-form"
                     @submit.prevent="submitComment"
                   >
@@ -6825,11 +6991,11 @@ onBeforeUnmount(() => {
                           {{ reply.content }}
                         </p>
                         <div class="article-comment-actions">
-                          <button type="button" @click="startReply(comment, reply)">回复</button>
+                          <button v-if="selectedArticleAllowsComments" type="button" @click="startReply(comment, reply)">回复</button>
                           <button v-if="isAdmin" type="button" @click="deleteComment(reply)">删除</button>
                         </div>
                         <form
-                          v-if="isAuthenticated && isReplyingTo(comment, reply)"
+                          v-if="selectedArticleAllowsComments && isAuthenticated && isReplyingTo(comment, reply)"
                           class="article-comment-form article-reply-form"
                           @submit.prevent="submitComment"
                         >

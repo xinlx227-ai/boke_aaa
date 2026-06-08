@@ -549,9 +549,19 @@ iconify-icon:not(:defined) + .brand-feather-fallback {
   align-items: center;
   justify-content: center;
   min-height: 112px;
+  overflow: hidden;
   border-radius: 8px;
   background: linear-gradient(135deg, var(--surface-muted), var(--accent-muted));
   color: var(--accent-text);
+}
+
+.search-result-cover img,
+.latest-article-cover-image,
+.article-hero-icon img,
+.article-editor-cover-dropzone img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .search-result-body {
@@ -2516,6 +2526,15 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   background: rgba(255, 255, 255, 0.09);
   color: rgba(255, 255, 255, 0.72);
   opacity: 0.78;
+  overflow: hidden;
+}
+
+.article-hero-icon:has(img) {
+  width: clamp(150px, 18vw, 220px);
+  height: clamp(102px, 12vw, 148px);
+  border-radius: 22px;
+  opacity: 0.95;
+  transform: translateY(-50%) rotate(0deg);
 }
 
 .article-hero-icon iconify-icon:not(:defined) {
@@ -5367,6 +5386,7 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   background: #fffaf5;
   color: #f97316;
   text-align: center;
+  overflow: hidden;
 }
 .article-editor-cover-dropzone:hover {
   border-color: #fb923c;
@@ -5379,6 +5399,32 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 .article-editor-cover-dropzone small {
   color: #94a3b8;
   font-size: 0.72rem;
+}
+.article-editor-cover-dropzone:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+.article-editor-cover-alt {
+  display: grid;
+  gap: 7px;
+}
+.article-editor-cover-alt span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+.article-editor-cover-alt input {
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 0.86rem;
+  padding: 10px 11px;
+}
+.article-editor-cover-alt input:focus {
+  outline: 2px solid rgba(249, 115, 22, 0.18);
+  border-color: #fb923c;
 }
 .article-editor-ratio-group {
   display: grid;
@@ -6088,6 +6134,7 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 .dark .article-editor-settings-head p,
 .dark .article-editor-setting-title span,
 .dark .article-editor-cover-dropzone small,
+.dark .article-editor-cover-alt span,
 .dark .article-editor-preset-tags small,
 .dark .article-editor-seo-fields span,
 .dark .article-editor-toggle-row {
@@ -6116,6 +6163,11 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 }
 .dark .article-editor-cover-dropzone strong {
   color: var(--text-body);
+}
+.dark .article-editor-cover-alt input {
+  border-color: var(--border-soft);
+  background: var(--surface-control);
+  color: var(--text-main);
 }
 .dark .article-editor-ratio-group {
   border-color: var(--border-soft);

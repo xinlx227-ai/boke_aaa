@@ -249,6 +249,12 @@ router.post("/articles/:slug", requireAuth, async (req, res, next) => {
       });
     }
 
+    if (article.allowComments === false) {
+      return res.status(403).json({
+        message: "该文章已关闭评论。"
+      });
+    }
+
     const content = String(req.body?.content || "").trim();
     const rawParentId = req.body?.parentId == null ? null : Number(req.body.parentId);
     const rawReplyToCommentId =
