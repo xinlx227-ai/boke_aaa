@@ -47,6 +47,7 @@ model User {
   commentLikes    CommentLike[]
   editedVersions  ArticleVersion[] @relation("ArticleVersionEditor")
   reviewedArticles Article[]        @relation("ArticleReviewer")
+  moderatedComments Comment[]       @relation("CommentModerator")
   sessions        UserSession[]
   siteVisits      SiteVisit[]
 
@@ -231,10 +232,16 @@ model Comment {
   replyToCommentId Int?     @map("reply_to_comment_id")
   content    String        @db.Text
   status     CommentStatus @default(APPROVED)
+  moderationStatus   String?  @map("moderation_status") @db.VarChar(20)
+  moderationReason   String?  @map("moderation_reason") @db.VarChar(255)
+  moderationKeywords String?  @map("moderation_keywords") @db.VarChar(255)
+  moderatedAt        DateTime? @map("moderated_at")
+  moderatorId        Int?     @map("moderator_id")
   createdAt  DateTime      @default(now()) @map("created_at")
   updatedAt  DateTime      @updatedAt @map("updated_at")
   article    Article       @relation(fields: [articleId], references: [id], onDelete: Cascade)
   likes      CommentLike[]
+  moderator  User?         @relation("CommentModerator", fields: [moderatorId], references: [id], onDelete: SetNull)
   parent     Comment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: SetNull)
   replies    Comment[]     @relation("CommentReplies")
   replyTo    Comment?      @relation("CommentReplyTargets", fields: [replyToCommentId], references: [id], onDelete: SetNull)
@@ -242,6 +249,8 @@ model Comment {
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([articleId, status, createdAt])
+  @@index([moderationStatus, createdAt])
+  @@index([moderatorId])
   @@index([parentId])
   @@index([replyToCommentId])
   @@index([userId])

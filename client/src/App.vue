@@ -78,6 +78,7 @@ const adminTaxonomies = ref({
   tags: []
 });
 const adminManagedArticles = ref([]);
+const adminRiskComments = ref([]);
 const adminOverview = ref({
   summary: {
     userCount: 0,
@@ -191,33 +192,6 @@ const adminTabs = [
     id: "taxonomy",
     label: "分类标签",
     icon: "mdi:tag-outline"
-  }
-];
-
-const adminRiskComments = [
-  {
-    content: "加微信 xxx123 免费领取教程，限时分享内部资料，大家快来。",
-    author: "周八",
-    article: "2025年度总结",
-    createdAt: "2026-05-28 22:15",
-    reason: "疑似广告推广",
-    keywords: ["加微信", "免费领取"]
-  },
-  {
-    content: "这段评论引发了争议话题讨论，建议管理员先确认上下文后再放行。",
-    author: "孙七",
-    article: "Spring Boot 实战教程",
-    createdAt: "2026-05-29 11:30",
-    reason: "敏感话题",
-    keywords: ["争议话题"]
-  },
-  {
-    content: "内容里包含攻击性表达和不适合公开展示的词汇，需要人工复核。",
-    author: "赵六",
-    article: "React 入门指南",
-    createdAt: "2026-05-30 18:05",
-    reason: "敏感词汇",
-    keywords: ["攻击性表达"]
   }
 ];
 
@@ -2010,14 +1984,19 @@ async function loadAdminOverview() {
 async function loadAdminReviews() {
   if (!isAdmin.value) {
     adminReviewArticles.value = [];
+    adminRiskComments.value = [];
     return;
   }
 
   adminReviewLoading.value = true;
 
   try {
-    const payload = await apiFetch("/articles/admin/reviews");
-    adminReviewArticles.value = payload.articles || [];
+    const [reviewPayload, moderationPayload] = await Promise.all([
+      apiFetch("/articles/admin/reviews"),
+      apiFetch("/admin/comments/moderation")
+    ]);
+    adminReviewArticles.value = reviewPayload.articles || [];
+    adminRiskComments.value = moderationPayload.comments || [];
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -3070,6 +3049,22 @@ function setAdminTab(tabId) {
   }
 }
 
+async function loadAdminRiskComments() {
+  if (!isAdmin.value) {
+    adminRiskComments.value = [];
+    return;
+  }
+
+  try {
+    const payload = await apiFetch("/admin/comments/moderation");
+    adminRiskComments.value = payload.comments || [];
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  }
+}
+
 function refreshAdminCurrentTab() {
   if (adminActiveTab.value === "users") {
     loadAdminUsers();
@@ -3611,6 +3606,64 @@ async function rejectAdminReviewArticle() {
     closeAdminRejectDialog();
     closeAdminReviewPreview();
     await Promise.all([loadAdminReviews(), loadAdminArticles()]);
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminReviewActionId.value = null;
+  }
+}
+
+async function ignoreAdminRiskComment(comment) {
+  if (!comment?.id) {
+    return;
+  }
+
+  adminReviewActionId.value = comment.id;
+  setMessage("");
+
+  try {
+    await apiFetch(`/admin/comments/${comment.id}/moderation/ignore`, {
+      method: "PATCH"
+    });
+    setMessage("已忽略这条敏感评论提示。");
+    await loadAdminRiskComments();
+  } catch (error) {
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    adminReviewActionId.value = null;
+  }
+}
+
+async function deleteAdminRiskComment(comment) {
+  if (!comment?.id) {
+    return;
+  }
+
+  const label = comment.type === "reply" ? "这条敏感回复" : "这条敏感评论";
+  const confirmed = window.confirm(`确定删除${label}吗？删除后无法恢复。`);
+
+  if (!confirmed) {
+    return;
+  }
+
+  adminReviewActionId.value = comment.id;
+  setMessage("");
+
+  try {
+    await apiFetch(`/admin/comments/${comment.id}`, {
+      method: "DELETE"
+    });
+    setMessage(comment.type === "reply" ? "敏感回复已删除。" : "敏感评论已删除。");
+    await Promise.all([
+      loadAdminRiskComments(),
+      loadAdminOverview(),
+      selectedArticle.value?.slug ? loadComments(selectedArticle.value.slug) : Promise.resolve(),
+      userPanelActiveTab.value === "social" ? loadUserPanelSocial() : Promise.resolve()
+    ]);
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
       setMessage(error.message);
@@ -5739,8 +5792,8 @@ onBeforeUnmount(() => {
               </div>
               <div class="admin-activity-item">
                 <span class="admin-activity-icon green"><iconify-icon icon="mdi:comment-text-outline" width="18"></iconify-icon></span>
-                <p>敏感评论面板当前展示 <strong>{{ adminRiskComments.length }}</strong> 条待处理样例</p>
-                <time>占位</time>
+                <p>敏感评论队列当前有 <strong>{{ adminRiskComments.length }}</strong> 条待处理</p>
+                <time>实时</time>
               </div>
             </div>
           </section>
@@ -5859,11 +5912,11 @@ onBeforeUnmount(() => {
                     <span v-for="tag in article.tags.slice(0, 3)" :key="tag.id">{{ tag.name }}</span>
                   </div>
                 </div>
-                <div class="admin-review-actions">
+                <div class="admin-review-actions admin-managed-article-actions">
                   <button class="neutral" type="button" @click="openAdminManagedArticlePreview(article)">预览</button>
                   <button
                     v-if="article.status === 'PUBLISHED'"
-                    class="reject"
+                    class="offline"
                     type="button"
                     :disabled="adminArticleActionId === article.id"
                     @click="updateAdminManagedArticleStatus(article, 'ARCHIVED')"
@@ -5933,24 +5986,27 @@ onBeforeUnmount(() => {
               <span>{{ adminRiskComments.length }} 条待处理</span>
             </div>
             <div class="admin-review-list">
-              <article v-for="comment in adminRiskComments" :key="comment.content" class="admin-review-item admin-comment-risk-item">
+              <article v-for="comment in adminRiskComments" :key="comment.id" class="admin-review-item admin-comment-risk-item">
                 <div>
                   <p>{{ comment.content }}</p>
                   <div class="admin-risk-meta">
-                    <strong>评论者：{{ comment.author }}</strong>
-                    <span>文章：{{ comment.article }}</span>
-                    <time>{{ comment.createdAt }}</time>
+                    <strong>{{ comment.type === 'reply' ? '回复者' : '评论者' }}：{{ comment.author?.username || '未知用户' }}</strong>
+                    <span>文章：{{ comment.article?.title || '未知文章' }}</span>
+                    <span v-if="comment.replyToUser">回复 @{{ comment.replyToUser.username }}</span>
+                    <time>{{ formatDate(comment.createdAt) }}</time>
                   </div>
                   <div class="admin-risk-tags">
-                    <span class="reason">{{ comment.reason }}</span>
-                    <span v-for="keyword in comment.keywords" :key="keyword">{{ keyword }}</span>
+                    <span v-for="reason in comment.moderation?.reasons || []" :key="reason" class="reason">{{ reason }}</span>
+                    <span v-for="keyword in comment.moderation?.keywords || []" :key="keyword">{{ keyword }}</span>
                   </div>
                 </div>
                 <div class="admin-review-actions">
-                  <button class="neutral" type="button" @click="showAdminPlaceholder('忽略风险提示')">忽略</button>
-                  <button class="delete" type="button" @click="showAdminPlaceholder('删除敏感评论')">删除</button>
+                  <button class="neutral" type="button" :disabled="adminReviewActionId === comment.id" @click="ignoreAdminRiskComment(comment)">忽略</button>
+                  <button class="delete" type="button" :disabled="adminReviewActionId === comment.id" @click="deleteAdminRiskComment(comment)">删除</button>
                 </div>
               </article>
+              <p v-if="!adminReviewLoading && adminRiskComments.length === 0" class="admin-empty-text">暂无待处理敏感评论。</p>
+              <p v-if="adminReviewLoading" class="admin-empty-text">正在加载敏感评论...</p>
             </div>
           </section>
         </template>

@@ -3,11 +3,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import prismaPkg from "@prisma/client";
 import { Router } from "express";
+import {
+  COMMENT_MODERATION_STATUS,
+  detectCommentModeration,
+  formatCommentModeration
+} from "../lib/commentModeration.js";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/role.js";
 
-const { ArticleStatus, Prisma } = prismaPkg;
+const { ArticleStatus, CommentStatus, Prisma } = prismaPkg;
 const router = Router();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -171,6 +176,45 @@ function formatAdminArticle(article) {
   };
 }
 
+function rowUser(row, prefix) {
+  const id = row[`${prefix}Id`];
+
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id: Number(id),
+    username: row[`${prefix}Username`],
+    email: row[`${prefix}Email`] || null,
+    role: row[`${prefix}Role`]
+  };
+}
+
+function formatAdminModerationComment(row) {
+  const parentId = row.parentId == null ? null : Number(row.parentId);
+
+  return {
+    id: Number(row.id),
+    articleId: Number(row.articleId),
+    parentId,
+    replyToCommentId: row.replyToCommentId == null ? null : Number(row.replyToCommentId),
+    type: parentId ? "reply" : "comment",
+    content: row.content,
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    moderation: formatCommentModeration(row),
+    author: rowUser(row, "author"),
+    replyToUser: rowUser(row, "replyToUser"),
+    article: {
+      id: Number(row.articleId),
+      title: row.articleTitle,
+      slug: row.articleSlug
+    }
+  };
+}
+
 async function recordArticleMetricEvent({ articleId, userId, delta }, tx = prisma) {
   await tx.articleMetricEvent.create({
     data: {
@@ -224,6 +268,241 @@ async function findAdminManagedArticle(articleId) {
     }
   });
 }
+
+async function flagMatchedComments(comments, tx = prisma) {
+  const flagged = [];
+
+  for (const comment of comments) {
+    const moderation = detectCommentModeration(comment.content);
+
+    if (!moderation) {
+      continue;
+    }
+
+    await tx.$executeRaw`
+      UPDATE comments
+      SET moderation_status = ${COMMENT_MODERATION_STATUS.FLAGGED},
+          moderation_reason = ${moderation.reasonText},
+          moderation_keywords = ${moderation.keywordText},
+          moderated_at = NULL,
+          moderator_id = NULL,
+          updated_at = updated_at
+      WHERE id = ${comment.id}
+        AND moderation_status IS NULL
+    `;
+    flagged.push(comment.id);
+  }
+
+  return flagged;
+}
+
+async function backfillSensitiveComments() {
+  const candidates = await prisma.$queryRaw`
+    SELECT id, content
+    FROM comments
+    WHERE status = ${CommentStatus.APPROVED}
+      AND moderation_status IS NULL
+    ORDER BY created_at DESC, id DESC
+    LIMIT 200
+  `;
+
+  return flagMatchedComments(candidates.map((comment) => ({
+    id: Number(comment.id),
+    content: comment.content
+  })));
+}
+
+async function loadFlaggedSensitiveComments() {
+  const rows = await prisma.$queryRaw`
+    SELECT
+      c.id,
+      c.article_id AS articleId,
+      c.user_id AS userId,
+      c.parent_id AS parentId,
+      c.reply_to_comment_id AS replyToCommentId,
+      c.content,
+      c.status,
+      c.moderation_status AS moderationStatus,
+      c.moderation_reason AS moderationReason,
+      c.moderation_keywords AS moderationKeywords,
+      c.moderated_at AS moderatedAt,
+      c.moderator_id AS moderatorId,
+      c.created_at AS createdAt,
+      c.updated_at AS updatedAt,
+      a.title AS articleTitle,
+      a.slug AS articleSlug,
+      author.id AS authorId,
+      author.username AS authorUsername,
+      author.email AS authorEmail,
+      author.role AS authorRole,
+      reply_user.id AS replyToUserId,
+      reply_user.username AS replyToUserUsername,
+      reply_user.email AS replyToUserEmail,
+      reply_user.role AS replyToUserRole
+    FROM comments c
+    INNER JOIN articles a ON a.id = c.article_id
+    INNER JOIN users author ON author.id = c.user_id
+    LEFT JOIN comments reply_target ON reply_target.id = c.reply_to_comment_id
+    LEFT JOIN users reply_user ON reply_user.id = reply_target.user_id
+    WHERE c.status = ${CommentStatus.APPROVED}
+      AND c.moderation_status = ${COMMENT_MODERATION_STATUS.FLAGGED}
+    ORDER BY c.created_at DESC, c.id DESC
+    LIMIT 100
+  `;
+
+  return rows.map(formatAdminModerationComment);
+}
+
+async function deleteCommentWithReplies(commentId, tx = prisma) {
+  const comment = await tx.comment.findUnique({
+    where: {
+      id: commentId
+    }
+  });
+
+  if (!comment) {
+    return null;
+  }
+
+  if (!comment.parentId) {
+    await tx.comment.deleteMany({
+      where: {
+        parentId: comment.id
+      }
+    });
+  }
+
+  await tx.comment.delete({
+    where: {
+      id: comment.id
+    }
+  });
+
+  return comment;
+}
+
+router.get("/comments/moderation", async (_req, res, next) => {
+  try {
+    const backfilledCommentIds = await backfillSensitiveComments();
+    const comments = await loadFlaggedSensitiveComments();
+
+    return res.json({
+      comments,
+      backfilledCount: backfilledCommentIds.length
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/comments/:id/moderation/ignore", async (req, res, next) => {
+  try {
+    const commentId = Number(req.params.id);
+
+    if (!commentId) {
+      return res.status(400).json({
+        message: "评论 ID 无效。"
+      });
+    }
+
+    const comments = await prisma.$queryRaw`
+      SELECT id, status, moderation_status AS moderationStatus
+      FROM comments
+      WHERE id = ${commentId}
+      LIMIT 1
+    `;
+    const comment = comments[0];
+
+    if (!comment) {
+      return res.status(404).json({
+        message: "评论不存在。"
+      });
+    }
+
+    if (comment.status !== CommentStatus.APPROVED) {
+      return res.status(404).json({
+        message: "评论不存在。"
+      });
+    }
+
+    if (comment.moderationStatus !== COMMENT_MODERATION_STATUS.FLAGGED) {
+      return res.status(400).json({
+        message: "这条评论不在敏感评论队列中。"
+      });
+    }
+
+    await prisma.$executeRaw`
+      UPDATE comments
+      SET moderation_status = ${COMMENT_MODERATION_STATUS.IGNORED},
+          moderated_at = CURRENT_TIMESTAMP(3),
+          moderator_id = ${req.auth.userId}
+      WHERE id = ${commentId}
+    `;
+
+    return res.json({
+      ok: true,
+      commentId
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete("/comments/:id", async (req, res, next) => {
+  try {
+    const commentId = Number(req.params.id);
+
+    if (!commentId) {
+      return res.status(400).json({
+        message: "评论 ID 无效。"
+      });
+    }
+
+    const comments = await prisma.$queryRaw`
+      SELECT id, status, moderation_status AS moderationStatus
+      FROM comments
+      WHERE id = ${commentId}
+      LIMIT 1
+    `;
+    const comment = comments[0];
+
+    if (!comment) {
+      return res.status(404).json({
+        message: "评论不存在。"
+      });
+    }
+
+    if (comment.status !== CommentStatus.APPROVED) {
+      return res.status(404).json({
+        message: "评论不存在。"
+      });
+    }
+
+    if (comment.moderationStatus !== COMMENT_MODERATION_STATUS.FLAGGED) {
+      return res.status(400).json({
+        message: "这条评论不在敏感评论队列中。"
+      });
+    }
+
+    const deletedComment = await prisma.$transaction((tx) => deleteCommentWithReplies(commentId, tx));
+
+    if (!deletedComment) {
+      return res.status(404).json({
+        message: "评论不存在。"
+      });
+    }
+
+    return res.json({
+      ok: true,
+      deleted: {
+        commentId,
+        parentId: deletedComment.parentId
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.get("/users", async (req, res, next) => {
   try {

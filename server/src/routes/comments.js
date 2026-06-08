@@ -1,5 +1,6 @@
 import prismaPkg from "@prisma/client";
 import { Router } from "express";
+import { detectCommentModeration } from "../lib/commentModeration.js";
 import { prisma } from "../lib/prisma.js";
 import { attachOptionalAuth, requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/role.js";
@@ -295,6 +296,11 @@ router.post("/articles/:slug", requireAuth, async (req, res, next) => {
       }
     }
 
+    const moderation = detectCommentModeration(content);
+    const moderationStatus = moderation?.status || null;
+    const moderationReason = moderation?.reasonText || null;
+    const moderationKeywords = moderation?.keywordText || null;
+
     const commentId = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`
         INSERT INTO comments (
@@ -304,6 +310,9 @@ router.post("/articles/:slug", requireAuth, async (req, res, next) => {
           reply_to_comment_id,
           content,
           status,
+          moderation_status,
+          moderation_reason,
+          moderation_keywords,
           created_at,
           updated_at
         )
@@ -314,6 +323,9 @@ router.post("/articles/:slug", requireAuth, async (req, res, next) => {
           ${replyTarget?.id || null},
           ${content},
           ${CommentStatus.APPROVED},
+          ${moderationStatus},
+          ${moderationReason},
+          ${moderationKeywords},
           CURRENT_TIMESTAMP(3),
           CURRENT_TIMESTAMP(3)
         )

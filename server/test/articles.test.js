@@ -1187,6 +1187,187 @@ test("article comments can be viewed publicly, created by users, and deleted by 
   });
 });
 
+test("admins can review real sensitive comment queue", async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const admin = await createRegisteredUser({
+    username: `risk_admin_${suffix}`,
+    email: `risk_admin_${suffix}@example.com`,
+    role: "ADMIN"
+  });
+  const user = await createRegisteredUser({
+    username: `risk_user_${suffix}`,
+    email: `risk_user_${suffix}@example.com`
+  });
+  const other = await createRegisteredUser({
+    username: `risk_other_${suffix}`,
+    email: `risk_other_${suffix}@example.com`
+  });
+  const articleSlug = `risk-comment-article-${suffix}`;
+
+  const article = await prisma.article.create({
+    data: {
+      authorId: admin.user.id,
+      title: "Risk Comment Article",
+      slug: articleSlug,
+      contentMarkdown: "# Risk Comment Article",
+      contentHtml: "<h1>Risk Comment Article</h1>",
+      chapterOrder: 1,
+      status: "PUBLISHED"
+    }
+  });
+
+  try {
+    const flaggedComment = await apiRequest(`/comments/articles/${articleSlug}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${user.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        content: "加微信 risk123 免费领取资料"
+      })
+    });
+    assert.equal(flaggedComment.status, 201);
+
+    const flaggedReply = await apiRequest(`/comments/articles/${articleSlug}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${other.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        content: "这个回复包含博彩风险",
+        parentId: flaggedComment.body.comment.id,
+        replyToCommentId: flaggedComment.body.comment.id
+      })
+    });
+    assert.equal(flaggedReply.status, 201);
+
+    const safeComment = await apiRequest(`/comments/articles/${articleSlug}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${other.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        content: "这是一条正常评论"
+      })
+    });
+    assert.equal(safeComment.status, 201);
+
+    const historyCommentId = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        INSERT INTO comments (
+          article_id,
+          user_id,
+          content,
+          status,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          ${article.id},
+          ${user.user.id},
+          ${"历史评论包含 fuck 风险词"},
+          "APPROVED",
+          CURRENT_TIMESTAMP(3),
+          CURRENT_TIMESTAMP(3)
+        )
+      `;
+      const rows = await tx.$queryRaw`SELECT LAST_INSERT_ID() AS id`;
+      return Number(rows[0].id);
+    });
+
+    const reviewQueue = await apiRequest("/admin/comments/moderation", {
+      headers: {
+        Authorization: `Bearer ${admin.token}`
+      }
+    });
+    assert.equal(reviewQueue.status, 200);
+    assert.ok(reviewQueue.body.backfilledCount >= 1);
+
+    const queuedIds = new Set(reviewQueue.body.comments.map((comment) => comment.id));
+    assert.ok(queuedIds.has(flaggedComment.body.comment.id));
+    assert.ok(queuedIds.has(flaggedReply.body.comment.id));
+    assert.ok(queuedIds.has(historyCommentId));
+    assert.equal(queuedIds.has(safeComment.body.comment.id), false);
+
+    const queuedReply = reviewQueue.body.comments.find((comment) => comment.id === flaggedReply.body.comment.id);
+    assert.equal(queuedReply.type, "reply");
+    assert.equal(queuedReply.replyToUser.username, user.user.username);
+    assert.ok(queuedReply.moderation.reasons.includes("违法风险"));
+    assert.ok(queuedReply.moderation.keywords.includes("博彩"));
+
+    const ignoreResult = await apiRequest(`/admin/comments/${flaggedComment.body.comment.id}/moderation/ignore`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${admin.token}`
+      }
+    });
+    assert.equal(ignoreResult.status, 200);
+
+    const afterIgnoreQueue = await apiRequest("/admin/comments/moderation", {
+      headers: {
+        Authorization: `Bearer ${admin.token}`
+      }
+    });
+    assert.equal(afterIgnoreQueue.status, 200);
+    assert.equal(
+      afterIgnoreQueue.body.comments.some((comment) => comment.id === flaggedComment.body.comment.id),
+      false
+    );
+
+    const publicAfterIgnore = await apiRequest(`/comments/articles/${articleSlug}`);
+    assert.equal(publicAfterIgnore.status, 200);
+    assert.ok(
+      publicAfterIgnore.body.comments.some((comment) => comment.id === flaggedComment.body.comment.id)
+    );
+
+    const deleteResult = await apiRequest(`/admin/comments/${flaggedReply.body.comment.id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${admin.token}`
+      }
+    });
+    assert.equal(deleteResult.status, 200);
+
+    const afterDeleteQueue = await apiRequest("/admin/comments/moderation", {
+      headers: {
+        Authorization: `Bearer ${admin.token}`
+      }
+    });
+    assert.equal(afterDeleteQueue.status, 200);
+    assert.equal(
+      afterDeleteQueue.body.comments.some((comment) => comment.id === flaggedReply.body.comment.id),
+      false
+    );
+
+    const publicAfterDelete = await apiRequest(`/comments/articles/${articleSlug}`);
+    assert.equal(publicAfterDelete.status, 200);
+    const parentAfterDelete = publicAfterDelete.body.comments.find(
+      (comment) => comment.id === flaggedComment.body.comment.id
+    );
+    assert.ok(parentAfterDelete);
+    assert.equal(
+      parentAfterDelete.replies.some((reply) => reply.id === flaggedReply.body.comment.id),
+      false
+    );
+  } finally {
+    await prisma.article.delete({
+      where: {
+        id: article.id
+      }
+    });
+    await prisma.user.deleteMany({
+      where: {
+        email: {
+          in: [admin.user.email, user.user.email, other.user.email]
+        }
+      }
+    });
+  }
+});
+
 test("user panel APIs expose favorites, comments, interactions, sessions, password, and bindings", async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
   const panelEmail = `panel_user_${suffix}@example.com`;
