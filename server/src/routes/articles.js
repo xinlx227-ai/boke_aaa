@@ -39,6 +39,9 @@ const SUBMISSION_STATUS = {
 };
 const USER_EDITABLE_STATUSES = new Set([SUBMISSION_STATUS.DRAFT, SUBMISSION_STATUS.REJECTED]);
 const USER_DELETABLE_STATUSES = new Set([SUBMISSION_STATUS.DRAFT, SUBMISSION_STATUS.REJECTED]);
+const USER_DRAFT_IMPORT_MAX_FILES = 20;
+const USER_DRAFT_IMPORT_MAX_FILE_SIZE = 1024 * 1024;
+const USER_DRAFT_IMPORT_MEMORY_FILE_SIZE = 2 * 1024 * 1024;
 
 function slugify(value) {
   return String(value || "")
@@ -139,12 +142,27 @@ function isMarkdownPath(value) {
   return /\.md$/i.test(value);
 }
 
+function isUserDraftImportPath(value) {
+  return /\.(md|txt)$/i.test(value);
+}
+
 function isSupportedImagePath(value) {
   return /\.(png|jpe?g|gif|webp)$/i.test(value);
 }
 
 function stripMarkdownExtension(value) {
   return String(value || "").replace(/\.md$/i, "");
+}
+
+function stripUserDraftImportExtension(value) {
+  return String(value || "").replace(/\.(md|txt)$/i, "");
+}
+
+function titleFromUserDraftImportFile(fileName) {
+  const normalizedName = normalizeZipPath(fileName);
+  const baseName = stripUserDraftImportExtension(path.posix.basename(normalizedName));
+  const title = baseName.trim() || "未命名草稿";
+  return title.slice(0, 200);
 }
 
 function titleFromMarkdownFile(entryName, contentMarkdown) {
@@ -1213,6 +1231,14 @@ const importUpload = multer({
   }
 });
 
+const draftImportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: USER_DRAFT_IMPORT_MAX_FILES,
+    fileSize: USER_DRAFT_IMPORT_MEMORY_FILE_SIZE
+  }
+});
+
 function collectZipEntries(zip) {
   const markdownEntries = [];
   const imageEntries = new Map();
@@ -1620,6 +1646,125 @@ router.post("/preview", requireAuth, async (req, res, next) => {
     return next(error);
   }
 });
+
+router.post(
+  "/drafts/import",
+  requireAuth,
+  (req, res, next) => {
+    if (req.user?.role === "ADMIN") {
+      return res.status(403).json({
+        message: "管理员不使用普通用户投稿批量上传入口。"
+      });
+    }
+
+    return next();
+  },
+  (req, res, next) => {
+    draftImportUpload.array("files", USER_DRAFT_IMPORT_MAX_FILES)(req, res, (error) => {
+      if (!error) {
+        return next();
+      }
+
+      if (error instanceof multer.MulterError) {
+        const message =
+          error.code === "LIMIT_FILE_COUNT"
+            ? `单次最多上传 ${USER_DRAFT_IMPORT_MAX_FILES} 个文件。`
+            : error.code === "LIMIT_FILE_SIZE"
+              ? "单个文件不能超过 1 MB。"
+              : error.message;
+
+        return res.status(400).json({
+          message
+        });
+      }
+
+      return next(error);
+    });
+  },
+  async (req, res, next) => {
+    try {
+      const files = Array.isArray(req.files) ? req.files : [];
+
+      if (files.length === 0) {
+        return res.status(400).json({
+          message: "请选择要导入的 Markdown 或文本文件。"
+        });
+      }
+
+      const imported = [];
+      const failed = [];
+
+      for (const file of files) {
+        const fileName = file.originalname || "未命名文件";
+
+        if (!isUserDraftImportPath(fileName)) {
+          failed.push({
+            file: fileName,
+            reason: "只支持 Markdown (.md) 或文本文件 (.txt)。"
+          });
+          continue;
+        }
+
+        if (file.size > USER_DRAFT_IMPORT_MAX_FILE_SIZE) {
+          failed.push({
+            file: fileName,
+            reason: "单个文件不能超过 1 MB。"
+          });
+          continue;
+        }
+
+        const contentMarkdown = file.buffer.toString("utf8");
+
+        if (!contentMarkdown.trim()) {
+          failed.push({
+            file: fileName,
+            reason: "文件内容为空。"
+          });
+          continue;
+        }
+
+        try {
+          const title = titleFromUserDraftImportFile(fileName);
+          const rendered = renderMarkdownToSafeHtmlWithToc(contentMarkdown);
+          const article = await prisma.article.create({
+            data: {
+              authorId: req.auth.userId,
+              title,
+              slug: await uniqueArticleSlug(title),
+              contentMarkdown,
+              contentHtml: rendered.html,
+              chapterOrder: await nextArticleChapterOrder(),
+              status: ArticleStatus.DRAFT
+            },
+            include: articleInclude()
+          });
+
+          imported.push({
+            file: fileName,
+            article: formatArticle(article)
+          });
+        } catch (error) {
+          failed.push({
+            file: fileName,
+            reason: error.message || "草稿导入失败。"
+          });
+        }
+      }
+
+      return res.status(201).json({
+        imported,
+        failed,
+        summary: {
+          imported: imported.length,
+          failed: failed.length,
+          total: imported.length + failed.length
+        }
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
 
 router.get("/drafts/:id", requireAuth, async (req, res, next) => {
   try {

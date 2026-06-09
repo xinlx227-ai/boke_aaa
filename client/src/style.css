@@ -2897,6 +2897,28 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   color: #6b7280;
 }
 
+.article-comment-scroll-region.is-scrollable {
+  max-height: 1320px;
+  overflow-y: auto;
+  padding-right: 10px;
+  scrollbar-gutter: stable;
+}
+
+.article-comment-scroll-region.is-scrollable::-webkit-scrollbar {
+  width: 10px;
+}
+
+.article-comment-scroll-region.is-scrollable::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: #f1f5f9;
+}
+
+.article-comment-scroll-region.is-scrollable::-webkit-scrollbar-thumb {
+  border: 2px solid #f1f5f9;
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
 .article-comment-list {
   display: grid;
   gap: 32px;
@@ -6069,6 +6091,76 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   cursor: not-allowed;
   opacity: 0.56;
   box-shadow: none;
+}
+
+.article-editor-batch-dialog {
+  width: min(864px, 100%);
+}
+
+.article-editor-batch-dialog .article-editor-upload-body {
+  padding: 48px;
+}
+
+.article-editor-batch-note {
+  margin: -18px 0 22px;
+  border: 1px solid #fed7aa;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.article-editor-batch-dropzone {
+  min-height: 346px;
+}
+
+.article-editor-batch-list {
+  max-height: 316px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.article-editor-batch-list article.is-importing > span {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.article-editor-batch-list article.is-imported > span {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.article-editor-batch-list article.is-failed > span,
+.article-editor-batch-list article.is-invalid > span {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.article-editor-batch-list article.is-failed,
+.article-editor-batch-list article.is-invalid {
+  border-color: #fee2e2;
+}
+
+.article-editor-batch-list article.is-failed small,
+.article-editor-batch-list article.is-invalid small {
+  color: #b91c1c;
+}
+
+.article-editor-batch-list article > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.article-editor-batch-summary {
+  margin-right: auto;
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 800;
 }
 
 .dark .article-editor-shell {

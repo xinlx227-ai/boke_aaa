@@ -43,6 +43,8 @@ let userPanelCategoryChartInstance = null;
 let trafficChartInstance = null;
 const currentUser = ref(null);
 const currentSession = ref(null);
+const ARTICLE_EDITOR_BATCH_IMPORT_MAX_FILES = 20;
+const ARTICLE_EDITOR_BATCH_IMPORT_MAX_FILE_SIZE = 1024 * 1024;
 const publishedArticles = ref([]);
 const adminArticles = ref([]);
 const adminReviewArticles = ref([]);
@@ -156,11 +158,17 @@ const articleEditorMoreMenuOpen = ref(false);
 const articleEditorSeoOpen = ref(false);
 const articleEditorMarkdownRef = ref(null);
 const articleEditorImageInputRef = ref(null);
+const articleEditorBatchUploadInputRef = ref(null);
 const articleEditorCoverInputRef = ref(null);
 const articleEditorImageModalOpen = ref(false);
 const articleEditorImageFiles = ref([]);
 const articleEditorImageSelection = ref({ start: 0, end: 0 });
 const articleEditorImageDragActive = ref(false);
+const articleEditorBatchUploadModalOpen = ref(false);
+const articleEditorBatchUploadFiles = ref([]);
+const articleEditorBatchUploadDragActive = ref(false);
+const articleEditorBatchUploadCompleted = ref(false);
+const articleEditorBatchImporting = ref(false);
 const articleEditorArticleId = ref(null);
 const articleEditorLoaded = ref(false);
 const articleEditorSaving = ref(false);
@@ -2715,11 +2723,6 @@ function openUserPanelNotifications() {
   loadUserPanelTabData("social");
 }
 
-function showArticleEditorPlaceholder(featureName) {
-  articleEditorMoreMenuOpen.value = false;
-  setMessage(`${featureName}后续接入投稿审核流程。`);
-}
-
 function focusArticleEditorTextarea(selectionStart = null, selectionEnd = null) {
   nextTick(() => {
     const textarea = articleEditorMarkdownRef.value;
@@ -2895,6 +2898,260 @@ function formatArticleEditorFileSize(size) {
   }
 
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function articleEditorBatchFileKey(file) {
+  return `${file.name}-${file.size}-${file.lastModified}`;
+}
+
+function isArticleEditorBatchImportFile(file) {
+  return /\.(md|txt)$/i.test(file?.name || "");
+}
+
+function articleEditorBatchFileStatusLabel(item) {
+  if (item.status === "invalid") {
+    return "不可导入";
+  }
+
+  if (item.status === "importing") {
+    return "导入中";
+  }
+
+  if (item.status === "imported") {
+    return "已导入";
+  }
+
+  if (item.status === "failed") {
+    return "导入失败";
+  }
+
+  return "等待导入";
+}
+
+function articleEditorBatchImportSummaryText() {
+  const importedCount = articleEditorBatchUploadFiles.value.filter((item) => item.status === "imported").length;
+  const failedCount = articleEditorBatchUploadFiles.value.filter((item) => ["failed", "invalid"].includes(item.status)).length;
+
+  if (!articleEditorBatchUploadCompleted.value) {
+    return `已选择 ${articleEditorBatchUploadFiles.value.length} / ${ARTICLE_EDITOR_BATCH_IMPORT_MAX_FILES} 个文件`;
+  }
+
+  return `导入完成：成功 ${importedCount} 篇，失败 ${failedCount} 个。`;
+}
+
+function openArticleEditorBatchUploadModal() {
+  articleEditorMoreMenuOpen.value = false;
+  articleEditorBatchUploadModalOpen.value = true;
+  articleEditorBatchUploadCompleted.value = false;
+}
+
+function closeArticleEditorBatchUploadModal() {
+  if (articleEditorBatchImporting.value) {
+    return;
+  }
+
+  articleEditorBatchUploadModalOpen.value = false;
+  articleEditorBatchUploadDragActive.value = false;
+  articleEditorBatchUploadFiles.value = [];
+  articleEditorBatchUploadCompleted.value = false;
+}
+
+function chooseArticleEditorBatchUploadFiles() {
+  if (articleEditorBatchImporting.value) {
+    return;
+  }
+
+  articleEditorBatchUploadInputRef.value?.click();
+}
+
+function addArticleEditorBatchUploadFiles(fileList) {
+  if (articleEditorBatchImporting.value) {
+    return;
+  }
+
+  const incomingFiles = Array.from(fileList || []);
+
+  if (incomingFiles.length === 0) {
+    return;
+  }
+
+  const existingKeys = new Set(articleEditorBatchUploadFiles.value.map((item) => item.key));
+  const nextItems = [...articleEditorBatchUploadFiles.value];
+  let duplicateCount = 0;
+  let overflowCount = 0;
+
+  for (const file of incomingFiles) {
+    const key = articleEditorBatchFileKey(file);
+
+    if (existingKeys.has(key)) {
+      duplicateCount += 1;
+      continue;
+    }
+
+    if (nextItems.length >= ARTICLE_EDITOR_BATCH_IMPORT_MAX_FILES) {
+      overflowCount += 1;
+      continue;
+    }
+
+    let status = "pending";
+    let reason = "";
+
+    if (!isArticleEditorBatchImportFile(file)) {
+      status = "invalid";
+      reason = "只支持 .md 或 .txt 文件。";
+    } else if (file.size > ARTICLE_EDITOR_BATCH_IMPORT_MAX_FILE_SIZE) {
+      status = "invalid";
+      reason = "单个文件不能超过 1 MB。";
+    }
+
+    nextItems.push({
+      key,
+      file,
+      name: file.name,
+      size: file.size,
+      status,
+      reason,
+      article: null
+    });
+    existingKeys.add(key);
+  }
+
+  articleEditorBatchUploadFiles.value = nextItems;
+  articleEditorBatchUploadCompleted.value = false;
+
+  if (duplicateCount > 0) {
+    setMessage(`${duplicateCount} 个重复文件已忽略。`);
+  } else if (overflowCount > 0) {
+    setMessage(`单次最多上传 ${ARTICLE_EDITOR_BATCH_IMPORT_MAX_FILES} 个文件。`);
+  }
+}
+
+function handleArticleEditorBatchUploadInput(event) {
+  addArticleEditorBatchUploadFiles(event.target.files);
+  event.target.value = "";
+}
+
+function handleArticleEditorBatchUploadDrop(event) {
+  articleEditorBatchUploadDragActive.value = false;
+  addArticleEditorBatchUploadFiles(event.dataTransfer?.files);
+}
+
+function removeArticleEditorBatchUploadFile(index) {
+  if (articleEditorBatchImporting.value) {
+    return;
+  }
+
+  articleEditorBatchUploadFiles.value = articleEditorBatchUploadFiles.value.filter((_item, itemIndex) => itemIndex !== index);
+  articleEditorBatchUploadCompleted.value = false;
+}
+
+async function importArticleEditorBatchDrafts() {
+  if (articleEditorBatchImporting.value) {
+    return;
+  }
+
+  if (articleEditorBatchUploadCompleted.value) {
+    closeArticleEditorBatchUploadModal();
+    return;
+  }
+
+  const importableItems = articleEditorBatchUploadFiles.value.filter((item) => item.status === "pending");
+
+  if (importableItems.length === 0) {
+    setMessage("请先选择可导入的 Markdown 或文本文件。");
+    return;
+  }
+
+  articleEditorBatchImporting.value = true;
+  articleEditorBatchUploadCompleted.value = false;
+  articleEditorBatchUploadFiles.value = articleEditorBatchUploadFiles.value.map((item) =>
+    item.status === "pending" ? { ...item, status: "importing", reason: "" } : item
+  );
+
+  try {
+    const formData = new FormData();
+
+    for (const item of importableItems) {
+      formData.append("files", item.file);
+    }
+
+    const payload = await apiFetch("/articles/drafts/import", {
+      method: "POST",
+      body: formData
+    });
+    const importedByFile = new Map((payload.imported || []).map((item) => [item.file, item.article]));
+    const failedByFile = new Map((payload.failed || []).map((item) => [item.file, item.reason || "导入失败。"]));
+    const usedImportedCounts = new Map();
+    const usedFailedCounts = new Map();
+
+    articleEditorBatchUploadFiles.value = articleEditorBatchUploadFiles.value.map((item) => {
+      if (item.status !== "importing") {
+        return item;
+      }
+
+      const importedMatches = (payload.imported || []).filter((result) => result.file === item.name);
+      const importedIndex = usedImportedCounts.get(item.name) || 0;
+
+      if (importedIndex < importedMatches.length) {
+        usedImportedCounts.set(item.name, importedIndex + 1);
+        return {
+          ...item,
+          status: "imported",
+          article: importedMatches[importedIndex].article,
+          reason: ""
+        };
+      }
+
+      const failedMatches = (payload.failed || []).filter((result) => result.file === item.name);
+      const failedIndex = usedFailedCounts.get(item.name) || 0;
+
+      if (failedIndex < failedMatches.length) {
+        usedFailedCounts.set(item.name, failedIndex + 1);
+        return {
+          ...item,
+          status: "failed",
+          reason: failedMatches[failedIndex].reason || "导入失败。"
+        };
+      }
+
+      const importedArticle = importedByFile.get(item.name);
+
+      if (importedArticle) {
+        return {
+          ...item,
+          status: "imported",
+          article: importedArticle,
+          reason: ""
+        };
+      }
+
+      return {
+        ...item,
+        status: "failed",
+        reason: failedByFile.get(item.name) || "导入结果未返回。"
+      };
+    });
+    articleEditorBatchUploadCompleted.value = true;
+    await loadUserArticles();
+    setMessage(articleEditorBatchImportSummaryText());
+  } catch (error) {
+    articleEditorBatchUploadFiles.value = articleEditorBatchUploadFiles.value.map((item) =>
+      item.status === "importing"
+        ? {
+            ...item,
+            status: "failed",
+            reason: error.message === "UNAUTHORIZED" ? "登录已过期。" : error.message
+          }
+        : item
+    );
+
+    if (error.message !== "UNAUTHORIZED") {
+      setMessage(error.message);
+    }
+  } finally {
+    articleEditorBatchImporting.value = false;
+    articleEditorBatchUploadCompleted.value = true;
+  }
 }
 
 function rememberArticleEditorSelection() {
@@ -4984,6 +5241,108 @@ onBeforeUnmount(() => {
   </div>
 
   <div
+    v-if="isArticleEditorView && articleEditorBatchUploadModalOpen"
+    class="article-editor-upload-overlay"
+    role="presentation"
+    @click.self="closeArticleEditorBatchUploadModal"
+  >
+    <section
+      class="article-editor-upload-dialog article-editor-batch-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="article-editor-batch-upload-title"
+    >
+      <header>
+        <h2 id="article-editor-batch-upload-title">批量上传文章</h2>
+        <button
+          type="button"
+          aria-label="关闭批量上传文章"
+          :disabled="articleEditorBatchImporting"
+          @click="closeArticleEditorBatchUploadModal"
+        >
+          <iconify-icon icon="mdi:close" width="32"></iconify-icon>
+        </button>
+      </header>
+      <div class="article-editor-upload-body">
+        <p v-if="articleEditorHasUnsavedChanges" class="article-editor-batch-note">
+          当前编辑内容不会被覆盖，请记得保存当前草稿。
+        </p>
+        <button
+          class="article-editor-upload-dropzone article-editor-batch-dropzone"
+          :class="{ 'is-dragging': articleEditorBatchUploadDragActive }"
+          type="button"
+          :disabled="articleEditorBatchImporting"
+          @click="chooseArticleEditorBatchUploadFiles"
+          @dragenter.prevent="articleEditorBatchUploadDragActive = true"
+          @dragover.prevent="articleEditorBatchUploadDragActive = true"
+          @dragleave.prevent="articleEditorBatchUploadDragActive = false"
+          @drop.prevent="handleArticleEditorBatchUploadDrop"
+        >
+          <span>
+            <iconify-icon icon="mdi:file-upload-outline" width="34"></iconify-icon>
+          </span>
+          <strong>选择或拖拽文件到此处</strong>
+          <small>支持 Markdown (.md) 或 文本文件 (.txt)，单次最多 20 个</small>
+        </button>
+        <input
+          ref="articleEditorBatchUploadInputRef"
+          class="sr-only"
+          type="file"
+          accept=".md,.txt,text/markdown,text/plain"
+          multiple
+          @change="handleArticleEditorBatchUploadInput"
+        />
+        <div v-if="articleEditorBatchUploadFiles.length" class="article-editor-upload-list article-editor-batch-list" aria-label="待导入文章">
+          <article
+            v-for="(item, index) in articleEditorBatchUploadFiles"
+            :key="item.key"
+            :class="`is-${item.status}`"
+          >
+            <iconify-icon icon="mdi:language-markdown-outline" width="24"></iconify-icon>
+            <div>
+              <strong>{{ item.name }}</strong>
+              <small>
+                {{ formatArticleEditorFileSize(item.size) }}
+                <template v-if="item.reason"> · {{ item.reason }}</template>
+              </small>
+            </div>
+            <span>{{ articleEditorBatchFileStatusLabel(item) }}</span>
+            <button
+              type="button"
+              aria-label="移除文章文件"
+              :disabled="articleEditorBatchImporting || articleEditorBatchUploadCompleted"
+              @click="removeArticleEditorBatchUploadFile(index)"
+            >
+              <iconify-icon icon="mdi:close" width="18"></iconify-icon>
+            </button>
+          </article>
+        </div>
+      </div>
+      <footer>
+        <small class="article-editor-batch-summary">{{ articleEditorBatchImportSummaryText() }}</small>
+        <button
+          v-if="!articleEditorBatchUploadCompleted"
+          type="button"
+          :disabled="articleEditorBatchImporting"
+          @click="closeArticleEditorBatchUploadModal"
+        >
+          取消
+        </button>
+        <button
+          class="article-editor-upload-submit"
+          type="button"
+          :disabled="articleEditorBatchImporting || (!articleEditorBatchUploadCompleted && !articleEditorBatchUploadFiles.some((item) => item.status === 'pending'))"
+          @click="importArticleEditorBatchDrafts"
+        >
+          <template v-if="articleEditorBatchImporting">导入中...</template>
+          <template v-else-if="articleEditorBatchUploadCompleted">完成</template>
+          <template v-else>开始导入</template>
+        </button>
+      </footer>
+    </section>
+  </div>
+
+  <div
     v-if="isArticleEditorView && articleEditorPreviewOpen"
     class="article-editor-preview-overlay"
     role="presentation"
@@ -6139,7 +6498,7 @@ onBeforeUnmount(() => {
 
     <footer class="article-editor-footer">
       <div class="article-editor-footer-actions">
-        <button class="article-editor-footer-upload" type="button" @click="showArticleEditorPlaceholder('批量上传')">
+        <button class="article-editor-footer-upload" type="button" @click="openArticleEditorBatchUploadModal">
           <iconify-icon icon="mdi:cloud-upload-outline" width="20"></iconify-icon>
           <span>批量上传</span>
         </button>
@@ -7120,93 +7479,95 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="article-comments-divider"></div>
-            <p v-if="commentsLoading" class="article-muted">正在加载评论...</p>
-            <p v-else-if="comments.length === 0" class="article-muted">还没有评论。</p>
-            <ul v-else class="article-comment-list">
-              <li v-for="comment in comments" :key="comment.id" class="article-comment-item">
-                <span class="article-avatar article-comment-avatar">{{ (comment.user?.username || '访')[0]?.toUpperCase() }}</span>
-                <div class="article-comment-body">
-                  <div class="article-comment-head">
-                    <strong>{{ comment.user?.username || "未知用户" }}</strong>
-                    <time>{{ formatDate(comment.createdAt) }}</time>
-                  </div>
-                  <p>{{ comment.content }}</p>
-                  <div class="article-comment-actions">
-                    <button
-                      :class="{ 'is-active': comment.likedByMe }"
-                      :disabled="isMyComment(comment)"
-                      :title="isMyComment(comment) ? '不能点赞自己的评论' : '点赞评论'"
-                      type="button"
-                      @click="likeComment(comment)"
-                    >
-                      <iconify-icon :icon="comment.likedByMe ? 'mdi:thumb-up' : 'mdi:thumb-up-outline'" width="16"></iconify-icon>
-                      {{ comment.likeCount || 0 }}
-                    </button>
-                    <button v-if="selectedArticleAllowsComments" type="button" @click="startReply(comment)">
-                      回复
-                    </button>
-                    <button v-if="isAdmin" type="button" @click="deleteComment(comment)">删除</button>
-                  </div>
-
-                  <form
-                    v-if="selectedArticleAllowsComments && isAuthenticated && isReplyingTo(comment)"
-                    class="article-comment-form article-reply-form"
-                    @submit.prevent="submitComment"
-                  >
-                    <p>回复 @{{ activeReplyTarget.username }}</p>
-                    <textarea v-model.trim="commentForm.content" :disabled="postingComment" maxlength="2000" placeholder="写下你的回复..." required />
-                    <div class="article-reply-form-actions">
-                      <button type="button" @click="cancelReply">取消</button>
-                      <button :disabled="postingComment || !commentForm.content" type="submit">{{ postingComment ? "发布中..." : "发表回复" }}</button>
+            <div class="article-comment-scroll-region" :class="{ 'is-scrollable': comments.length > 15 }">
+              <p v-if="commentsLoading" class="article-muted">正在加载评论...</p>
+              <p v-else-if="comments.length === 0" class="article-muted">还没有评论。</p>
+              <ul v-else class="article-comment-list">
+                <li v-for="comment in comments" :key="comment.id" class="article-comment-item">
+                  <span class="article-avatar article-comment-avatar">{{ (comment.user?.username || '访')[0]?.toUpperCase() }}</span>
+                  <div class="article-comment-body">
+                    <div class="article-comment-head">
+                      <strong>{{ comment.user?.username || "未知用户" }}</strong>
+                      <time>{{ formatDate(comment.createdAt) }}</time>
                     </div>
-                  </form>
+                    <p>{{ comment.content }}</p>
+                    <div class="article-comment-actions">
+                      <button
+                        :class="{ 'is-active': comment.likedByMe }"
+                        :disabled="isMyComment(comment)"
+                        :title="isMyComment(comment) ? '不能点赞自己的评论' : '点赞评论'"
+                        type="button"
+                        @click="likeComment(comment)"
+                      >
+                        <iconify-icon :icon="comment.likedByMe ? 'mdi:thumb-up' : 'mdi:thumb-up-outline'" width="16"></iconify-icon>
+                        {{ comment.likeCount || 0 }}
+                      </button>
+                      <button v-if="selectedArticleAllowsComments" type="button" @click="startReply(comment)">
+                        回复
+                      </button>
+                      <button v-if="isAdmin" type="button" @click="deleteComment(comment)">删除</button>
+                    </div>
 
-                  <div v-if="comment.replies?.length" class="article-reply-list">
-                    <div v-for="reply in visibleReplies(comment)" :key="reply.id" class="article-reply-item">
-                      <span class="article-avatar article-reply-avatar">{{ (reply.user?.username || '访')[0]?.toUpperCase() }}</span>
-                      <div class="article-reply-body">
-                        <div class="article-comment-head">
-                          <strong>{{ reply.user?.username || "未知用户" }}</strong>
-                          <time>{{ formatDate(reply.createdAt) }}</time>
-                        </div>
-                        <p>
-                          <template v-if="reply.replyToUser && reply.replyToUser.id !== reply.user?.id">
-                            <span>回复 @{{ reply.replyToUser.username }}：</span>
-                          </template>
-                          {{ reply.content }}
-                        </p>
-                        <div class="article-comment-actions">
-                          <button v-if="selectedArticleAllowsComments" type="button" @click="startReply(comment, reply)">回复</button>
-                          <button v-if="isAdmin" type="button" @click="deleteComment(reply)">删除</button>
-                        </div>
-                        <form
-                          v-if="selectedArticleAllowsComments && isAuthenticated && isReplyingTo(comment, reply)"
-                          class="article-comment-form article-reply-form"
-                          @submit.prevent="submitComment"
-                        >
-                          <p>回复 @{{ activeReplyTarget.username }}</p>
-                          <textarea v-model.trim="commentForm.content" :disabled="postingComment" maxlength="2000" placeholder="写下你的回复..." required />
-                          <div class="article-reply-form-actions">
-                            <button type="button" @click="cancelReply">取消</button>
-                            <button :disabled="postingComment || !commentForm.content" type="submit">{{ postingComment ? "发布中..." : "发表回复" }}</button>
-                          </div>
-                        </form>
+                    <form
+                      v-if="selectedArticleAllowsComments && isAuthenticated && isReplyingTo(comment)"
+                      class="article-comment-form article-reply-form"
+                      @submit.prevent="submitComment"
+                    >
+                      <p>回复 @{{ activeReplyTarget.username }}</p>
+                      <textarea v-model.trim="commentForm.content" :disabled="postingComment" maxlength="2000" placeholder="写下你的回复..." required />
+                      <div class="article-reply-form-actions">
+                        <button type="button" @click="cancelReply">取消</button>
+                        <button :disabled="postingComment || !commentForm.content" type="submit">{{ postingComment ? "发布中..." : "发表回复" }}</button>
                       </div>
-                    </div>
-                    <button
-                      v-if="hiddenReplyCount(comment) > 0 || expandedReplyCommentIds.has(comment.id)"
-                      class="article-replies-toggle"
-                      type="button"
-                      @click="toggleReplies(comment)"
-                    >
-                      <template v-if="expandedReplyCommentIds.has(comment.id)">收起回复</template>
-                      <template v-else>展开 {{ hiddenReplyCount(comment) }} 条回复</template>
-                    </button>
-                  </div>
+                    </form>
 
-                </div>
-              </li>
-            </ul>
+                    <div v-if="comment.replies?.length" class="article-reply-list">
+                      <div v-for="reply in visibleReplies(comment)" :key="reply.id" class="article-reply-item">
+                        <span class="article-avatar article-reply-avatar">{{ (reply.user?.username || '访')[0]?.toUpperCase() }}</span>
+                        <div class="article-reply-body">
+                          <div class="article-comment-head">
+                            <strong>{{ reply.user?.username || "未知用户" }}</strong>
+                            <time>{{ formatDate(reply.createdAt) }}</time>
+                          </div>
+                          <p>
+                            <template v-if="reply.replyToUser && reply.replyToUser.id !== reply.user?.id">
+                              <span>回复 @{{ reply.replyToUser.username }}：</span>
+                            </template>
+                            {{ reply.content }}
+                          </p>
+                          <div class="article-comment-actions">
+                            <button v-if="selectedArticleAllowsComments" type="button" @click="startReply(comment, reply)">回复</button>
+                            <button v-if="isAdmin" type="button" @click="deleteComment(reply)">删除</button>
+                          </div>
+                          <form
+                            v-if="selectedArticleAllowsComments && isAuthenticated && isReplyingTo(comment, reply)"
+                            class="article-comment-form article-reply-form"
+                            @submit.prevent="submitComment"
+                          >
+                            <p>回复 @{{ activeReplyTarget.username }}</p>
+                            <textarea v-model.trim="commentForm.content" :disabled="postingComment" maxlength="2000" placeholder="写下你的回复..." required />
+                            <div class="article-reply-form-actions">
+                              <button type="button" @click="cancelReply">取消</button>
+                              <button :disabled="postingComment || !commentForm.content" type="submit">{{ postingComment ? "发布中..." : "发表回复" }}</button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                      <button
+                        v-if="hiddenReplyCount(comment) > 0 || expandedReplyCommentIds.has(comment.id)"
+                        class="article-replies-toggle"
+                        type="button"
+                        @click="toggleReplies(comment)"
+                      >
+                        <template v-if="expandedReplyCommentIds.has(comment.id)">收起回复</template>
+                        <template v-else>展开 {{ hiddenReplyCount(comment) }} 条回复</template>
+                      </button>
+                    </div>
+
+                  </div>
+                </li>
+              </ul>
+            </div>
           </section>
         </div>
 

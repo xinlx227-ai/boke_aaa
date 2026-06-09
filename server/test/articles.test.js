@@ -473,6 +473,102 @@ test("regular users can upload draft editor images while admins are blocked from
   });
 });
 
+test("regular users can import markdown and text files as separate drafts", async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const userAccount = await createRegisteredUser({
+    username: `draft_import_${suffix}`,
+    email: `draft_import_${suffix}@example.com`
+  });
+  const adminAccount = await createRegisteredUser({
+    username: `draft_import_admin_${suffix}`,
+    email: `draft_import_admin_${suffix}@example.com`,
+    role: "ADMIN"
+  });
+  const form = new FormData();
+
+  form.append("files", new Blob(["# React Draft\n\nFirst body."], { type: "text/markdown" }), "React Draft.md");
+  form.append("files", new Blob(["Plain text body."], { type: "text/plain" }), "Plain Notes.txt");
+  form.append("files", new Blob(["# Duplicate one"], { type: "text/markdown" }), "Duplicate.md");
+  form.append("files", new Blob(["# Duplicate two"], { type: "text/markdown" }), "Duplicate.md");
+  form.append("files", new Blob([""], { type: "text/markdown" }), "Empty.md");
+  form.append("files", new Blob(["not supported"], { type: "application/json" }), "payload.json");
+  form.append("files", new Blob(["x".repeat(1024 * 1024 + 1)], { type: "text/plain" }), "Oversized.txt");
+
+  const importResult = await apiRequest("/articles/drafts/import", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`
+    },
+    body: form
+  });
+
+  assert.equal(importResult.status, 201);
+  assert.equal(importResult.body.summary.imported, 4);
+  assert.equal(importResult.body.summary.failed, 3);
+  assert.deepEqual(
+    importResult.body.imported.map((item) => item.article.title),
+    ["React Draft", "Plain Notes", "Duplicate", "Duplicate"]
+  );
+  assert.equal(new Set(importResult.body.imported.map((item) => item.article.slug)).size, 4);
+  assert.ok(importResult.body.imported.every((item) => item.article.status === "DRAFT"));
+  assert.ok(importResult.body.imported.every((item) => item.article.author.id === userAccount.user.id));
+  assert.match(importResult.body.imported[0].article.contentHtml, /<h1 id="react-draft">React Draft<\/h1>/);
+  assert.match(importResult.body.imported[1].article.contentMarkdown, /Plain text body/);
+  assert.ok(importResult.body.failed.some((item) => item.file === "Empty.md" && /为空/.test(item.reason)));
+  assert.ok(importResult.body.failed.some((item) => item.file === "payload.json" && /只支持/.test(item.reason)));
+  assert.ok(importResult.body.failed.some((item) => item.file === "Oversized.txt" && /1 MB/.test(item.reason)));
+
+  const importedIds = importResult.body.imported.map((item) => item.article.id);
+  const userArticlesResult = await apiRequest("/articles/me", {
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`
+    }
+  });
+  assert.equal(userArticlesResult.status, 200);
+  assert.ok(importedIds.every((id) => userArticlesResult.body.articles.some((article) => article.id === id)));
+
+  const adminForm = new FormData();
+  adminForm.append("files", new Blob(["# Admin"], { type: "text/markdown" }), "Admin.md");
+  const adminImportResult = await apiRequest("/articles/drafts/import", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${adminAccount.token}`
+    },
+    body: adminForm
+  });
+  assert.equal(adminImportResult.status, 403);
+
+  const tooManyFilesForm = new FormData();
+  for (let index = 0; index < 21; index += 1) {
+    tooManyFilesForm.append("files", new Blob([`File ${index}`], { type: "text/plain" }), `file-${index}.txt`);
+  }
+
+  const tooManyFilesResult = await apiRequest("/articles/drafts/import", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userAccount.token}`
+    },
+    body: tooManyFilesForm
+  });
+  assert.equal(tooManyFilesResult.status, 400);
+  assert.match(tooManyFilesResult.body.message, /20/);
+
+  await prisma.article.deleteMany({
+    where: {
+      id: {
+        in: importedIds
+      }
+    }
+  });
+  await prisma.user.deleteMany({
+    where: {
+      email: {
+        in: [`draft_import_${suffix}@example.com`, `draft_import_admin_${suffix}@example.com`]
+      }
+    }
+  });
+});
+
 test("regular users can save drafts, submit for review, withdraw, and delete editable articles", async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
   const userAccount = await createRegisteredUser({
