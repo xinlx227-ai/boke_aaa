@@ -705,7 +705,8 @@ const latestPublishedArticles = computed(() => {
   const startIndex = (latestPage.value - 1) * latestPageSize;
   return sortedPublishedArticles.value.slice(startIndex, startIndex + latestPageSize);
 });
-const featuredArticle = computed(() => sortedPublishedArticles.value[0] || null);
+const latestArticle = computed(() => sortedPublishedArticles.value[0] || null);
+const latestArticleHeroImageUrl = computed(() => articlePreviewImageUrl(latestArticle.value));
 const searchResultRows = computed(() =>
   searchResults.value.map((article) => ({
     ...article,
@@ -758,6 +759,36 @@ function assetUrl(url) {
   }
 
   return value.startsWith("/uploads/") ? `${ASSET_BASE_URL}${value}` : value;
+}
+
+function firstMarkdownImageUrl(markdown) {
+  const match = String(markdown || "").match(/!\[[^\]]*]\(\s*<?([^)\s>]+)[^)]*\)/);
+  return match?.[1]?.trim() || "";
+}
+
+function firstHtmlImageUrl(html) {
+  const match = String(html || "").match(/<img\b[^>]*\bsrc=["']([^"']+)["']/i);
+  return match?.[1]?.trim() || "";
+}
+
+function articlePreviewImageUrl(article) {
+  const coverImageUrl = String(article?.coverImageUrl || "").trim();
+
+  if (coverImageUrl) {
+    return coverImageUrl;
+  }
+
+  const contentImageUrl = firstMarkdownImageUrl(article?.contentMarkdown) || firstHtmlImageUrl(article?.contentHtml);
+
+  if (contentImageUrl) {
+    return contentImageUrl;
+  }
+
+  const firstImage = Array.isArray(article?.images)
+    ? article.images.find((image) => String(image?.imageUrl || "").trim())
+    : null;
+
+  return String(firstImage?.imageUrl || "").trim();
 }
 
 function tagTextToArray(value) {
@@ -6723,23 +6754,33 @@ onBeforeUnmount(() => {
 
       <!-- ========== PUBLIC 视图 (新 UI) ========== -->
       <template v-if="view === 'public'">
-        <!-- Hero 精选文章 -->
-        <section v-if="featuredArticle" class="relative w-full h-[400px] rounded-3xl overflow-hidden group cursor-pointer shadow-xl" @click="openArticle(featuredArticle.slug)">
-          <div class="absolute inset-0 bg-gradient-to-br from-orange-500/20 via-slate-900/50 to-slate-900"></div>
-          <div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent"></div>
+        <!-- Hero 最新文章 -->
+        <section v-if="latestArticle" class="relative w-full h-[400px] rounded-3xl overflow-hidden group cursor-pointer shadow-xl" @click="openArticle(latestArticle.slug)">
+          <img
+            v-if="latestArticleHeroImageUrl"
+            class="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            :alt="latestArticle.coverAlt || latestArticle.title"
+            :src="assetUrl(latestArticleHeroImageUrl)"
+          />
+          <div
+            v-else
+            class="absolute inset-0 bg-gradient-to-br from-orange-500/20 via-slate-900/50 to-slate-900"
+          ></div>
+          <div class="absolute inset-0 bg-slate-950/45"></div>
+          <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/45 to-transparent"></div>
           <div class="absolute bottom-0 left-0 p-8 md:p-12 w-full md:w-3/4">
             <div class="flex items-center gap-3 mb-4">
-              <span class="px-3 py-1 bg-orange-500 text-white text-xs font-bold rounded-full">精选推荐</span>
+              <span class="px-3 py-1 bg-orange-500 text-white text-xs font-bold rounded-full">最新文章</span>
               <span class="text-slate-300 text-xs flex items-center gap-1">
                 <iconify-icon icon="mdi:calendar"></iconify-icon>
-                {{ articleDisplayDate(featuredArticle) }}
+                {{ articleDisplayDate(latestArticle) }}
               </span>
             </div>
             <h1 class="text-3xl md:text-4xl font-bold text-white mb-4 group-hover:text-orange-400 transition-colors leading-tight">
-              {{ featuredArticle.title }}
+              {{ latestArticle.title }}
             </h1>
             <p class="text-slate-300 text-sm md:text-base line-clamp-2 mb-6 opacity-90">
-              {{ featuredArticle.category?.name || '未分类' }} · 作者 {{ featuredArticle.author?.username || '未知' }}
+              {{ latestArticle.category?.name || '未分类' }} · 作者 {{ latestArticle.author?.username || '未知' }}
             </p>
             <button class="flex items-center gap-2 text-white font-bold group/btn" type="button">
               继续阅读 <iconify-icon class="group-hover/btn:translate-x-2 transition-transform" icon="mdi:arrow-right"></iconify-icon>
@@ -6991,7 +7032,7 @@ onBeforeUnmount(() => {
           <section class="article-hero-card">
             <div class="article-hero-content">
               <div class="article-hero-meta">
-                <span class="article-badge">精选推荐</span>
+                <span class="article-badge">文章详情</span>
                 <span class="article-hero-date">
                   <iconify-icon icon="mdi:calendar"></iconify-icon>
                   {{ formatDate(selectedArticle.createdAt) }}
