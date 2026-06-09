@@ -430,6 +430,38 @@ iconify-icon:not(:defined) + .brand-feather-fallback {
   max-height: 3.75rem;
 }
 
+@media (min-width: 1024px) {
+  .public-home-shell {
+    align-items: stretch;
+  }
+
+  .public-home-left-sidebar,
+  .public-home-main {
+    min-height: 0;
+  }
+}
+
+@media (min-width: 1280px) {
+  .public-home-main {
+    display: grid;
+    grid-template-rows: 400px minmax(0, 1fr);
+  }
+
+  .public-home-content-row {
+    align-items: stretch;
+    min-height: 0;
+  }
+
+  .public-home-right-sidebar {
+    align-self: stretch;
+    min-height: 0;
+  }
+
+  .public-home-popular-card {
+    flex: 0 0 auto;
+  }
+}
+
 .search-page-layout {
   display: block;
 }

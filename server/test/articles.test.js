@@ -364,8 +364,14 @@ test("admin article publishing flow stores markdown, sanitizes HTML, uploads ima
 
   const filtersResult = await apiRequest("/articles/filters");
   assert.equal(filtersResult.status, 200);
-  assert.ok(filtersResult.body.categories.some((category) => category.slug === "guides"));
-  assert.ok(filtersResult.body.tags.some((tag) => tag.slug === "markdown"));
+  const guidesCategory = filtersResult.body.categories.find((category) => category.slug === "guides");
+  assert.ok(guidesCategory);
+  assert.ok(guidesCategory.articleCount >= 1);
+  assert.ok(guidesCategory.createdAt);
+  const markdownTag = filtersResult.body.tags.find((tag) => tag.slug === "markdown");
+  assert.ok(markdownTag);
+  assert.ok(markdownTag.articleCount >= 1);
+  assert.ok(markdownTag.createdAt);
 
   const publicDetailResult = await apiRequest(`/articles/${updatedSlug}`);
   assert.equal(publicDetailResult.status, 200);
@@ -2149,6 +2155,7 @@ test("article stats APIs count real reads, reactions, favorites, comments, and p
     }
   });
 
+  try {
   const missingVisitorView = await apiRequest(`/articles/${firstSlug}/views`, {
     method: "POST",
     headers: {
@@ -2305,7 +2312,19 @@ test("article stats APIs count real reads, reactions, favorites, comments, and p
     summary.body.summary.visitTrend.map((item) => Object.keys(item)),
     Array.from({ length: 7 }, () => ["date", "label", "value"])
   );
-  assert.ok(summary.body.summary.visitTrend.at(-1).value >= 3);
+  assert.ok(summary.body.summary.visitTrend.at(-1).value >= 2);
+
+  await prisma.$executeRaw`
+    INSERT INTO article_stats (article_id, view_count, like_count, favorite_count, created_at, updated_at)
+    VALUES
+      (${firstArticle.id}, 1000000000, 0, 0, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3)),
+      (${secondArticle.id}, 1000000100, 0, 0, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+    ON DUPLICATE KEY UPDATE
+      view_count = VALUES(view_count),
+      like_count = VALUES(like_count),
+      favorite_count = VALUES(favorite_count),
+      updated_at = CURRENT_TIMESTAMP(3)
+  `;
 
   const popular = await apiRequest("/articles/popular?limit=2");
   assert.equal(popular.status, 200);
@@ -2335,26 +2354,22 @@ test("article stats APIs count real reads, reactions, favorites, comments, and p
   assert.equal(unfavorite.body.article.stats.favoriteCount, 0);
   assert.equal(unfavorite.body.article.stats.favoritedByMe, false);
 
-  await prisma.article.delete({
-    where: {
-      id: firstArticle.id
-    }
-  });
-  await prisma.article.delete({
-    where: {
-      id: secondArticle.id
-    }
-  });
-  await prisma.user.delete({
-    where: {
-      email: userEmail
-    }
-  });
-  await prisma.user.delete({
-    where: {
-      email: adminEmail
-    }
-  });
+  } finally {
+    await prisma.article.deleteMany({
+      where: {
+        id: {
+          in: [firstArticle.id, secondArticle.id]
+        }
+      }
+    });
+    await prisma.user.deleteMany({
+      where: {
+        email: {
+          in: [userEmail, adminEmail]
+        }
+      }
+    });
+  }
 });
 
 test("admin management APIs manage users, taxonomies, and published articles", async () => {

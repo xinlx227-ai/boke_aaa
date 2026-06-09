@@ -638,6 +638,32 @@ const adminTagStats = computed(() =>
     color: ADMIN_CATEGORY_COLORS[index % ADMIN_CATEGORY_COLORS.length]
   }))
 );
+const footerCategories = computed(() =>
+  [...categories.value]
+    .sort((firstCategory, secondCategory) => {
+      const countDiff = (secondCategory.articleCount || 0) - (firstCategory.articleCount || 0);
+
+      if (countDiff !== 0) {
+        return countDiff;
+      }
+
+      return new Date(firstCategory.createdAt || 0).getTime() - new Date(secondCategory.createdAt || 0).getTime();
+    })
+    .slice(0, 5)
+);
+const hotTags = computed(() =>
+  [...tags.value]
+    .sort((firstTag, secondTag) => {
+      const countDiff = (secondTag.articleCount || 0) - (firstTag.articleCount || 0);
+
+      if (countDiff !== 0) {
+        return countDiff;
+      }
+
+      return new Date(firstTag.createdAt || 0).getTime() - new Date(secondTag.createdAt || 0).getTime();
+    })
+    .slice(0, 9)
+);
 const adminPageTitle = computed(() => adminTabs.find((tab) => tab.id === adminActiveTab.value)?.label || "站点概览");
 const adminPageSubtitle = computed(() => {
   const subtitles = {
@@ -1539,7 +1565,7 @@ async function loadSiteSummary() {
 
 async function loadPopularArticles() {
   try {
-    const payload = await apiFetch("/articles/popular?limit=3");
+    const payload = await apiFetch("/articles/popular?limit=5");
     popularArticles.value = payload.articles;
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
@@ -6491,12 +6517,12 @@ onBeforeUnmount(() => {
   <main
     v-else-if="!isUserPanelView && !isArticleEditorView"
     class="max-w-[1440px] mx-auto px-6 py-8 grid grid-cols-1 gap-8 items-start"
-    :class="view === 'article' ? 'article-detail-shell' : view === 'search' ? 'search-page-layout' : 'lg:grid-cols-[320px_minmax(0,1fr)]'"
+    :class="view === 'article' ? 'article-detail-shell' : view === 'search' ? 'search-page-layout' : view === 'public' ? 'public-home-shell lg:grid-cols-[320px_minmax(0,1fr)]' : 'lg:grid-cols-[320px_minmax(0,1fr)]'"
   >
     <!-- ===== 左侧操作区 (Sidebar) ===== -->
     <aside
       v-if="view === 'public' || (view === 'article' && selectedArticle)"
-      :class="view === 'article' ? ['article-left-sidebar scrollbar-hidden', { 'is-open': mobileMenuOpen }] : 'w-full flex flex-col gap-6 lg:self-stretch'"
+      :class="view === 'article' ? ['article-left-sidebar scrollbar-hidden', { 'is-open': mobileMenuOpen }] : 'public-home-left-sidebar w-full flex flex-col gap-6 lg:self-stretch'"
     >
       <!-- 登录/注册卡片 -->
       <section v-if="view !== 'article'" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 card-hover">
@@ -6690,7 +6716,10 @@ onBeforeUnmount(() => {
     </aside>
 
     <!-- ===== 右侧内容区 ===== -->
-    <div v-if="view !== 'article'" class="flex-1 flex flex-col gap-8 min-w-0">
+    <div
+      v-if="view !== 'article'"
+      :class="view === 'public' ? 'public-home-main flex-1 flex flex-col gap-8 min-w-0' : 'flex-1 flex flex-col gap-8 min-w-0'"
+    >
 
       <!-- ========== PUBLIC 视图 (新 UI) ========== -->
       <template v-if="view === 'public'">
@@ -6726,7 +6755,7 @@ onBeforeUnmount(() => {
         </section>
 
         <!-- 文章流与侧边栏容器 -->
-        <div class="flex flex-col xl:flex-row gap-8">
+        <div class="public-home-content-row flex flex-col xl:flex-row gap-8">
           <!-- 文章列表 Grid -->
           <div class="flex-1 space-y-8">
             <div class="flex items-center justify-between">
@@ -6794,17 +6823,17 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- 内容区右侧小边栏 -->
-          <aside class="w-full xl:w-[280px] flex flex-col gap-8">
+          <aside class="public-home-right-sidebar w-full xl:w-[280px] flex flex-col gap-8">
             <!-- 标签云 -->
             <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
               <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <iconify-icon class="text-orange-500" icon="mdi:tag-multiple"></iconify-icon>
                 热门标签
               </h3>
-              <div v-if="tags.length === 0" class="text-xs text-slate-400 text-center py-4">暂无标签</div>
+              <div v-if="hotTags.length === 0" class="text-xs text-slate-400 text-center py-4">暂无标签</div>
               <div v-else class="flex flex-wrap gap-2">
                 <span
-                  v-for="tag in tags"
+                  v-for="tag in hotTags"
                   :key="tag.id"
                   class="px-3 py-1.5 bg-slate-50 text-slate-600 text-xs rounded-lg hover:bg-orange-500 hover:text-white cursor-pointer transition-all"
                   @click="filters.tag = tag.slug; applyFilters()"
@@ -6832,13 +6861,13 @@ onBeforeUnmount(() => {
             </section>
 
             <!-- 热门排行 -->
-            <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-[400px] lg:h-[440px] flex flex-col overflow-hidden">
+            <section class="public-home-popular-card bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-[360px] flex flex-col overflow-hidden">
               <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <iconify-icon class="text-orange-500" icon="mdi:fire"></iconify-icon>
                 最受欢迎
               </h3>
               <p v-if="popularArticles.length === 0" class="text-xs text-slate-400 text-center py-8">暂无热门文章</p>
-              <div v-else class="space-y-4">
+              <div v-else class="space-y-3">
                 <div
                   v-for="(item, idx) in popularArticles"
                   :key="item.id"
@@ -6847,7 +6876,7 @@ onBeforeUnmount(() => {
                 >
                   <span class="text-xl font-black text-slate-100 group-hover:text-orange-100 transition-colors">{{ String(idx + 1).padStart(2, '0') }}</span>
                   <div>
-                    <h4 class="text-xs font-bold text-slate-700 line-clamp-2 group-hover:text-orange-500 transition-all">{{ item.title }}</h4>
+                    <h4 class="text-xs font-bold text-slate-700 line-clamp-1 group-hover:text-orange-500 transition-all">{{ item.title }}</h4>
                     <p class="text-[10px] text-slate-400 mt-1">{{ formatCompactNumber(item.stats?.viewCount || 0) }} 阅读</p>
                   </div>
                 </div>
@@ -7185,10 +7214,10 @@ onBeforeUnmount(() => {
         <div>
           <h4 class="font-bold text-slate-900 mb-6">分类目录</h4>
           <ul class="space-y-4 text-sm text-slate-500">
-            <li v-for="cat in categories" :key="cat.id">
+            <li v-for="cat in footerCategories" :key="cat.id">
               <a class="hover:text-orange-500 transition-colors cursor-pointer" @click="filters.category = cat.slug; applyFilters()">{{ cat.name }}</a>
             </li>
-            <li v-if="categories.length === 0"><span class="text-slate-300">暂无分类</span></li>
+            <li v-if="footerCategories.length === 0"><span class="text-slate-300">暂无分类</span></li>
           </ul>
         </div>
         <div>

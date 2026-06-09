@@ -1491,29 +1491,58 @@ router.get("/popular", attachOptionalAuth, async (req, res, next) => {
 
 router.get("/filters", async (_req, res, next) => {
   try {
-    const [categories, tags] = await Promise.all([
+    const [categories, categoryUsage, tags, tagUsage] = await Promise.all([
       prisma.category.findMany({
         orderBy: {
           name: "asc"
+        }
+      }),
+      prisma.article.groupBy({
+        by: ["categoryId"],
+        where: {
+          status: ArticleStatus.PUBLISHED,
+          categoryId: {
+            not: null
+          }
+        },
+        _count: {
+          _all: true
         }
       }),
       prisma.tag.findMany({
         orderBy: {
           name: "asc"
         }
+      }),
+      prisma.articleTag.groupBy({
+        by: ["tagId"],
+        where: {
+          article: {
+            status: ArticleStatus.PUBLISHED
+          }
+        },
+        _count: {
+          _all: true
+        }
       })
     ]);
+    const categoryUsageById = new Map(categoryUsage.map((item) => [item.categoryId, item._count._all]));
+    const tagUsageById = new Map(tagUsage.map((item) => [item.tagId, item._count._all]));
 
     return res.json({
       categories: categories.map((category) => ({
         id: category.id,
         name: category.name,
-        slug: category.slug
+        slug: category.slug,
+        articleCount: categoryUsageById.get(category.id) || 0,
+        createdAt: category.createdAt
       })),
       tags: tags.map((tag) => ({
         id: tag.id,
         name: tag.name,
-        slug: tag.slug
+        slug: tag.slug,
+        articleCount: tagUsageById.get(tag.id) || 0,
+        createdAt: tag.createdAt
       }))
     });
   } catch (error) {

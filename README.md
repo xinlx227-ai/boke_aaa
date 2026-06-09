@@ -360,7 +360,7 @@ npm test --workspace server
 
 - `GET /api/articles`
 - `GET /api/articles/filters`
-- `GET /api/articles/popular?limit=3`
+- `GET /api/articles/popular?limit=5`
 - `GET /api/articles/stats/summary`
 - `GET /api/articles/:slug`
 - `POST /api/articles/:slug/views`
