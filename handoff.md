@@ -1,5 +1,52 @@
 # Handoff: codex-project-boke 当前状态
 
+## 2026-06-09 最新快照：公开首页侧栏列表收束
+
+- 当前工作分支：`main`
+- 最新本地功能提交：`ed39762 Polish public home sidebar lists`
+- 当前同步状态：`main` 本地领先 `origin/main` 1 个提交，尚未推送。
+- 本轮完成公开首页右侧栏和页脚列表优化：热门标签最多 9 个，最受欢迎最多 5 篇且固定为较短卡片高度，底部分类目录最多 5 个。
+
+### 本轮已完成
+
+- “最受欢迎”请求从 `/articles/popular?limit=3` 改为 `/articles/popular?limit=5`，仍沿用热度分规则：阅读 * 1、点赞 * 5、收藏 * 8、评论 * 3；同分时后端按文章时间和 ID 新的排前。
+- 公开首页“最受欢迎”卡片从可被右侧栏拉伸改为固定 `h-[360px]`，列表间距收紧，标题单行截断，以容纳最多 5 条。
+- `GET /api/articles/filters` 为分类和标签返回 `articleCount` 与 `createdAt`。统计范围为已发布文章：分类统计 `PUBLISHED` 文章的 `categoryId`，标签统计已发布文章的 `article_tags` 关联。
+- 公开首页“热门标签”最多展示 9 个，按已发布文章使用次数降序排列；使用次数相同则按标签创建时间从早到晚排列。
+- 公开页脚“分类目录”最多展示 5 个，按已发布文章使用次数降序排列；使用次数相同则按分类创建时间从早到晚排列。
+- 补充后端测试，确认公开筛选接口返回分类/标签使用数和创建时间；同时修稳热门排行测试，避免共享测试库残留数据影响排序断言。
+
+### 关键改动文件
+
+- `client/src/App.vue`
+- `client/src/style.css`
+- `server/src/routes/articles.js`
+- `server/test/articles.test.js`
+- `README.md`
+
+### 验证
+
+已通过：
+
+```bash
+npm test --workspace server
+npm run build
+node --env-file=.env.test ..\node_modules\prisma\build\index.js validate --schema prisma\schema.prisma
+git diff --check
+git diff --check -- README.md handoff.md
+```
+
+- 后端测试 13/13 通过。
+- 前端构建通过。
+- Prisma 校验在默认沙箱先遇到已知 `EPERM: operation not permitted, lstat 'C:\Users\27871'`，按既有流程在真实工作区重跑后通过。
+- `git diff --check` 仅输出 LF/CRLF 提示，无空白错误。
+
+### 下一步建议
+
+- 如需把本轮结果同步到远端，推送 `main` 到 `origin/main`。
+- 后续若继续优化公开首页，建议先从 `main` 当前状态创建新分支；视觉验收可由用户自行查看，除非明确要求 Agent 打开浏览器截图。
+- 若继续调整列表数量或排序规则，优先复用 `articleCount + createdAt` 的公开筛选接口字段，避免新增并行接口。
+
 ## 2026-06-08 最新快照：公开搜索、文章元数据闭环与审核待办入口
 
 - 当前工作分支：`main`

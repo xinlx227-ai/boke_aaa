@@ -7,14 +7,14 @@
 | 项目 | 状态 |
 | --- | --- |
 | 当前工作分支 | `main` |
-| 最新 UI 工作 | 新增公开搜索页 `#search?q=...`；顶部、文章详情和移动端搜索统一进入搜索结果页；公开首页、搜索结果和文章详情页支持文章封面展示；文章编辑器的封面、SEO 和高级设置从 UI 占位改为真实表单 |
-| 最新功能工作 | 阶段一完成公开搜索页与真实 7 日访问趋势；阶段二完成文章元数据闭环：`coverImageUrl`、`coverAlt`、`coverRatio`、`seoTitle`、`seoKeywords`、`seoDescription`、`allowComments`、`isPinned` 从草稿保存、提交审核、管理员发布到公开阅读全链路生效；管理员审核待办通知铃铛已作为内容审核入口接入 |
-| 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎 |
+| 最新 UI 工作 | 公开首页右侧栏完成收束：热门标签最多 9 个，最受欢迎固定高度并显示最多 5 篇，底部分类目录显示最多 5 个高频分类；公开搜索页、文章封面展示和编辑器元数据表单仍为最新完整链路 |
+| 最新功能工作 | 公开筛选接口为分类和标签补充已发布文章使用数与创建时间；首页热门标签、底部分类目录按使用量排序，同数按创建时间先后排序；最受欢迎排行最多取 5 篇并沿用热度分规则 |
+| 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎，侧栏列表数量和高度已收束 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes`、`article_metric_events`、`user_notification_reads`、`security_audit_events`，以及 `users.is_disabled`、评论 `moderation_*` 审核字段和首页 `summary.visitTrend` 真实访问趋势 |
-| 最近验证 | 2026-06-08：`codex/public-search-editor-plan` 合并前后已执行 `npm test --workspace server`、`npm run build`、`npx prisma validate --schema prisma/schema.prisma`、`git diff --check`；后端测试 13/13 通过，Prisma 校验在真实工作区通过 |
-| 合并状态 | `codex/admin-review-notification-bell` 与 `codex/public-search-editor-plan` 均已合并并推送；`main` 与 `origin/main` 同步于 `cc361a1` |
+| 最近验证 | 2026-06-09：`ed39762` 提交前已执行 `npm test --workspace server`、`npm run build`、`node --env-file=.env.test ..\node_modules\prisma\build\index.js validate --schema prisma\schema.prisma`、`git diff --check`；后端测试 13/13 通过，Prisma 校验在真实工作区通过 |
+| 合并状态 | `main` 本地包含 `ed39762 Polish public home sidebar lists`，当前领先 `origin/main` 1 个提交，尚未推送 |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
@@ -27,9 +27,9 @@
 - 最新发布分页采用稳定布局：桌面端固定两行两列四卡位，最后一页不足 4 篇时保留空位，分页位置不随文章数量上移。
 - 最新发布文章卡片桌面端定高，长标题和长摘要会按固定行数截断；移动端保持自然高度。
 - 登录态下公开首页左侧“文章列表”卡片高度为 `lg:h-[760px]`，用于和右侧“最受欢迎”区域底部对齐；未登录态保持 `lg:h-[620px]`。
-- 首页右侧保留热门标签、阅读趋势和最受欢迎区域。
+- 首页右侧保留热门标签、阅读趋势和最受欢迎区域；热门标签最多展示 9 个，按已发布文章使用次数降序排列，同数按标签创建时间从早到晚排列。
 - 阅读趋势图形已接入最近 7 日真实访问趋势；下方“今日阅读”和“总点赞”也已接入真实统计。
-- “最受欢迎”已从静态占位改为真实热门排行。
+- “最受欢迎”已从静态占位改为真实热门排行，固定为较短卡片高度，最多展示 5 篇。
 - 文章详情页已按首页风格重排为两栏：左侧为作者卡、目录、筛选文章和文章列表；中间为文章阅读主体。
 - 详情页顶部保留 `MyBlog Pro`、返回、搜索框视觉预留、点赞/收藏/分享、暗色切换、通知和用户胶囊。
 - 详情页阅读、点赞、评论指标条已接入真实统计。
