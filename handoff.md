@@ -1,10 +1,64 @@
 # Handoff: codex-project-boke 当前状态
 
+## 2026-06-09 最新快照：投稿批量上传与评论区滚动
+
+- 当前工作分支：`codex/undo-something`
+- 最新功能提交：`d62f526 Add draft batch import and comment scrolling`
+- 当前同步状态：`codex/undo-something` 基于 `main` / `origin/main` 的 `d7dd617 Update handoff and README`，领先 1 个功能提交；本次 `$work-end` 正在刷新并提交 repo-local `README.md` / `handoff.md`。
+- 本轮完成两项用户确认范围：文章详情评论区自然增长到约 15 条主评论后内部滚动；投稿编辑器底部“批量上传”按参考图接入真实 `.md/.txt` 批量导入，一文件生成一篇草稿。
+
+### 本轮已完成
+
+- 新增普通用户批量导入草稿接口：`POST /api/articles/drafts/import`。
+- 接口仅允许登录的非管理员用户使用；管理员继续使用既有后台 zip 导入。
+- 批量导入支持 `.md` 和 `.txt`，单次最多 20 个文件，单文件 1 MB；每个合法文件创建一篇 `DRAFT`，标题取文件名去扩展名，正文保留文件内容，slug 自动去重。
+- 导入采用部分成功策略：非法类型、空文件、超大文件或创建失败会逐文件返回失败原因，不回滚其他成功草稿。
+- 投稿编辑器底部“批量上传”从占位按钮改为弹窗：支持点击选择和拖拽、队列去重、不可导入预检、等待/导入中/已导入/失败状态徽标、导入完成后手动关闭，并刷新“我的文章”列表。
+- 当前编辑器有未保存改动时，弹窗提示“当前编辑内容不会被覆盖，请记得保存当前草稿”；批量导入不会覆盖当前编辑内容。
+- 评论区保留原自然增高行为；当主评论数量超过 15 条时，仅评论列表区域设置最大高度和内部滚动，回复展开也在该滚动区域内展示。
+- 新增服务端测试覆盖普通用户多文件导入、重复文件名 slug 去重、空文件/非法类型/超大文件逐文件失败、管理员 403 和超过 20 个文件上限。
+
+### 关键改动文件
+
+- `client/src/App.vue`
+- `client/src/style.css`
+- `server/src/routes/articles.js`
+- `server/test/articles.test.js`
+- `README.md`
+- `handoff.md`
+
+### 验证
+
+功能提交前已通过：
+
+```bash
+npm test --workspace server
+npm run build
+git diff --check
+```
+
+- 后端测试 14/14 通过，包含新增批量导入草稿用例。
+- 前端构建通过。
+- `git diff --check` 仅输出已知 LF/CRLF 提示，无空白错误。
+- 用户明确要求不用截图，本轮未做截图验证。
+
+文档收尾继续执行：
+
+```bash
+git diff --check -- README.md handoff.md
+```
+
+### 下一步建议
+
+- 如需合并本轮结果，使用 `$merge-main codex/undo-something`，按既有流程先验证再 fast-forward 到 `main`。
+- 后续可考虑给批量导入结果项增加“直接编辑该草稿”的快捷入口；本轮按用户确认只展示结果并刷新“我的文章”列表。
+- 若继续扩展导入解析，可再单独讨论 Frontmatter、从首个 H1 提取标题、本地图片包/zip、分类标签批量元数据等能力；本轮明确不做这些智能解析。
+
 ## 2026-06-09 最新快照：最新文章 Hero 封面展示
 
 - 当前工作分支：`codex/fengmian`
 - 最新功能提交：`d3dac2f Polish latest article hero media`
-- 当前同步状态：`codex/fengmian` 基于 `main` / `origin/main` 的 `72e852c Update handoff and README`，领先 1 个功能提交，尚未合并或推送为主线。
+- 当前同步状态：该历史分支已通过 `$merge-main codex/fengmian` 合并到 `main` 并推送；`d7dd617 Update handoff and README` 为合并后的主线文档提交。
 - 本轮完成公开首页顶部 Hero 语义与媒体展示修正：从“精选推荐”改为“最新文章”，继续取按发布时间倒序的第一篇已发布文章；文章详情页 Hero 徽标从“精选推荐”改为“文章详情”。
 
 ### 本轮已完成
@@ -40,14 +94,14 @@ git diff --check -- README.md handoff.md
 
 ### 下一步建议
 
-- 如需合并本轮结果，先按 `$merge-main codex/fengmian` 流程验证并 fast-forward 到 `main`。
+- 该历史结果已合并；若继续封面体验相关工作，从当前主线或当前功能分支重新确认基点后再改。
 - 若继续统一封面体验，可复用 `articlePreviewImageUrl()` 逻辑评估是否也应用到最新发布卡片、搜索结果卡片或文章详情 Hero。
 
 ## 2026-06-09 最新快照：公开首页侧栏列表收束
 
 - 当前工作分支：`main`
 - 最新本地功能提交：`ed39762 Polish public home sidebar lists`
-- 当前同步状态：`main` 本地领先 `origin/main` 1 个提交，尚未推送。
+- 当前同步状态：该历史工作后续已被后面的主线文档和功能分支状态覆盖；继续工作请以顶部最新快照和当前 Git 状态为准。
 - 本轮完成公开首页右侧栏和页脚列表优化：热门标签最多 9 个，最受欢迎最多 5 篇且固定为较短卡片高度，底部分类目录最多 5 个。
 
 ### 本轮已完成
@@ -145,7 +199,7 @@ git diff --check
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环、管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口、管理员审核待办通知铃铛、公开搜索页、真实 7 日访问趋势，以及文章封面/SEO/评论开关/置顶的草稿到发布闭环。当前工作分支是 `main`，`codex/public-search-editor-plan` 已完成合并验证。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环、管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口、管理员审核待办通知铃铛、公开搜索页、真实 7 日访问趋势、文章封面/SEO/评论开关/置顶的草稿到发布闭环、投稿批量上传草稿，以及评论区超过约 15 条后的内部滚动。当前工作分支是 `codex/undo-something`，最新功能提交为 `d62f526 Add draft batch import and comment scrolling`。
 
 ## 建议下个 Agent 使用的技能
 
@@ -156,13 +210,15 @@ git diff --check
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前工作分支：`main`
-- 主线同步状态：`main` 与 `origin/main` 已同步到 `cc361a1 Update handoff and README`
-- 当前功能提交：`7554433 Add admin review task notification bell`、`9190994 Add public search page and visit trend`、`aa5a50e Add article editor metadata workflow`
+- 当前工作分支：`codex/undo-something`
+- 分支基点：`main` / `origin/main` 的 `d7dd617 Update handoff and README`
+- 当前功能提交：`d62f526 Add draft batch import and comment scrolling`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover`、`codex/admin-ui-improvements` 已合并进 `main` 并推送到 `origin/main`。
 - `codex/admin-review-notification-bell` 已合并并推送，功能提交为 `7554433`
 - `codex/public-search-editor-plan` 包含 `9190994`、`aa5a50e` 和文档提交 `35904c2`，已合并到 `main`
+- `codex/fengmian` 已通过 `$merge-main` 合并到 `main` 并推送，功能提交为 `d3dac2f`
+- `codex/undo-something` 当前尚未合并到 `main`
 - `todo.md` 在 `codex/public-search-editor-plan` 中已更新为阶段完成后的规划状态
 - 本次合并解决了 `README.md` / `handoff.md` 文档冲突，并按 `$merge-main` 流程完成合并验证
 
@@ -467,7 +523,7 @@ npx prisma validate --schema prisma/schema.prisma
 - `articles` 新增 `submitted_at`、`reviewed_at`、`reviewer_id`、`review_note`，并建立审核人外键。
 - 普通用户写作入口复用发布页，新增 `#article/edit/:id` 作为草稿/投稿编辑入口。
 - 不自动创建空草稿；只有手动保存草稿或提交审核时才创建/更新数据库记录。
-- 阶段 1 当时只保存标题、正文、后端生成并尽量稳定的 slug、分类、标签和状态；当前分支已在阶段 2 补齐封面、SEO、高级设置持久化，底部批量上传仍按后续范围处理。
+- 阶段 1 当时只保存标题、正文、后端生成并尽量稳定的 slug、分类、标签和状态；后续分支已补齐封面、SEO、高级设置持久化和底部批量上传草稿导入。
 - 草稿校验宽松，提交审核校验严格；提交时会提醒用户提交后文章锁定。
 - 提交后锁定编辑，待审核文章允许随时撤回到草稿；普通用户只能删除自己的草稿和被驳回文章。
 - 用户面板“我的文章”已接真实列表，不再使用静态占位。
@@ -528,7 +584,7 @@ git diff --check
 
 ### 边界
 
-- 该历史轮次没有接入真实投稿、保存草稿、预览、发布、封面上传或底部“批量上传文章”功能；当前分支已补齐投稿/草稿/预览/发布和封面元数据，底部批量上传仍按后续范围处理。
+- 该历史轮次没有接入真实投稿、保存草稿、预览、发布、封面上传或底部“批量上传文章”功能；后续分支已补齐投稿/草稿/预览/发布、封面元数据和底部批量上传草稿导入。
 - “数学公式”只插入 LaTeX 文本模板，当前 Markdown 渲染端仍未接 KaTeX/MathJax。
 - 图片上传是真实文件上传，但当前属于普通用户草稿图片，不和正式文章记录关联；后续投稿后端完成后再决定迁移或绑定策略。
 
@@ -629,7 +685,7 @@ git diff --check
 - 正文编辑继续使用 `textarea`，输入、聚焦和视图切换时同步高度；正文框不做内部滚动。
 - 工具栏已经支持真实 Markdown 插入；图片入口走普通用户草稿图片上传接口，不走管理员文章图片接口。
 - 发布页暗色模式为整页一致的深蓝灰写作主题，左侧设置区比正文区稍亮。
-- 该历史轮次中封面、分类、标签、SEO、高级设置、预览、发布、批量上传、保存草稿仍为 UI 占位；当前分支已补齐投稿后端和封面/SEO/高级设置持久化，底部批量上传仍按后续范围处理。
+- 该历史轮次中封面、分类、标签、SEO、高级设置、预览、发布、批量上传、保存草稿仍为 UI 占位；后续分支已补齐投稿后端、封面/SEO/高级设置持久化和底部批量上传草稿导入。
 
 ## 已完成：普通用户面板新 UI
 
@@ -793,7 +849,7 @@ sc.exe config MySQL start= demand
 ## 后续建议
 
 - 如需继续完善用户中心，可评估真实短信验证码、真实微信/QQ/支付宝 OAuth、通知精确定位/高亮、更完整的安全审计筛选和管理员全站安全审计后台。
-- 投稿编辑器下一步建议补充底部批量上传、真实自动保存或更完整的审核历史；是否需要富文本体验可等 Markdown 投稿链路稳定后再评估 Tiptap / ProseMirror。
+- 投稿编辑器底部批量上传已完成第一版；下一步可补充真实自动保存、更完整的审核历史、批量导入后快速跳转编辑，或在 Markdown 投稿链路稳定后再评估 Tiptap / ProseMirror。
 - 管理后台用户管理后续可补充批量操作和管理员权限管理；当前仅允许管理 `USER`，已提供右侧抽屉查看基础详情与统计。
 - 管理后台已发布文章后续可补充编辑入口、批量下架和审核历史联动；当前只做列表、预览、上下架和删除。
 - 敏感评论当前已接本地规则检测和后台处理队列；后续可补充规则配置、审核历史、批量处理和更细的风险等级。
