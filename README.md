@@ -6,20 +6,22 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前工作分支 | `main` |
-| 最新 UI 工作 | 公开首页右侧栏完成收束：热门标签最多 9 个，最受欢迎固定高度并显示最多 5 篇，底部分类目录显示最多 5 个高频分类；公开搜索页、文章封面展示和编辑器元数据表单仍为最新完整链路 |
-| 最新功能工作 | 公开筛选接口为分类和标签补充已发布文章使用数与创建时间；首页热门标签、底部分类目录按使用量排序，同数按创建时间先后排序；最受欢迎排行最多取 5 篇并沿用热度分规则 |
+| 当前工作分支 | `codex/fengmian` |
+| 最新 UI 工作 | 公开首页 Hero 已从“精选推荐”调整为“最新文章”，并按真实封面/正文首图/图片列表首图/渐变占位的顺序展示大图；文章详情页 Hero 徽标已改为“文章详情” |
+| 最新功能工作 | 首页最新文章 Hero 继续取按 `publishedAt` / `createdAt` 倒序排序后的第一篇已发布文章；有 `coverImageUrl` 时优先展示封面，无封面时从正文 Markdown/HTML 或 `images` 列表兜底取图 |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎，侧栏列表数量和高度已收束 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes`、`article_metric_events`、`user_notification_reads`、`security_audit_events`，以及 `users.is_disabled`、评论 `moderation_*` 审核字段和首页 `summary.visitTrend` 真实访问趋势 |
-| 最近验证 | 2026-06-09：`ed39762` 提交前已执行 `npm test --workspace server`、`npm run build`、`node --env-file=.env.test ..\node_modules\prisma\build\index.js validate --schema prisma\schema.prisma`、`git diff --check`；后端测试 13/13 通过，Prisma 校验在真实工作区通过 |
-| 合并状态 | `main` 本地包含 `ed39762 Polish public home sidebar lists`，当前领先 `origin/main` 1 个提交，尚未推送 |
+| 最近验证 | 2026-06-09：`d3dac2f` 提交前已执行 `npm run build`、`git diff --check -- client/src/App.vue`；前端构建通过，空白检查仅有已知 LF/CRLF 提示 |
+| 合并状态 | `codex/fengmian` 基于 `main` / `origin/main` 的 `72e852c Update handoff and README`，当前领先 1 个功能提交 `d3dac2f Polish latest article hero media`，尚未合并 |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
 
 - 首页是当前新 UI 的主视觉标准。
+- 首页顶部 Hero 现在语义为“最新文章”，数据来源为最新发布排序中的第一篇已发布文章。
+- 首页顶部 Hero 图片优先级为：文章封面 `coverImageUrl`、正文 Markdown/HTML 第一张图片、文章 `images` 列表第一张图片，最后才使用渐变占位。
 - 公开首页、登录/注册侧边栏、明暗色调切换已经是新 UI。
 - 公开首页顶部品牌文字已补齐暗色模式可读性，暗色下 `MyBlog` 使用浅色、`Pro` 保持橙色强调。
 - 管理员登录后，公开首页左侧用户信息卡片只显示“管理后台”和“退出”；“管理后台”占用普通用户“用户面板”的主按钮位置。

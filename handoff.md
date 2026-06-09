@@ -1,5 +1,48 @@
 # Handoff: codex-project-boke 当前状态
 
+## 2026-06-09 最新快照：最新文章 Hero 封面展示
+
+- 当前工作分支：`codex/fengmian`
+- 最新功能提交：`d3dac2f Polish latest article hero media`
+- 当前同步状态：`codex/fengmian` 基于 `main` / `origin/main` 的 `72e852c Update handoff and README`，领先 1 个功能提交，尚未合并或推送为主线。
+- 本轮完成公开首页顶部 Hero 语义与媒体展示修正：从“精选推荐”改为“最新文章”，继续取按发布时间倒序的第一篇已发布文章；文章详情页 Hero 徽标从“精选推荐”改为“文章详情”。
+
+### 本轮已完成
+
+- 首页 Hero 变量从 `featuredArticle` 改为 `latestArticle`，让代码语义与页面文案一致。
+- 首页 Hero 图片优先级调整为：`coverImageUrl` 封面图 > 正文 Markdown / HTML 第一张图片 > `images` 列表第一张图片 > 原渐变占位。
+- 首页 Hero 有图片时会铺满显示并叠加暗色遮罩和底部渐变，保证标题、日期和“继续阅读”按钮可读。
+- 文章详情页顶部徽标改为“文章详情”，避免详情页继续显示“精选推荐”造成误解。
+
+### 关键改动文件
+
+- `client/src/App.vue`
+- `README.md`
+- `handoff.md`
+
+### 验证
+
+已通过：
+
+```bash
+npm run build
+git diff --check -- client/src/App.vue
+```
+
+文档收尾中继续执行：
+
+```bash
+git diff --check -- README.md handoff.md
+```
+
+- 前端构建通过。
+- `git diff --check -- client/src/App.vue` 仅输出已知 LF/CRLF 提示，无空白错误。
+
+### 下一步建议
+
+- 如需合并本轮结果，先按 `$merge-main codex/fengmian` 流程验证并 fast-forward 到 `main`。
+- 若继续统一封面体验，可复用 `articlePreviewImageUrl()` 逻辑评估是否也应用到最新发布卡片、搜索结果卡片或文章详情 Hero。
+
 ## 2026-06-09 最新快照：公开首页侧栏列表收束
 
 - 当前工作分支：`main`
