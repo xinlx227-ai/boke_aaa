@@ -6025,7 +6025,30 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   padding: 0.82rem 0.95rem;
   background: #fff7ed;
   color: #9a3412;
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
   white-space: pre-wrap;
+  cursor: pointer;
+}
+.article-editor-raw-html-block strong,
+.article-editor-raw-html-block small,
+.article-editor-raw-html-block code {
+  display: block;
+}
+.article-editor-raw-html-block strong {
+  margin-bottom: 0.18rem;
+  font-weight: 700;
+}
+.article-editor-raw-html-block small {
+  margin-bottom: 0.45rem;
+  color: inherit;
+  opacity: 0.72;
+}
+.article-editor-raw-html-block code {
+  color: inherit;
+  word-break: break-word;
 }
 .article-editor-footer {
   position: fixed;

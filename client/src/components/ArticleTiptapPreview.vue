@@ -32,7 +32,7 @@ const RawHtmlBlock = Node.create({
         "data-raw-html-block": "",
         class: "article-editor-raw-html-block"
       },
-      ["code", `HTML 块：${firstLine}`]
+      ["code", `HTML block: ${firstLine}`]
     ];
   }
 });

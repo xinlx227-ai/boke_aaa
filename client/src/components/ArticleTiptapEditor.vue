@@ -57,6 +57,85 @@ const RawHtmlBlock = Node.create({
     ];
   },
 
+  addNodeView() {
+    return ({ node, view, getPos }) => {
+      let currentNode = node;
+      const dom = document.createElement("button");
+      dom.type = "button";
+      dom.className = "article-editor-raw-html-block";
+      dom.dataset.rawHtmlBlock = "";
+
+      const render = () => {
+        const source = String(currentNode.attrs?.source || "");
+        const firstLine = source.split("\n").find((line) => line.trim())?.trim() || "HTML";
+        dom.textContent = "";
+
+        const title = document.createElement("strong");
+        title.textContent = "HTML block";
+        dom.append(title);
+
+        const hint = document.createElement("small");
+        hint.textContent = this.editor?.isEditable ? "Click to edit source" : "Raw HTML source is preserved";
+        dom.append(hint);
+
+        const preview = document.createElement("code");
+        preview.textContent = firstLine;
+        dom.append(preview);
+      };
+
+      const editSource = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!this.editor?.isEditable) {
+          return;
+        }
+
+        const currentSource = String(currentNode.attrs?.source || "");
+        const nextSource = window.prompt("Edit HTML source", currentSource);
+
+        if (nextSource === null) {
+          return;
+        }
+
+        const pos = typeof getPos === "function" ? getPos() : null;
+
+        if (typeof pos !== "number") {
+          return;
+        }
+
+        view.dispatch(
+          view.state.tr.setNodeMarkup(pos, undefined, {
+            ...currentNode.attrs,
+            source: nextSource
+          })
+        );
+      };
+
+      dom.addEventListener("click", editSource);
+      render();
+
+      return {
+        dom,
+        update(updatedNode) {
+          if (updatedNode.type.name !== currentNode.type.name) {
+            return false;
+          }
+
+          currentNode = updatedNode;
+          render();
+          return true;
+        },
+        stopEvent() {
+          return true;
+        },
+        destroy() {
+          dom.removeEventListener("click", editSource);
+        }
+      };
+    };
+  },
+
   renderHTML({ node }) {
     const source = String(node.attrs?.source || "");
     const firstLine = source.split("\n").find((line) => line.trim())?.trim() || "HTML";
@@ -66,7 +145,7 @@ const RawHtmlBlock = Node.create({
         "data-raw-html-block": "",
         class: "article-editor-raw-html-block"
       },
-      ["code", `HTML 块：${firstLine}`]
+      ["code", `HTML block: ${firstLine}`]
     ];
   }
 });
