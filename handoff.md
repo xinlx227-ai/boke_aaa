@@ -1,50 +1,53 @@
 # Handoff: codex-project-boke 当前状态
 
-## 2026-06-10 最新快照：TipTap 即时渲染投稿编辑器
+## 2026-06-10 最新快照：TipTap 表格、数学和安全 HTML
 
-- 当前工作分支：`main`
-- 最新功能提交：`c3ffc2f Add TipTap article editor`
-- 当前同步状态：`codex/undo-something` 与 `codex/tiptap-article-editor` 已按 `$merge-main` 流程 fast-forward 合并到 `main`，推送到 `origin/main`，并安全删除本地功能分支；当前本地仅剩 `main`。
-- 本轮完成普通用户投稿编辑器从原生 textarea 到 TipTap 即时渲染编辑器的第一版改造；后端 `contentMarkdown` 字段和保存/提交/预览接口保持兼容。
+- 当前工作分支：`codex/edit-math-excel`
+- 最新功能提交：`f3b164d Add table math and safe HTML editor support`、`2f19f6b Add raw HTML source editing`
+- 当前同步状态：本地功能分支已完成并验证，尚未合并到 `main` 或推送远端；本次 `$work-end` 会追加 repo-local 文档收尾提交。
+- 本轮继续以 `contentMarkdown` 作为唯一权威正文存储，补齐投稿编辑器中的标准 Markdown pipe table、数学公式、复杂 HTML 保留与服务端安全过滤策略；脚注保留原始 Markdown 文本。
 
 ### 本轮已完成
 
-- 新增 TipTap 依赖：`@tiptap/vue-3`、`@tiptap/pm`、`@tiptap/starter-kit`、`@tiptap/extension-image`、`@tiptap/extension-link`、`@tiptap/extension-placeholder`。
-- 新增 `client/src/components/ArticleTiptapEditor.vue`，替换普通用户投稿正文 textarea，只影响 `#article/new` / `#article/edit/:id` 的普通投稿编辑器，不改管理员旧文章编辑能力。
-- 正文输入支持常见即时渲染：标题、粗体、斜体、引用、行内代码/代码块、无序/有序列表、链接、图片、分隔线。
-- 数据仍写回 `articleEditorForm.contentMarkdown`，保存草稿、提交审核、撤回、删除和后端预览接口继续使用 Markdown 原文。
-- 原工具栏操作迁为 TipTap 命令；按钮会跟随光标处格式状态高亮，空格会像回车一样结束粗体/斜体/行内代码/链接等内联持续样式。
-- 表格和数学公式按用户确认暂不做即时结构化渲染，只作为普通 Markdown 文本模板插入。
-- 新增 `client/src/components/ArticleTiptapPreview.vue`，普通投稿预览正文改用只读 TipTap 渲染以贴近编辑态；管理员审核预览仍使用后端 HTML。
-- 新增 `client/src/articleTiptapMarkdown.js`，集中维护 Markdown 与 TipTap JSON 的轻量转换，编辑器和预览共用同一套解析。
-- 编辑区视觉已按用户反馈收束：批量上传弹窗先在 `codex/undo-something` 当前线提交缩小；TipTap 编辑区列表标记恢复、行距/段落距缩小、工具栏 active 状态可见。
+- 新增/更新依赖：客户端 `@tiptap/extension-table`、`@tiptap/extension-mathematics`、`katex`，服务端 `katex`。
+- `client/src/articleTiptapMarkdown.js` 已支持标准 Markdown pipe table、行内 `$...$`、块级 `$$...$$`、raw HTML block、代码块语言和脚注原文保留的转换/序列化。
+- `client/src/components/ArticleTiptapEditor.vue` 使用官方 `TableKit` 与 `Mathematics`；“更多”菜单中的表格/数学公式现在插入真实 TipTap 节点，不再只是文本模板。
+- 复杂 HTML 进入自定义 `rawHtmlBlock`，编辑态显示占位块；点击占位块可用源码弹窗编辑原始 HTML，序列化后仍保存在 `contentMarkdown`。
+- 普通投稿即时预览改用后端 `contentHtml`，与管理员审核和公开阅读页共享服务端 Markdown/安全 HTML 渲染路径。
+- `server/src/lib/markdown.js` 启用表格、数学渲染和白名单 HTML 过滤；阻断 `script`、`iframe`、表单、事件属性、`style`、`javascript:` 等危险内容，允许站内 `/uploads/...` 图片。
+- 脚注本轮不接脚注 UI 或 markdown-it footnote 插件，继续作为普通 Markdown 原文保留。
 
 ### 关键改动文件
 
 - `client/package.json`
 - `package-lock.json`
+- `server/package.json`
 - `client/src/App.vue`
+- `client/src/main.js`
 - `client/src/style.css`
 - `client/src/articleTiptapMarkdown.js`
 - `client/src/components/ArticleTiptapEditor.vue`
 - `client/src/components/ArticleTiptapPreview.vue`
+- `server/src/lib/markdown.js`
+- `server/test/markdown.test.js`
 - `README.md`
 - `handoff.md`
 
 ### 验证
 
-功能提交前以及合并到 `main` 后均已通过：
+功能提交期间已通过：
 
 ```bash
+node --test server/test/markdown.test.js
 npm test --workspace server
 npm run build
 git diff --check
 ```
 
-- 后端测试 14/14 通过。
-- 前端构建多次通过；TipTap 编辑器和预览被拆为异步 chunk。
+- 后端测试 16/16 通过。
+- 前端构建通过；TipTap/KaTeX 相关编辑器 chunk 大于 500 kB，Vite 仅给出 chunk size warning。
 - `git diff --check` 仅输出已知 LF/CRLF 提示，无空白错误。
-- 本轮未用浏览器截图验收；用户主要通过截图反馈了编辑区间距、列表标记和工具栏状态，已逐项调整。
+- 本轮启动过本地 dev server 并用 HTTP 检查确认前端首页与后端 articles API 返回 200；未做浏览器截图验收。
 
 本次文档收尾继续执行：
 
@@ -55,14 +58,15 @@ git diff --check -- README.md handoff.md
 ### 已知边界与风险
 
 - 第一版 Markdown 转换追求语义一致，不保证源码逐字保真；用户已接受这一点。
-- 表格、数学公式暂不做 TipTap 结构化即时渲染，仍作为普通文本保留。
-- 当前只读预览为了贴近编辑态使用 TipTap 解析，公开阅读页和管理员审核预览仍走后端 markdown-it 渲染 HTML；两者在复杂 Markdown 边界上可能存在轻微差异。
-- TipTap 新依赖安装后 `npm install` 曾提示 2 个 moderate vulnerabilities；未执行 `npm audit fix --force`。
+- 表格第一版仅支持标准 Markdown pipe table；合并单元格、嵌套表格和复杂 HTML 表格不会转为结构化 TipTap 表格，可作为 raw HTML block 保留。
+- raw HTML 的源码编辑入口是轻量 `window.prompt`，不是完整模态源码编辑器。
+- 数学公式依赖 KaTeX；复杂或非法 LaTeX 以 `throwOnError: false` 策略尽量渲染。
+- TipTap/KaTeX 让编辑器 chunk 明显增大，当前仅记录 Vite chunk size warning。
 
 ### 下一步建议
 
-- 如需继续新一轮工作，从已同步的 `main` / `origin/main` 创建新分支。
-- 若继续编辑器能力，可单独评估源码/WYSIWYG 双模式、表格/数学公式结构化支持、粘贴 HTML/图片处理、更完整 Markdown 解析或浏览器端可视验收。
+- 若要合并本轮功能，按既有流程执行 `$merge-main codex/edit-math-excel`：先验证，再 fast-forward 到 `main`。
+- 若继续打磨编辑器，可把 raw HTML prompt 升级为源码模态框，并补浏览器端表格/数学/HTML 的可视验收。
 
 ## 2026-06-09 最新快照：投稿批量上传与评论区滚动
 
@@ -262,21 +266,21 @@ git diff --check
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环、管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口、管理员审核待办通知铃铛、公开搜索页、真实 7 日访问趋势、文章封面/SEO/评论开关/置顶的草稿到发布闭环、投稿批量上传草稿、评论区超过约 15 条后的内部滚动，以及普通用户投稿 TipTap 即时渲染编辑器。当前工作分支是 `main`，最新功能线已合并并推送到 `origin/main`。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环、管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口、管理员审核待办通知铃铛、公开搜索页、真实 7 日访问趋势、文章封面/SEO/评论开关/置顶的草稿到发布闭环、投稿批量上传草稿、评论区超过约 15 条后的内部滚动、普通用户投稿 TipTap 即时渲染编辑器，以及当前分支上的标准 Markdown pipe table、数学公式和安全 raw HTML 支持。当前工作分支是 `codex/edit-math-excel`，功能线已本地提交并验证，尚未合并或推送。
 
 ## 建议下个 Agent 使用的技能
 
 - `handoff`：上下文再次接近上限时继续更新本文件。
-- `browser:browser`：如用户要求打开、点击或验收本地页面时使用；此前 in-app browser / node_repl 在 Windows 上偶发 sandbox 错误，必要时可退回构建、HTTP 检查和命令行验证。
+- `browser:control-in-app-browser`：如用户要求打开、点击或验收本地页面时使用；此前 in-app browser / node_repl 在 Windows 上偶发 sandbox 错误，必要时可退回构建、HTTP 检查和命令行验证。
 - `$grill-me`：用户继续要求追问设计方案或用该技能名时使用；遵循“一次只问一个问题，并给推荐答案”。
 - `$merge-main`：后续合并新功能分支时使用，先验证再 fast-forward 到 `main`。
 
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前工作分支：`main`
-- 当前同步状态：`main...origin/main`，合并后功能结果为 `2a2006f Update handoff and README`，本次 `$work-end` 将追加 repo-local 文档收尾提交。
-- 当前功能提交：`c3ffc2f Add TipTap article editor`，已随 `codex/tiptap-article-editor` 合并到 `main`
+- 当前工作分支：`codex/edit-math-excel`
+- 当前同步状态：本地功能分支已完成并验证，尚未合并到 `main` 或推送远端；本次 `$work-end` 将追加 repo-local 文档收尾提交。
+- 当前功能提交：`f3b164d Add table math and safe HTML editor support`、`2f19f6b Add raw HTML source editing`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover`、`codex/admin-ui-improvements` 已合并进 `main` 并推送到 `origin/main`。
 - `codex/admin-review-notification-bell` 已合并并推送，功能提交为 `7554433`
@@ -284,8 +288,9 @@ git diff --check
 - `codex/fengmian` 已通过 `$merge-main` 合并到 `main` 并推送，功能提交为 `d3dac2f`
 - `codex/undo-something` 已通过 `$merge-main` 合并到 `main` 并推送，功能提交为 `d62f526`，收尾提交为 `30ada84`
 - `codex/tiptap-article-editor` 已通过 `$merge-main` 合并到 `main` 并推送，功能提交为 `c3ffc2f`，收尾提交为 `2a2006f`
+- `codex/edit-math-excel` 为当前本地功能分支，尚未合并；下一步可执行 `$merge-main codex/edit-math-excel`
 - `todo.md` 在 `codex/public-search-editor-plan` 中已更新为阶段完成后的规划状态
-- 本次 `$work-end` 只刷新并提交 `README.md` / `handoff.md`，不包含代码改动。
+- 本次 `$work-end` 先补充了 raw HTML 源码编辑入口并提交 `2f19f6b`，随后刷新并提交 `README.md` / `handoff.md`。
 
 继续工作前建议先执行：
 
