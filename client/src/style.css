@@ -6094,15 +6094,41 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 }
 
 .article-editor-batch-dialog {
-  width: min(864px, 100%);
+  width: min(720px, 100%);
+  max-height: min(86vh, 760px);
+  border-radius: 18px;
 }
 
 .article-editor-batch-dialog .article-editor-upload-body {
-  padding: 48px;
+  padding: 28px 36px 32px;
+}
+
+.article-editor-batch-dialog header {
+  min-height: 78px;
+  padding-inline: 28px;
+}
+
+.article-editor-batch-dialog h2 {
+  font-size: 1.45rem;
+}
+
+.article-editor-batch-dialog header button {
+  width: 38px;
+  height: 38px;
+}
+
+.article-editor-batch-dialog footer {
+  min-height: 88px;
+  padding-inline: 28px;
+}
+
+.article-editor-batch-dialog footer button {
+  min-height: 44px;
+  padding-inline: 20px;
 }
 
 .article-editor-batch-note {
-  margin: -18px 0 22px;
+  margin: -8px 0 18px;
   border: 1px solid #fed7aa;
   border-radius: 12px;
   padding: 12px 14px;
@@ -6113,11 +6139,25 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 }
 
 .article-editor-batch-dropzone {
-  min-height: 346px;
+  min-height: 238px;
+  gap: 12px;
+}
+
+.article-editor-batch-dropzone > span {
+  width: 72px;
+  height: 72px;
+}
+
+.article-editor-batch-dropzone strong {
+  font-size: 1.22rem;
+}
+
+.article-editor-batch-dropzone small {
+  font-size: 0.92rem;
 }
 
 .article-editor-batch-list {
-  max-height: 316px;
+  max-height: 248px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -6767,6 +6807,34 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   .article-editor-upload-submit {
     min-width: 0 !important;
     flex: 1;
+  }
+  .article-editor-batch-dialog {
+    max-height: none;
+    border-radius: 16px;
+  }
+  .article-editor-batch-dialog header {
+    min-height: 68px;
+    padding-inline: 18px;
+  }
+  .article-editor-batch-dialog h2 {
+    font-size: 1.2rem;
+  }
+  .article-editor-batch-dialog .article-editor-upload-body {
+    padding: 18px;
+  }
+  .article-editor-batch-dropzone {
+    min-height: 190px;
+  }
+  .article-editor-batch-dropzone > span {
+    width: 60px;
+    height: 60px;
+  }
+  .article-editor-batch-list {
+    max-height: 260px;
+  }
+  .article-editor-batch-dialog footer {
+    min-height: 82px;
+    padding: 12px 18px;
   }
 }
 
