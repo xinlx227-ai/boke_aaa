@@ -5192,6 +5192,15 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   max-width: 760px;
   margin: 0 auto;
 }
+.article-editor-preview-renderer {
+  width: 100%;
+}
+.article-editor-preview-renderer .article-editor-preview-content {
+  min-height: 0;
+  padding: 0;
+  cursor: default;
+  outline: none;
+}
 .article-editor-preview-empty {
   display: grid;
   min-height: 300px;
@@ -5655,8 +5664,7 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 .article-editor-tag-input input:focus,
 .article-editor-seo-fields input:focus,
 .article-editor-seo-fields textarea:focus,
-.article-editor-title-input:focus,
-.article-editor-markdown-input:focus {
+.article-editor-title-input:focus {
   border-color: #fb923c;
   box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.12);
 }
@@ -5726,8 +5734,14 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   outline: none;
 }
 .article-editor-title-input::placeholder,
-.article-editor-markdown-input::placeholder {
+.article-editor-tiptap-content p.is-editor-empty:first-child::before {
   color: #b8c4d3;
+}
+.article-editor-tiptap-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
 }
 .article-editor-toolbar {
   position: sticky;
@@ -5764,7 +5778,8 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   font-size: 0.82rem;
   font-weight: 900;
 }
-.article-editor-toolbar button:hover {
+.article-editor-toolbar button:hover,
+.article-editor-toolbar button.is-active {
   background: #fff;
   color: #ea580c;
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
@@ -5817,24 +5832,123 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   font-size: 0.84rem;
   font-weight: 800;
 }
-.article-editor-more-menu button:hover {
+.article-editor-more-menu button:hover,
+.article-editor-more-menu button.is-active {
   background: #fff7ed;
   color: #ea580c;
   box-shadow: none;
 }
-.article-editor-markdown-input {
+.article-editor-tiptap {
   width: 100%;
   min-height: 580px;
-  overflow: hidden;
   border: 1px solid rgba(226, 232, 240, 0.86);
   border-radius: 0 0 16px 16px;
   padding: 28px 30px 34px;
   background: rgba(255, 255, 255, 0.9);
   color: #1f2937;
-  font: 1rem/1.84 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  outline: none;
-  resize: none;
   box-shadow: 0 20px 55px rgba(15, 23, 42, 0.055);
+}
+.article-editor-tiptap:focus-within {
+  border-color: #fb923c;
+  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.12), 0 20px 55px rgba(15, 23, 42, 0.055);
+}
+.article-editor-tiptap-content {
+  min-height: 518px;
+  color: #1f2937;
+  font-size: 1.05rem;
+  line-height: 1.46;
+  outline: none;
+}
+.article-editor-tiptap-content > *:first-child {
+  margin-top: 0;
+}
+.article-editor-tiptap-content > *:last-child {
+  margin-bottom: 0;
+}
+.article-editor-tiptap-content p {
+  margin: 0 0 0.32rem;
+}
+.article-editor-tiptap-content h1,
+.article-editor-tiptap-content h2,
+.article-editor-tiptap-content h3 {
+  margin: 0.86em 0 0.32em;
+  color: #0f172a;
+  font-weight: 900;
+  line-height: 1.16;
+}
+.article-editor-tiptap-content h1 {
+  font-size: 2.2rem;
+}
+.article-editor-tiptap-content h2 {
+  font-size: 1.72rem;
+}
+.article-editor-tiptap-content h3 {
+  font-size: 1.36rem;
+}
+.article-editor-tiptap-content strong {
+  font-weight: 850;
+}
+.article-editor-tiptap-content blockquote {
+  margin: 0.58rem 0;
+  border-left: 4px solid #fed7aa;
+  padding: 0.15rem 0 0.15rem 1rem;
+  color: #475569;
+}
+.article-editor-tiptap-content ul,
+.article-editor-tiptap-content ol {
+  margin: 0 0 0.32rem 1.2rem;
+  padding-left: 1.1rem;
+}
+.article-editor-tiptap-content ul {
+  list-style: disc;
+}
+.article-editor-tiptap-content ol {
+  list-style: decimal;
+}
+.article-editor-tiptap-content li {
+  margin: 0.06rem 0;
+  padding-left: 0.08rem;
+}
+.article-editor-tiptap-content li p {
+  margin: 0;
+}
+.article-editor-tiptap-content code {
+  border-radius: 6px;
+  padding: 0.12rem 0.34rem;
+  background: #fff7ed;
+  color: #c2410c;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9em;
+}
+.article-editor-tiptap-content pre {
+  overflow-x: auto;
+  border-radius: 12px;
+  padding: 1rem;
+  background: #111827;
+  color: #f8fafc;
+}
+.article-editor-tiptap-content pre code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+.article-editor-tiptap-content a {
+  color: #ea580c;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+.article-editor-tiptap-content img {
+  max-width: 100%;
+  height: auto;
+  display: inline-block;
+  margin: 0.28rem 0;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
+}
+.article-editor-tiptap-content hr {
+  margin: 0.95rem 0;
+  border: 0;
+  border-top: 1px solid #e2e8f0;
 }
 .article-editor-footer {
   position: fixed;
@@ -6394,7 +6508,7 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 .dark .article-editor-seo-fields input:focus,
 .dark .article-editor-seo-fields textarea:focus,
 .dark .article-editor-title-input:focus,
-.dark .article-editor-markdown-input:focus {
+.dark .article-editor-tiptap:focus-within {
   border-color: rgba(251, 146, 60, 0.72) !important;
   box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.16);
 }
@@ -6415,7 +6529,7 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   box-shadow: none !important;
 }
 .dark .article-editor-title-input::placeholder,
-.dark .article-editor-markdown-input::placeholder,
+.dark .article-editor-tiptap-content p.is-editor-empty:first-child::before,
 .dark .article-editor-seo-fields input::placeholder,
 .dark .article-editor-seo-fields textarea::placeholder,
 .dark .article-editor-tag-input input::placeholder {
@@ -6432,7 +6546,8 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 .dark .article-editor-toolbar button {
   color: var(--text-muted);
 }
-.dark .article-editor-toolbar button:hover {
+.dark .article-editor-toolbar button:hover,
+.dark .article-editor-toolbar button.is-active {
   background: var(--accent-soft);
   color: var(--accent-text);
   box-shadow: none;
@@ -6459,11 +6574,37 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   background: var(--accent-soft);
   color: var(--accent-text);
 }
-.dark .article-editor-markdown-input {
+.dark .article-editor-tiptap {
   border-color: var(--border-muted) !important;
   background: var(--surface-control) !important;
   color: var(--text-body) !important;
   box-shadow: 0 22px 58px rgba(2, 6, 23, 0.35);
+}
+.dark .article-editor-tiptap-content {
+  color: var(--text-body);
+}
+.dark .article-editor-tiptap-content h1,
+.dark .article-editor-tiptap-content h2,
+.dark .article-editor-tiptap-content h3 {
+  color: var(--text-main);
+}
+.dark .article-editor-tiptap-content blockquote {
+  border-left-color: rgba(251, 146, 60, 0.58);
+  color: var(--text-muted);
+}
+.dark .article-editor-tiptap-content code {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.dark .article-editor-tiptap-content pre {
+  background: #020617;
+  color: #e2e8f0;
+}
+.dark .article-editor-tiptap-content a {
+  color: var(--accent-text);
+}
+.dark .article-editor-tiptap-content hr {
+  border-top-color: var(--border-soft);
 }
 .dark .article-editor-footer {
   border-top-color: var(--border-soft);
@@ -6934,9 +7075,12 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
     top: 112px;
     right: 14px;
   }
-  .article-editor-markdown-input {
+  .article-editor-tiptap {
     min-height: 440px;
     padding: 18px;
+  }
+  .article-editor-tiptap-content {
+    min-height: 392px;
   }
   .article-editor-footer {
     align-items: flex-start;

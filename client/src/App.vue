@@ -1,5 +1,8 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+
+const ArticleTiptapEditor = defineAsyncComponent(() => import("./components/ArticleTiptapEditor.vue"));
+const ArticleTiptapPreview = defineAsyncComponent(() => import("./components/ArticleTiptapPreview.vue"));
 
 const API_BASE_URL = "/api";
 const ASSET_BASE_URL = "";
@@ -156,13 +159,22 @@ const articleEditorSettingsCollapsed = ref(false);
 const articleEditorSettingsOpen = ref(false);
 const articleEditorMoreMenuOpen = ref(false);
 const articleEditorSeoOpen = ref(false);
-const articleEditorMarkdownRef = ref(null);
+const articleEditorTiptapRef = ref(null);
+const articleEditorToolbarState = reactive({
+  heading: 0,
+  bold: false,
+  italic: false,
+  blockquote: false,
+  code: false,
+  bulletList: false,
+  orderedList: false,
+  link: false
+});
 const articleEditorImageInputRef = ref(null);
 const articleEditorBatchUploadInputRef = ref(null);
 const articleEditorCoverInputRef = ref(null);
 const articleEditorImageModalOpen = ref(false);
 const articleEditorImageFiles = ref([]);
-const articleEditorImageSelection = ref({ start: 0, end: 0 });
 const articleEditorImageDragActive = ref(false);
 const articleEditorBatchUploadModalOpen = ref(false);
 const articleEditorBatchUploadFiles = ref([]);
@@ -516,7 +528,6 @@ const articleEditorHasUnsavedChanges = computed(
 const articleEditorIsLocked = computed(() => articleEditorStatus.value === "PENDING_REVIEW");
 const articleEditorCanDelete = computed(() => ["DRAFT", "REJECTED"].includes(articleEditorStatus.value) && articleEditorArticleId.value);
 const articleEditorStatusText = computed(() => articleStatusLabel(articleEditorStatus.value));
-const articleEditorPreviewHtml = computed(() => mapAssetUrls(articleEditorPreview.value?.contentHtml || ""));
 const adminReviewPreviewHtml = computed(() => mapAssetUrls(adminReviewPreviewArticle.value?.contentHtml || ""));
 const articleEditorWordCount = computed(() => String(articleEditorForm.contentMarkdown || "").trim().length);
 const articleEditorLineCount = computed(() => {
@@ -1515,7 +1526,6 @@ function fillArticleEditorForm(article) {
   articleEditorForm.contentMarkdown = article?.contentMarkdown || "";
   articleEditorLoaded.value = true;
   saveArticleEditorSnapshot();
-  syncArticleEditorTextareaHeight();
 }
 
 function saveArticleEditorSnapshot() {
@@ -2723,171 +2733,86 @@ function openUserPanelNotifications() {
   loadUserPanelTabData("social");
 }
 
-function focusArticleEditorTextarea(selectionStart = null, selectionEnd = null) {
-  nextTick(() => {
-    const textarea = articleEditorMarkdownRef.value;
-
-    if (!textarea) {
-      return;
-    }
-
-    textarea.focus();
-    if (selectionStart !== null && selectionEnd !== null) {
-      textarea.setSelectionRange(selectionStart, selectionEnd);
-    }
-    syncArticleEditorTextareaHeight();
-  });
-}
-
-function replaceArticleEditorSelection(text, selectionStart = null, selectionEnd = null) {
+function runArticleEditorCommand(commandName, ...args) {
   if (articleEditorIsLocked.value) {
     return;
   }
 
-  const textarea = articleEditorMarkdownRef.value;
-  const currentValue = articleEditorForm.contentMarkdown || "";
-  const start = textarea?.selectionStart ?? articleEditorImageSelection.value.start ?? currentValue.length;
-  const end = textarea?.selectionEnd ?? articleEditorImageSelection.value.end ?? start;
-  const nextText = String(text || "");
-
-  articleEditorForm.contentMarkdown = `${currentValue.slice(0, start)}${nextText}${currentValue.slice(end)}`;
-  const nextSelectionStart = selectionStart === null ? start + nextText.length : start + selectionStart;
-  const nextSelectionEnd = selectionEnd === null ? nextSelectionStart : start + selectionEnd;
-  focusArticleEditorTextarea(nextSelectionStart, nextSelectionEnd);
+  articleEditorMoreMenuOpen.value = false;
+  articleEditorTiptapRef.value?.[commandName]?.(...args);
 }
 
-function selectedArticleEditorText(fallback = "") {
-  const textarea = articleEditorMarkdownRef.value;
-  const currentValue = articleEditorForm.contentMarkdown || "";
+function updateArticleEditorToolbarState(state = {}) {
+  articleEditorToolbarState.heading = Number(state.heading) || 0;
+  articleEditorToolbarState.bold = Boolean(state.bold);
+  articleEditorToolbarState.italic = Boolean(state.italic);
+  articleEditorToolbarState.blockquote = Boolean(state.blockquote);
+  articleEditorToolbarState.code = Boolean(state.code);
+  articleEditorToolbarState.bulletList = Boolean(state.bulletList);
+  articleEditorToolbarState.orderedList = Boolean(state.orderedList);
+  articleEditorToolbarState.link = Boolean(state.link);
+}
 
-  if (!textarea) {
-    return fallback;
+function insertArticleEditorInline({ before = "" }) {
+  if (before === "**") {
+    runArticleEditorCommand("toggleBold");
+    return;
   }
 
-  const selectedText = currentValue.slice(textarea.selectionStart, textarea.selectionEnd);
-  return selectedText || fallback;
-}
+  if (before === "*") {
+    runArticleEditorCommand("toggleItalic");
+    return;
+  }
 
-function normalizeMarkdownBlockInsertion(markdown) {
-  const textarea = articleEditorMarkdownRef.value;
-  const currentValue = articleEditorForm.contentMarkdown || "";
-  const start = textarea?.selectionStart ?? articleEditorImageSelection.value.start ?? currentValue.length;
-  const before = currentValue.slice(0, start);
-  const after = currentValue.slice(textarea?.selectionEnd ?? articleEditorImageSelection.value.end ?? start);
-  const prefix = before && !before.endsWith("\n") ? "\n\n" : before.endsWith("\n\n") || !before ? "" : "\n";
-  const suffix = after && !after.startsWith("\n") ? "\n\n" : "";
-
-  return {
-    text: `${prefix}${markdown}${suffix}`,
-    contentOffset: prefix.length
-  };
-}
-
-function insertArticleEditorInline({ before = "", after = "", placeholder = "文本" }) {
-  articleEditorMoreMenuOpen.value = false;
-  const selection = selectedArticleEditorText(placeholder);
-  const text = `${before}${selection}${after}`;
-  const selectedStart = before.length;
-  const selectedEnd = before.length + selection.length;
-  replaceArticleEditorSelection(text, selectedStart, selectedEnd);
-}
-
-function insertArticleEditorBlock(markdown, selectStart = null, selectEnd = null) {
-  articleEditorMoreMenuOpen.value = false;
-  const block = normalizeMarkdownBlockInsertion(markdown);
-  replaceArticleEditorSelection(
-    block.text,
-    selectStart === null ? null : block.contentOffset + selectStart,
-    selectEnd === null ? null : block.contentOffset + selectEnd
-  );
+  if (before === "`") {
+    runArticleEditorCommand("toggleCode");
+  }
 }
 
 function insertArticleEditorHeading(level = 1) {
-  const headingLevel = Math.min(Math.max(Number(level) || 1, 1), 6);
-  const selection = selectedArticleEditorText("标题");
-  const markdown = `${"#".repeat(headingLevel)} ${selection}`;
-  insertArticleEditorBlock(markdown, headingLevel + 1, headingLevel + 1 + selection.length);
+  runArticleEditorCommand("setHeading", Math.min(Math.max(Number(level) || 1, 1), 3));
 }
 
 function insertArticleEditorQuote() {
-  const selection = selectedArticleEditorText("引用内容");
-  const markdown = selection
-    .split(/\r?\n/)
-    .map((line) => `> ${line || " "}`)
-    .join("\n");
-  insertArticleEditorBlock(markdown, 2, 2 + selection.length);
+  runArticleEditorCommand("toggleBlockquote");
 }
 
 function insertArticleEditorCode() {
-  const selection = selectedArticleEditorText("code");
-
-  if (selection.includes("\n")) {
-    insertArticleEditorBlock(`\`\`\`\n${selection}\n\`\`\``, 4, 4 + selection.length);
-    return;
-  }
-
-  insertArticleEditorInline({ before: "`", after: "`", placeholder: "code" });
+  runArticleEditorCommand("toggleCode");
 }
 
 function insertArticleEditorList(ordered = false) {
-  const selection = selectedArticleEditorText(ordered ? "第一项\n第二项" : "列表项\n列表项");
-  const lines = selection.split(/\r?\n/);
-  const markdown = lines
-    .map((line, index) => `${ordered ? `${index + 1}.` : "-"} ${line || "列表项"}`)
-    .join("\n");
-  const firstMarkerLength = ordered ? 3 : 2;
-  insertArticleEditorBlock(markdown, firstMarkerLength, firstMarkerLength + (lines[0] || "列表项").length);
+  runArticleEditorCommand(ordered ? "toggleOrderedList" : "toggleBulletList");
 }
 
 function insertArticleEditorLink() {
-  const selection = selectedArticleEditorText("链接文本");
-  const url = "https://example.com";
-  const markdown = `[${selection}](${url})`;
-  replaceArticleEditorSelection(markdown, selection.length + 3, selection.length + 3 + url.length);
-}
+  const href = window.prompt("请输入链接地址", "https://example.com");
 
-function insertArticleEditorDivider() {
-  insertArticleEditorBlock("---");
-}
-
-function insertArticleEditorTable() {
-  const markdown = [
-    "| 列 1 | 列 2 |",
-    "| --- | --- |",
-    "| 内容 | 内容 |"
-  ].join("\n");
-  insertArticleEditorBlock(markdown, 2, 5);
-}
-
-function insertArticleEditorMath() {
-  const formula = "E = mc^2";
-  insertArticleEditorBlock(`$$\n${formula}\n$$`, 3, 3 + formula.length);
-}
-
-function clearArticleEditorFormatting() {
-  articleEditorMoreMenuOpen.value = false;
-  const textarea = articleEditorMarkdownRef.value;
-  const currentValue = articleEditorForm.contentMarkdown || "";
-
-  if (!textarea || textarea.selectionStart === textarea.selectionEnd) {
-    setMessage("请先选择要清除格式的文字。");
-    focusArticleEditorTextarea();
+  if (href === null) {
+    articleEditorTiptapRef.value?.focus();
     return;
   }
 
-  const selectedText = currentValue.slice(textarea.selectionStart, textarea.selectionEnd);
-  const plainText = selectedText
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^>\s?/gm, "")
-    .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, "")
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/(`{1,3})([\s\S]*?)\1/g, "$2")
-    .replace(/(\*\*|__)([\s\S]*?)\1/g, "$2")
-    .replace(/(\*|_)([\s\S]*?)\1/g, "$2")
-    .replace(/~~([\s\S]*?)~~/g, "$1");
+  runArticleEditorCommand("setLink", href);
+}
 
-  replaceArticleEditorSelection(plainText, 0, plainText.length);
+function insertArticleEditorDivider() {
+  runArticleEditorCommand("insertHorizontalRule");
+}
+
+function insertArticleEditorTable() {
+  runArticleEditorCommand(
+    "insertText",
+    "\n\n| 列 1 | 列 2 |\n| --- | --- |\n| 内容 | 内容 |\n\n"
+  );
+}
+
+function insertArticleEditorMath() {
+  runArticleEditorCommand("insertText", "\n\n$$\nE = mc^2\n$$\n\n");
+}
+
+function clearArticleEditorFormatting() {
+  runArticleEditorCommand("clearFormatting");
 }
 
 function formatArticleEditorFileSize(size) {
@@ -3154,23 +3079,13 @@ async function importArticleEditorBatchDrafts() {
   }
 }
 
-function rememberArticleEditorSelection() {
-  const textarea = articleEditorMarkdownRef.value;
-  const length = (articleEditorForm.contentMarkdown || "").length;
-
-  articleEditorImageSelection.value = {
-    start: textarea?.selectionStart ?? length,
-    end: textarea?.selectionEnd ?? textarea?.selectionStart ?? length
-  };
-}
-
 function openArticleEditorImageModal() {
   if (articleEditorIsLocked.value) {
     return;
   }
 
   articleEditorMoreMenuOpen.value = false;
-  rememberArticleEditorSelection();
+  articleEditorTiptapRef.value?.focus();
   articleEditorImageModalOpen.value = true;
 }
 
@@ -3213,26 +3128,36 @@ function removeArticleEditorImageFile(index) {
   articleEditorImageFiles.value = articleEditorImageFiles.value.filter((_file, fileIndex) => fileIndex !== index);
 }
 
-function insertArticleEditorImageMarkdown(markdownItems) {
-  const markdown = markdownItems.filter(Boolean).join("\n");
+function parseMarkdownImage(markdown) {
+  const match = String(markdown || "").match(/^!\[([^\]]*)]\(([^)\s]+)(?:\s+"([^"]+)")?\)$/);
 
-  if (!markdown) {
-    return;
+  if (!match) {
+    return null;
   }
 
-  const currentValue = articleEditorForm.contentMarkdown || "";
-  const start = articleEditorImageSelection.value.start ?? currentValue.length;
-  const end = articleEditorImageSelection.value.end ?? start;
-  const before = currentValue.slice(0, start);
-  const after = currentValue.slice(end);
-  const prefix = before && !before.endsWith("\n") ? "\n\n" : before.endsWith("\n\n") || !before ? "" : "\n";
-  const suffix = after && !after.startsWith("\n") ? "\n\n" : "";
-  const insertedText = `${prefix}${markdown}${suffix}`;
+  return {
+    alt: match[1] || "",
+    src: match[2],
+    title: match[3] || ""
+  };
+}
 
-  articleEditorForm.contentMarkdown = `${before}${insertedText}${after}`;
+function insertArticleEditorImages(images) {
+  const imageItems = (images || [])
+    .map((image) => ({
+      src: image.imageUrl || parseMarkdownImage(image.markdown)?.src || "",
+      alt: image.altText || image.originalName || parseMarkdownImage(image.markdown)?.alt || "",
+      title: parseMarkdownImage(image.markdown)?.title || ""
+    }))
+    .filter((image) => image.src);
+
+  for (const image of imageItems) {
+    articleEditorTiptapRef.value?.insertImage(image);
+  }
+
   articleEditorImageModalOpen.value = false;
   articleEditorImageFiles.value = [];
-  focusArticleEditorTextarea(start + insertedText.length, start + insertedText.length);
+  articleEditorTiptapRef.value?.focus();
 }
 
 async function uploadArticleEditorImages() {
@@ -3254,7 +3179,7 @@ async function uploadArticleEditorImages() {
       method: "POST",
       body: formData
     });
-    insertArticleEditorImageMarkdown((payload.images || []).map((image) => image.markdown));
+    insertArticleEditorImages(payload.images || []);
     setMessage(`已上传 ${payload.images?.length || 0} 张图片并插入 Markdown。`);
   } catch (error) {
     if (error.message !== "UNAUTHORIZED") {
@@ -3498,19 +3423,6 @@ function toggleArticleEditorMoreMenu() {
 
 function closeArticleEditorMoreMenu() {
   articleEditorMoreMenuOpen.value = false;
-}
-
-function syncArticleEditorTextareaHeight() {
-  nextTick(() => {
-    const textarea = articleEditorMarkdownRef.value;
-
-    if (!textarea) {
-      return;
-    }
-
-    textarea.style.height = "auto";
-    textarea.style.height = `${textarea.scrollHeight}px`;
-  });
 }
 
 function toggleArticleEditorSeo() {
@@ -5071,10 +4983,6 @@ watch(view, (newVal) => {
     disposeTrafficChart();
   }
 
-  if (newVal === "articleEditor") {
-    syncArticleEditorTextareaHeight();
-  }
-
   if (newVal === "admin") {
     nextTick(renderAdminCharts);
   } else {
@@ -5085,12 +4993,6 @@ watch(view, (newVal) => {
     nextTick(renderUserPanelCharts);
   } else {
     disposeUserPanelCharts();
-  }
-});
-
-watch(() => articleEditorForm.contentMarkdown, () => {
-  if (isArticleEditorView.value) {
-    syncArticleEditorTextareaHeight();
   }
 });
 
@@ -5370,11 +5272,11 @@ onBeforeUnmount(() => {
         </button>
       </header>
       <main>
-        <div
-          v-if="articleEditorPreviewHtml"
-          class="article-html article-detail-html article-editor-preview-html"
-          v-html="articleEditorPreviewHtml"
-        ></div>
+        <ArticleTiptapPreview
+          v-if="articleEditorPreview?.contentMarkdown"
+          class="article-editor-preview-html"
+          :markdown="articleEditorPreview.contentMarkdown"
+        />
         <div v-else class="article-editor-preview-empty">
           <iconify-icon icon="mdi:file-document-outline" width="44"></iconify-icon>
           <strong>暂无正文内容</strong>
@@ -6412,28 +6314,86 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="article-editor-toolbar" aria-label="Markdown 工具栏">
-            <button type="button" title="一级标题" :disabled="articleEditorIsLocked" @click="insertArticleEditorHeading(1)">H</button>
+            <button
+              type="button"
+              title="一级标题"
+              :aria-pressed="articleEditorToolbarState.heading === 1"
+              :class="{ 'is-active': articleEditorToolbarState.heading === 1 }"
+              :disabled="articleEditorIsLocked"
+              @click="insertArticleEditorHeading(1)"
+            >
+              H
+            </button>
             <span></span>
-            <button type="button" title="加粗" :disabled="articleEditorIsLocked" @click="insertArticleEditorInline({ before: '**', after: '**', placeholder: '加粗文本' })">
+            <button
+              type="button"
+              title="加粗"
+              :aria-pressed="articleEditorToolbarState.bold"
+              :class="{ 'is-active': articleEditorToolbarState.bold }"
+              :disabled="articleEditorIsLocked"
+              @click="insertArticleEditorInline({ before: '**', after: '**', placeholder: '加粗文本' })"
+            >
               <iconify-icon icon="mdi:format-bold" width="20"></iconify-icon>
             </button>
-            <button type="button" title="斜体" :disabled="articleEditorIsLocked" @click="insertArticleEditorInline({ before: '*', after: '*', placeholder: '斜体文本' })">
+            <button
+              type="button"
+              title="斜体"
+              :aria-pressed="articleEditorToolbarState.italic"
+              :class="{ 'is-active': articleEditorToolbarState.italic }"
+              :disabled="articleEditorIsLocked"
+              @click="insertArticleEditorInline({ before: '*', after: '*', placeholder: '斜体文本' })"
+            >
               <iconify-icon icon="mdi:format-italic" width="20"></iconify-icon>
             </button>
-            <button type="button" title="引用" :disabled="articleEditorIsLocked" @click="insertArticleEditorQuote">
+            <button
+              type="button"
+              title="引用"
+              :aria-pressed="articleEditorToolbarState.blockquote"
+              :class="{ 'is-active': articleEditorToolbarState.blockquote }"
+              :disabled="articleEditorIsLocked"
+              @click="insertArticleEditorQuote"
+            >
               <iconify-icon icon="mdi:format-quote-open" width="20"></iconify-icon>
             </button>
-            <button type="button" title="代码" :disabled="articleEditorIsLocked" @click="insertArticleEditorCode">
+            <button
+              type="button"
+              title="代码"
+              :aria-pressed="articleEditorToolbarState.code"
+              :class="{ 'is-active': articleEditorToolbarState.code }"
+              :disabled="articleEditorIsLocked"
+              @click="insertArticleEditorCode"
+            >
               <iconify-icon icon="mdi:code-tags" width="20"></iconify-icon>
             </button>
             <span></span>
-            <button type="button" title="无序列表" :disabled="articleEditorIsLocked" @click="insertArticleEditorList(false)">
+            <button
+              type="button"
+              title="无序列表"
+              :aria-pressed="articleEditorToolbarState.bulletList"
+              :class="{ 'is-active': articleEditorToolbarState.bulletList }"
+              :disabled="articleEditorIsLocked"
+              @click="insertArticleEditorList(false)"
+            >
               <iconify-icon icon="mdi:format-list-bulleted" width="20"></iconify-icon>
             </button>
-            <button type="button" title="有序列表" :disabled="articleEditorIsLocked" @click="insertArticleEditorList(true)">
+            <button
+              type="button"
+              title="有序列表"
+              :aria-pressed="articleEditorToolbarState.orderedList"
+              :class="{ 'is-active': articleEditorToolbarState.orderedList }"
+              :disabled="articleEditorIsLocked"
+              @click="insertArticleEditorList(true)"
+            >
               <iconify-icon icon="mdi:format-list-numbered" width="20"></iconify-icon>
             </button>
-            <button type="button" title="插入链接" :disabled="articleEditorIsLocked" @click="insertArticleEditorLink">
+            <button
+              type="button"
+              title="插入链接"
+              :aria-pressed="articleEditorToolbarState.link"
+              :class="{ 'is-active': articleEditorToolbarState.link }"
+              :disabled="articleEditorIsLocked"
+              @click="insertArticleEditorLink"
+            >
               <iconify-icon icon="mdi:link-variant" width="20"></iconify-icon>
             </button>
             <button type="button" title="插入图片" :disabled="articleEditorIsLocked" @click="openArticleEditorImageModal">
@@ -6451,15 +6411,33 @@ onBeforeUnmount(() => {
                 <iconify-icon icon="mdi:dots-horizontal" width="22"></iconify-icon>
               </button>
               <div v-if="articleEditorMoreMenuOpen" class="article-editor-more-menu" role="menu">
-                <button type="button" role="menuitem" @click="insertArticleEditorHeading(1)">
+                <button
+                  type="button"
+                  role="menuitem"
+                  :aria-pressed="articleEditorToolbarState.heading === 1"
+                  :class="{ 'is-active': articleEditorToolbarState.heading === 1 }"
+                  @click="insertArticleEditorHeading(1)"
+                >
                   <span>H1</span>
                   <span>一级标题</span>
                 </button>
-                <button type="button" role="menuitem" @click="insertArticleEditorHeading(2)">
+                <button
+                  type="button"
+                  role="menuitem"
+                  :aria-pressed="articleEditorToolbarState.heading === 2"
+                  :class="{ 'is-active': articleEditorToolbarState.heading === 2 }"
+                  @click="insertArticleEditorHeading(2)"
+                >
                   <span>H2</span>
                   <span>二级标题</span>
                 </button>
-                <button type="button" role="menuitem" @click="insertArticleEditorHeading(3)">
+                <button
+                  type="button"
+                  role="menuitem"
+                  :aria-pressed="articleEditorToolbarState.heading === 3"
+                  :class="{ 'is-active': articleEditorToolbarState.heading === 3 }"
+                  @click="insertArticleEditorHeading(3)"
+                >
                   <span>H3</span>
                   <span>三级标题</span>
                 </button>
@@ -6483,15 +6461,13 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <textarea
-            ref="articleEditorMarkdownRef"
+          <ArticleTiptapEditor
+            ref="articleEditorTiptapRef"
             v-model="articleEditorForm.contentMarkdown"
-            class="article-editor-markdown-input"
-            placeholder="开始撰写 Markdown 正文..."
             :disabled="articleEditorIsLocked"
-            @input="syncArticleEditorTextareaHeight"
             @focus="closeArticleEditorMoreMenu"
-          ></textarea>
+            @state-change="updateArticleEditorToolbarState"
+          />
         </div>
       </main>
     </div>
