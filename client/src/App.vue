@@ -2,7 +2,6 @@
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 
 const ArticleTiptapEditor = defineAsyncComponent(() => import("./components/ArticleTiptapEditor.vue"));
-const ArticleTiptapPreview = defineAsyncComponent(() => import("./components/ArticleTiptapPreview.vue"));
 
 const API_BASE_URL = "/api";
 const ASSET_BASE_URL = "";
@@ -168,7 +167,9 @@ const articleEditorToolbarState = reactive({
   code: false,
   bulletList: false,
   orderedList: false,
-  link: false
+  link: false,
+  table: false,
+  math: false
 });
 const articleEditorImageInputRef = ref(null);
 const articleEditorBatchUploadInputRef = ref(null);
@@ -528,6 +529,7 @@ const articleEditorHasUnsavedChanges = computed(
 const articleEditorIsLocked = computed(() => articleEditorStatus.value === "PENDING_REVIEW");
 const articleEditorCanDelete = computed(() => ["DRAFT", "REJECTED"].includes(articleEditorStatus.value) && articleEditorArticleId.value);
 const articleEditorStatusText = computed(() => articleStatusLabel(articleEditorStatus.value));
+const articleEditorPreviewHtml = computed(() => mapAssetUrls(articleEditorPreview.value?.contentHtml || ""));
 const adminReviewPreviewHtml = computed(() => mapAssetUrls(adminReviewPreviewArticle.value?.contentHtml || ""));
 const articleEditorWordCount = computed(() => String(articleEditorForm.contentMarkdown || "").trim().length);
 const articleEditorLineCount = computed(() => {
@@ -2751,6 +2753,8 @@ function updateArticleEditorToolbarState(state = {}) {
   articleEditorToolbarState.bulletList = Boolean(state.bulletList);
   articleEditorToolbarState.orderedList = Boolean(state.orderedList);
   articleEditorToolbarState.link = Boolean(state.link);
+  articleEditorToolbarState.table = Boolean(state.table);
+  articleEditorToolbarState.math = Boolean(state.math);
 }
 
 function insertArticleEditorInline({ before = "" }) {
@@ -2801,14 +2805,11 @@ function insertArticleEditorDivider() {
 }
 
 function insertArticleEditorTable() {
-  runArticleEditorCommand(
-    "insertText",
-    "\n\n| 列 1 | 列 2 |\n| --- | --- |\n| 内容 | 内容 |\n\n"
-  );
+  runArticleEditorCommand("insertTable");
 }
 
 function insertArticleEditorMath() {
-  runArticleEditorCommand("insertText", "\n\n$$\nE = mc^2\n$$\n\n");
+  runArticleEditorCommand("insertBlockMath", "E = mc^2");
 }
 
 function clearArticleEditorFormatting() {
@@ -5272,11 +5273,11 @@ onBeforeUnmount(() => {
         </button>
       </header>
       <main>
-        <ArticleTiptapPreview
-          v-if="articleEditorPreview?.contentMarkdown"
-          class="article-editor-preview-html"
-          :markdown="articleEditorPreview.contentMarkdown"
-        />
+        <div
+          v-if="articleEditorPreviewHtml"
+          class="article-html article-detail-html article-editor-preview-html"
+          v-html="articleEditorPreviewHtml"
+        ></div>
         <div v-else class="article-editor-preview-empty">
           <iconify-icon icon="mdi:file-document-outline" width="44"></iconify-icon>
           <strong>暂无正文内容</strong>
@@ -6445,11 +6446,23 @@ onBeforeUnmount(() => {
                   <iconify-icon icon="mdi:minus" width="18"></iconify-icon>
                   <span>分隔线</span>
                 </button>
-                <button type="button" role="menuitem" @click="insertArticleEditorTable">
+                <button
+                  type="button"
+                  role="menuitem"
+                  :aria-pressed="articleEditorToolbarState.table"
+                  :class="{ 'is-active': articleEditorToolbarState.table }"
+                  @click="insertArticleEditorTable"
+                >
                   <iconify-icon icon="mdi:table" width="18"></iconify-icon>
                   <span>表格</span>
                 </button>
-                <button type="button" role="menuitem" @click="insertArticleEditorMath">
+                <button
+                  type="button"
+                  role="menuitem"
+                  :aria-pressed="articleEditorToolbarState.math"
+                  :class="{ 'is-active': articleEditorToolbarState.math }"
+                  @click="insertArticleEditorMath"
+                >
                   <iconify-icon icon="mdi:sigma" width="18"></iconify-icon>
                   <span>数学公式</span>
                 </button>

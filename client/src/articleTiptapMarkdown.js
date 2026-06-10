@@ -1,3 +1,20 @@
+const RAW_HTML_BLOCK_TAGS = new Set([
+  "article",
+  "aside",
+  "blockquote",
+  "details",
+  "div",
+  "figure",
+  "figcaption",
+  "footer",
+  "header",
+  "main",
+  "nav",
+  "pre",
+  "section",
+  "table"
+]);
+
 export function markdownToTiptapJson(markdown) {
   const blocks = splitMarkdownBlocks(markdown);
   const content = blocks.map(markdownBlockToNode).filter(Boolean);
@@ -35,6 +52,8 @@ function splitMarkdownBlocks(markdown) {
   const blocks = [];
   let current = [];
   let fence = null;
+  let mathFence = false;
+  let htmlFence = null;
 
   function flush() {
     if (current.length > 0) {
@@ -62,6 +81,45 @@ function splitMarkdownBlocks(markdown) {
       continue;
     }
 
+    if (/^\s*\$\$\s*$/.test(line)) {
+      if (mathFence) {
+        current.push(line);
+        flush();
+        mathFence = false;
+      } else {
+        flush();
+        current.push(line);
+        mathFence = true;
+      }
+      continue;
+    }
+
+    if (mathFence) {
+      current.push(line);
+      continue;
+    }
+
+    if (htmlFence) {
+      current.push(line);
+      if (isClosingHtmlLine(line, htmlFence)) {
+        flush();
+        htmlFence = null;
+      }
+      continue;
+    }
+
+    const htmlTag = openingHtmlTag(line);
+    if (htmlTag) {
+      flush();
+      current.push(line);
+      if (isClosingHtmlLine(line, htmlTag)) {
+        flush();
+      } else {
+        htmlFence = htmlTag;
+      }
+      continue;
+    }
+
     if (!line.trim()) {
       flush();
       continue;
@@ -81,13 +139,39 @@ function markdownBlockToNode(block) {
     return null;
   }
 
-  const codeMatch = trimmed.match(/^```[^\n]*\n([\s\S]*?)\n?```$/);
+  const codeMatch = trimmed.match(/^```([^\s`]*)[^\n]*\n([\s\S]*?)\n?```$/);
   if (codeMatch) {
-    const codeText = codeMatch[1] || "";
+    const language = codeMatch[1] || null;
+    const codeText = codeMatch[2] || "";
 
     return {
       type: "codeBlock",
+      attrs: { language },
       content: codeText ? [{ type: "text", text: codeText }] : undefined
+    };
+  }
+
+  const blockMathMatch = trimmed.match(/^\$\$\s*\n?([\s\S]*?)\n?\$\$$/);
+  if (blockMathMatch) {
+    return {
+      type: "blockMath",
+      attrs: {
+        latex: blockMathMatch[1].trim()
+      }
+    };
+  }
+
+  const tableNode = pipeTableToNode(trimmed);
+  if (tableNode) {
+    return tableNode;
+  }
+
+  if (isRawHtmlBlock(trimmed)) {
+    return {
+      type: "rawHtmlBlock",
+      attrs: {
+        source: block
+      }
     };
   }
 
@@ -153,7 +237,7 @@ function paragraphNode(markdown) {
 function inlineMarkdownToNodes(markdown) {
   const text = String(markdown || "");
   const nodes = [];
-  const tokenPattern = /!\[([^\]]*)]\(([^)\s]+)(?:\s+"([^"]+)")?\)|\[([^\]]+)]\(([^)\s]+)\)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(`[^`\n]+`)/g;
+  const tokenPattern = /!\[([^\]]*)]\(([^)\s]+)(?:\s+"([^"]+)")?\)|\[([^\]]+)]\(([^)\s]+)\)|(`[^`\n]+`)|(\$[^$\n]+\$)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)/g;
   let index = 0;
   let match;
 
@@ -174,11 +258,22 @@ function inlineMarkdownToNodes(markdown) {
     } else if (match[4] !== undefined) {
       pushInlineNode(nodes, textNode(match[4], [{ type: "link", attrs: { href: match[5], target: "_blank", rel: "noopener noreferrer nofollow", class: null } }]));
     } else if (match[6] !== undefined) {
-      pushInlineNode(nodes, textNode(match[6].slice(2, -2), [{ type: "bold" }]));
+      pushInlineNode(nodes, textNode(match[6].slice(1, -1), [{ type: "code" }]));
     } else if (match[7] !== undefined) {
-      pushInlineNode(nodes, textNode(match[7].slice(1, -1), [{ type: "italic" }]));
+      if (shouldParseInlineMath(text, match.index, match[7])) {
+        nodes.push({
+          type: "inlineMath",
+          attrs: {
+            latex: match[7].slice(1, -1).trim()
+          }
+        });
+      } else {
+        pushInlineNode(nodes, textNode(match[7]));
+      }
     } else if (match[8] !== undefined) {
-      pushInlineNode(nodes, textNode(match[8].slice(1, -1), [{ type: "code" }]));
+      pushInlineNode(nodes, textNode(match[8].slice(2, -2), [{ type: "bold" }]));
+    } else if (match[9] !== undefined) {
+      pushInlineNode(nodes, textNode(match[9].slice(1, -1), [{ type: "italic" }]));
     }
 
     index = match.index + match[0].length;
@@ -237,7 +332,8 @@ function nodeToMarkdown(node) {
   }
 
   if (node.type === "codeBlock") {
-    return `\`\`\`\n${inlineNodesToPlainText(node.content || [])}\n\`\`\``;
+    const language = node.attrs?.language || "";
+    return `\`\`\`${language}\n${inlineNodesToPlainText(node.content || [])}\n\`\`\``;
   }
 
   if (node.type === "bulletList") {
@@ -254,6 +350,18 @@ function nodeToMarkdown(node) {
 
   if (node.type === "image") {
     return imageNodeToMarkdown(node);
+  }
+
+  if (node.type === "table") {
+    return tableNodeToMarkdown(node);
+  }
+
+  if (node.type === "blockMath") {
+    return `$$\n${node.attrs?.latex || ""}\n$$`;
+  }
+
+  if (node.type === "rawHtmlBlock") {
+    return node.attrs?.source || "";
   }
 
   return inlineNodesToMarkdown(node.content || []);
@@ -288,6 +396,10 @@ function inlineNodeToMarkdown(node) {
     return imageNodeToMarkdown(node);
   }
 
+  if (node.type === "inlineMath") {
+    return `$${node.attrs?.latex || ""}$`;
+  }
+
   return inlineNodesToMarkdown(node.content || []);
 }
 
@@ -318,4 +430,209 @@ function imageNodeToMarkdown(node) {
   const src = node.attrs?.src || "";
   const title = node.attrs?.title ? ` "${node.attrs.title}"` : "";
   return `![${alt}](${src}${title})`;
+}
+
+function openingHtmlTag(line) {
+  const match = String(line || "").match(/^\s*<([a-z][\w:-]*)(?=\s|>|$)/i);
+  const tag = match?.[1]?.toLowerCase();
+  return tag && RAW_HTML_BLOCK_TAGS.has(tag) ? tag : null;
+}
+
+function isClosingHtmlLine(line, tag) {
+  return new RegExp(`</${tag}\\s*>\\s*$`, "i").test(String(line || ""));
+}
+
+function isRawHtmlBlock(markdown) {
+  const tag = openingHtmlTag(markdown);
+  return Boolean(tag && isClosingHtmlLine(markdown, tag));
+}
+
+function pipeTableToNode(markdown) {
+  const lines = String(markdown || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2 || !looksLikePipeRow(lines[0]) || !looksLikePipeRow(lines[1])) {
+    return null;
+  }
+
+  const header = parsePipeRow(lines[0]);
+  const aligns = parsePipeSeparator(lines[1]);
+
+  if (!header.length || !aligns || aligns.length !== header.length) {
+    return null;
+  }
+
+  const rows = [tableRowNode(header, aligns, true)];
+
+  for (const line of lines.slice(2)) {
+    if (!looksLikePipeRow(line)) {
+      return null;
+    }
+
+    const cells = normalizeTableCells(parsePipeRow(line), header.length);
+    rows.push(tableRowNode(cells, aligns, false));
+  }
+
+  return {
+    type: "table",
+    content: rows
+  };
+}
+
+function looksLikePipeRow(line) {
+  return String(line || "").includes("|");
+}
+
+function parsePipeSeparator(line) {
+  const cells = parsePipeRow(line);
+
+  if (!cells.length) {
+    return null;
+  }
+
+  const aligns = [];
+
+  for (const cell of cells) {
+    const value = cell.trim();
+
+    if (!/^:?-{3,}:?$/.test(value)) {
+      return null;
+    }
+
+    if (value.startsWith(":") && value.endsWith(":")) {
+      aligns.push("center");
+    } else if (value.endsWith(":")) {
+      aligns.push("right");
+    } else if (value.startsWith(":")) {
+      aligns.push("left");
+    } else {
+      aligns.push(null);
+    }
+  }
+
+  return aligns;
+}
+
+function parsePipeRow(line) {
+  let source = String(line || "").trim();
+
+  if (source.startsWith("|")) {
+    source = source.slice(1);
+  }
+
+  if (source.endsWith("|")) {
+    source = source.slice(0, -1);
+  }
+
+  const cells = [];
+  let current = "";
+  let escaped = false;
+
+  for (const char of source) {
+    if (escaped) {
+      current += char === "|" ? char : `\\${char}`;
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === "|") {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  cells.push(current.trim());
+  return cells;
+}
+
+function shouldParseInlineMath(text, start, token) {
+  const before = start > 0 ? text[start - 1] : "";
+  const latex = String(token || "").slice(1, -1).trim();
+
+  return Boolean(latex && !/\d$/.test(before) && !/^\d/.test(latex));
+}
+
+function normalizeTableCells(cells, count) {
+  return Array.from({ length: count }, (_, index) => cells[index] || "");
+}
+
+function tableRowNode(cells, aligns, isHeader) {
+  return {
+    type: "tableRow",
+    content: normalizeTableCells(cells, aligns.length).map((cell, index) => {
+      const attrs = aligns[index] ? { align: aligns[index] } : undefined;
+
+      return {
+        type: isHeader ? "tableHeader" : "tableCell",
+        attrs,
+        content: [paragraphNode(cell)]
+      };
+    })
+  };
+}
+
+function tableNodeToMarkdown(node) {
+  const rows = node.content || [];
+
+  if (rows.length === 0) {
+    return "";
+  }
+
+  const matrix = rows.map((row) => row.content || []);
+  const columnCount = Math.max(...matrix.map((row) => row.length), 1);
+  const header = normalizeTableCells(matrix[0].map(tableCellToMarkdown), columnCount);
+  const aligns = normalizeTableCells(matrix[0].map((cell) => cell.attrs?.align || null), columnCount);
+  const lines = [
+    markdownTableRow(header),
+    markdownTableRow(aligns.map((align) => tableAlignMarker(align)))
+  ];
+
+  for (const row of matrix.slice(1)) {
+    lines.push(markdownTableRow(normalizeTableCells(row.map(tableCellToMarkdown), columnCount)));
+  }
+
+  return lines.join("\n");
+}
+
+function tableCellToMarkdown(cell) {
+  return (cell.content || [])
+    .map(nodeToMarkdown)
+    .filter((value) => value !== null)
+    .join(" ")
+    .replace(/\n+/g, " ")
+    .trim();
+}
+
+function markdownTableRow(cells) {
+  return `| ${cells.map(escapeTableCell).join(" | ")} |`;
+}
+
+function tableAlignMarker(align) {
+  if (align === "left") {
+    return ":---";
+  }
+
+  if (align === "right") {
+    return "---:";
+  }
+
+  if (align === "center") {
+    return ":---:";
+  }
+
+  return "---";
+}
+
+function escapeTableCell(value) {
+  return String(value || "").replace(/\|/g, "\\|");
 }

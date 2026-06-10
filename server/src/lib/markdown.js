@@ -1,9 +1,12 @@
+import katex from "katex";
 import MarkdownIt from "markdown-it";
 import sanitizeHtml from "sanitize-html";
 
+const MATH_PLACEHOLDER_PREFIX = "%%KATEX_BLOCK_";
+
 function createMarkdown(toc = null) {
   const instance = new MarkdownIt({
-    html: false,
+    html: true,
     linkify: true,
     breaks: true
   });
@@ -58,19 +61,66 @@ function uniqueHeadingId(title, toc) {
 }
 
 const sanitizeOptions = {
-  allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+  allowedTags: [
+    "a",
+    "article",
+    "aside",
+    "br",
+    "blockquote",
+    "code",
+    "details",
+    "div",
+    "em",
+    "figcaption",
+    "figure",
+    "footer",
+    "header",
+    "hr",
     "img",
+    "li",
+    "main",
+    "nav",
+    "ol",
+    "p",
+    "pre",
+    "section",
+    "span",
+    "strong",
+    "summary",
+    "table",
+    "thead",
+    "tbody",
+    "tfoot",
+    "tr",
+    "th",
+    "td",
+    "ul",
     "h1",
     "h2",
     "h3",
     "h4",
     "h5",
     "h6"
-  ]),
+  ],
   allowedAttributes: {
     ...sanitizeHtml.defaults.allowedAttributes,
-    a: ["href", "name", "target", "rel"],
+    a: ["href", "name", "target", "rel", "title"],
     img: ["src", "alt", "title"],
+    div: ["class"],
+    span: ["class"],
+    p: ["class"],
+    code: ["class"],
+    pre: ["class"],
+    blockquote: ["class"],
+    details: ["class"],
+    summary: ["class"],
+    table: ["class", "align"],
+    thead: ["class"],
+    tbody: ["class"],
+    tfoot: ["class"],
+    tr: ["class"],
+    th: ["class", "align"],
+    td: ["class", "align"],
     h1: ["id"],
     h2: ["id"],
     h3: ["id"],
@@ -79,6 +129,34 @@ const sanitizeOptions = {
     h6: ["id"]
   },
   allowedSchemes: ["http", "https", "mailto"],
+  allowedSchemesByTag: {
+    img: ["http", "https"]
+  },
+  exclusiveFilter(frame) {
+    if (frame.tag === "img") {
+      const src = String(frame.attribs?.src || "");
+      return Boolean(src && !isAllowedImageSource(src));
+    }
+
+    return false;
+  },
+  allowedClasses: {
+    div: [/^[a-z0-9_-]+$/i],
+    span: [/^[a-z0-9_-]+$/i],
+    p: [/^[a-z0-9_-]+$/i],
+    code: [/^[a-z0-9_-]+$/i],
+    pre: [/^[a-z0-9_-]+$/i],
+    blockquote: [/^[a-z0-9_-]+$/i],
+    details: [/^[a-z0-9_-]+$/i],
+    summary: [/^[a-z0-9_-]+$/i],
+    table: [/^[a-z0-9_-]+$/i],
+    thead: [/^[a-z0-9_-]+$/i],
+    tbody: [/^[a-z0-9_-]+$/i],
+    tfoot: [/^[a-z0-9_-]+$/i],
+    tr: [/^[a-z0-9_-]+$/i],
+    th: [/^[a-z0-9_-]+$/i],
+    td: [/^[a-z0-9_-]+$/i]
+  },
   transformTags: {
     a: sanitizeHtml.simpleTransform("a", {
       target: "_blank",
@@ -88,22 +166,82 @@ const sanitizeOptions = {
 };
 
 export function renderMarkdownToSafeHtml(source = "") {
-  const rawHtml = createMarkdown([]).render(source);
-  return sanitizeHtml(rawHtml, sanitizeOptions);
+  const rendered = renderMarkdownWithMathPlaceholders(source);
+  return restoreMathPlaceholders(sanitizeHtml(rendered.html, sanitizeOptions), rendered.mathBlocks);
 }
 
 export function renderMarkdownToSafeHtmlWithToc(source = "") {
   const toc = [];
-  const rawHtml = createMarkdown(toc).render(source);
+  const rendered = renderMarkdownWithMathPlaceholders(source, toc);
 
   return {
-    html: sanitizeHtml(rawHtml, sanitizeOptions),
+    html: restoreMathPlaceholders(sanitizeHtml(rendered.html, sanitizeOptions), rendered.mathBlocks),
     toc
   };
 }
 
 export function extractMarkdownToc(source = "") {
   const toc = [];
-  createMarkdown(toc).render(source);
+  createMarkdown(toc).render(stripMathBlocks(source));
   return toc;
+}
+
+function renderMarkdownWithMathPlaceholders(source = "", toc = []) {
+  const mathBlocks = [];
+  const protectedSource = protectCodeFences(source);
+  const mathMarkdown = protectedSource.text
+    .replace(/(^|\n)\$\$\s*\n?([\s\S]*?)\n?\$\$(?=\n|$)/g, (_match, prefix, latex) => {
+      const index = mathBlocks.push(renderKatex(latex, true)) - 1;
+      return `${prefix}<div class="math-display">${MATH_PLACEHOLDER_PREFIX}${index}%%</div>`;
+    })
+    .replace(/(^|[^\\$])\$([^$\n]+?)\$(?!\$)/g, (match, prefix, latex) => {
+      if (/\d$/.test(prefix) || /^\d/.test(latex)) {
+        return match;
+      }
+
+      const index = mathBlocks.push(renderKatex(latex, false)) - 1;
+      return `${prefix}${MATH_PLACEHOLDER_PREFIX}${index}%%`;
+    });
+  const rawHtml = createMarkdown(toc).render(restoreCodeFences(mathMarkdown, protectedSource.fences));
+
+  return {
+    html: rawHtml,
+    mathBlocks
+  };
+}
+
+function renderKatex(latex, displayMode) {
+  return katex.renderToString(String(latex || "").trim(), {
+    displayMode,
+    throwOnError: false,
+    strict: false,
+    trust: false,
+    output: "html"
+  });
+}
+
+function restoreMathPlaceholders(html, mathBlocks) {
+  return String(html || "").replace(new RegExp(`${MATH_PLACEHOLDER_PREFIX}(\\d+)%%`, "g"), (_match, index) => mathBlocks[Number(index)] || "");
+}
+
+function stripMathBlocks(source) {
+  return String(source || "").replace(/(^|\n)\$\$\s*\n?([\s\S]*?)\n?\$\$(?=\n|$)/g, "$1");
+}
+
+function protectCodeFences(source) {
+  const fences = [];
+  const text = String(source || "").replace(/```[\s\S]*?```/g, (match) => {
+    const index = fences.push(match) - 1;
+    return `%%CODE_FENCE_${index}%%`;
+  });
+
+  return { text, fences };
+}
+
+function restoreCodeFences(source, fences) {
+  return String(source || "").replace(/%%CODE_FENCE_(\d+)%%/g, (_match, index) => fences[Number(index)] || "");
+}
+
+function isAllowedImageSource(src) {
+  return /^(https?:)?\/\//i.test(src) || src.startsWith("/uploads/");
 }

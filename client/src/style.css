@@ -2718,6 +2718,39 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   font-style: italic;
 }
 
+.article-detail-html table {
+  width: 100%;
+  margin: 1.45em 0;
+  border-collapse: collapse;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.96em;
+}
+
+.article-detail-html th,
+.article-detail-html td {
+  border: 1px solid #e2e8f0;
+  padding: 0.72em 0.86em;
+  text-align: left;
+  vertical-align: top;
+}
+
+.article-detail-html th {
+  background: #f8fafc;
+  color: #111827;
+  font-weight: 800;
+}
+
+.article-detail-html .math-display {
+  margin: 1.35em 0;
+  overflow-x: auto;
+}
+
+.article-detail-html .katex-display {
+  margin: 0;
+}
+
 .article-detail-html pre {
   max-width: 100%;
   margin: 1.5em 0;
@@ -5950,6 +5983,50 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
   border: 0;
   border-top: 1px solid #e2e8f0;
 }
+.article-editor-tiptap-content table {
+  width: 100%;
+  margin: 0.85rem 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.96rem;
+}
+.article-editor-tiptap-content th,
+.article-editor-tiptap-content td {
+  min-width: 72px;
+  border: 1px solid #e2e8f0;
+  padding: 0.48rem 0.58rem;
+  vertical-align: top;
+}
+.article-editor-tiptap-content th {
+  background: #fff7ed;
+  color: #9a3412;
+  font-weight: 800;
+}
+.article-editor-tiptap-content .selectedCell::after {
+  z-index: 2;
+  background: rgba(251, 146, 60, 0.18);
+}
+.article-editor-tiptap-content .inline-math {
+  border-radius: 5px;
+  padding: 0.04rem 0.18rem;
+  background: rgba(234, 88, 12, 0.08);
+}
+.article-editor-tiptap-content .block-math {
+  margin: 0.85rem 0;
+  overflow-x: auto;
+  border-radius: 10px;
+  padding: 0.9rem;
+  background: #fff7ed;
+}
+.article-editor-raw-html-block {
+  margin: 0.85rem 0;
+  border: 1px dashed #fb923c;
+  border-radius: 8px;
+  padding: 0.82rem 0.95rem;
+  background: #fff7ed;
+  color: #9a3412;
+  white-space: pre-wrap;
+}
 .article-editor-footer {
   position: fixed;
   right: 0;
@@ -6605,6 +6682,20 @@ iconify-icon:not(:defined) + .bookmark-icon-fallback {
 }
 .dark .article-editor-tiptap-content hr {
   border-top-color: var(--border-soft);
+}
+.dark .article-editor-tiptap-content th,
+.dark .article-editor-tiptap-content td {
+  border-color: var(--border-soft);
+}
+.dark .article-editor-tiptap-content th,
+.dark .article-editor-tiptap-content .block-math,
+.dark .article-editor-tiptap-content .inline-math,
+.dark .article-editor-raw-html-block {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.dark .article-editor-raw-html-block {
+  border-color: rgba(251, 146, 60, 0.58);
 }
 .dark .article-editor-footer {
   border-top-color: var(--border-soft);

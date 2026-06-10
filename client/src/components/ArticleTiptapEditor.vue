@@ -1,10 +1,12 @@
 <script setup>
-import { Extension } from "@tiptap/core";
+import { Extension, Node } from "@tiptap/core";
 import { computed, onBeforeUnmount, watch } from "vue";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
+import { Mathematics } from "@tiptap/extension-mathematics";
 import Placeholder from "@tiptap/extension-placeholder";
 import StarterKit from "@tiptap/starter-kit";
+import { TableKit } from "@tiptap/extension-table";
 import { EditorContent, useEditor } from "@tiptap/vue-3";
 import { markdownToTiptapJson, plainTextToInlineNodes, tiptapJsonToMarkdown } from "../articleTiptapMarkdown";
 
@@ -30,6 +32,42 @@ const ExitInlineMarksOnSpace = Extension.create({
         return chain.run();
       }
     };
+  }
+});
+
+const RawHtmlBlock = Node.create({
+  name: "rawHtmlBlock",
+
+  group: "block",
+  atom: true,
+
+  addAttributes() {
+    return {
+      source: {
+        default: ""
+      }
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: "pre[data-raw-html-block]"
+      }
+    ];
+  },
+
+  renderHTML({ node }) {
+    const source = String(node.attrs?.source || "");
+    const firstLine = source.split("\n").find((line) => line.trim())?.trim() || "HTML";
+    return [
+      "pre",
+      {
+        "data-raw-html-block": "",
+        class: "article-editor-raw-html-block"
+      },
+      ["code", `HTML 块：${firstLine}`]
+    ];
   }
 });
 
@@ -72,9 +110,23 @@ const editor = useEditor({
       inline: true,
       allowBase64: false
     }),
+    TableKit.configure({
+      table: {
+        resizable: false,
+        HTMLAttributes: {
+          class: "article-editor-markdown-table"
+        }
+      }
+    }),
+    Mathematics.configure({
+      katexOptions: {
+        throwOnError: false
+      }
+    }),
     Placeholder.configure({
       placeholder: "开始撰写 Markdown 正文..."
     }),
+    RawHtmlBlock,
     ExitInlineMarksOnSpace
   ],
   editorProps: {
@@ -202,6 +254,14 @@ function insertHorizontalRule() {
   currentEditor.value?.chain().focus().setHorizontalRule().run();
 }
 
+function insertTable() {
+  currentEditor.value?.chain().focus().insertTable({ rows: 3, cols: 2, withHeaderRow: true }).run();
+}
+
+function insertBlockMath(latex = "E = mc^2") {
+  currentEditor.value?.chain().focus().insertBlockMath({ latex }).run();
+}
+
 function insertText(text) {
   const content = plainTextToInlineNodes(String(text || "").trim());
 
@@ -244,7 +304,9 @@ function emitEditorState(instance = currentEditor.value) {
     code: instance.isActive("code") || instance.isActive("codeBlock"),
     bulletList: instance.isActive("bulletList"),
     orderedList: instance.isActive("orderedList"),
-    link: instance.isActive("link")
+    link: instance.isActive("link"),
+    table: instance.isActive("table"),
+    math: instance.isActive("inlineMath") || instance.isActive("blockMath")
   });
 }
 
@@ -260,6 +322,8 @@ defineExpose({
   toggleOrderedList,
   setLink,
   insertHorizontalRule,
+  insertTable,
+  insertBlockMath,
   insertText,
   insertImage,
   clearFormatting
