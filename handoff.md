@@ -1,5 +1,70 @@
 # Handoff: codex-project-boke 当前状态
 
+## 2026-06-10 最新快照：TipTap 即时渲染投稿编辑器
+
+- 当前工作分支：`codex/tiptap-article-editor`
+- 最新功能提交：`c3ffc2f Add TipTap article editor`
+- 当前同步状态：`codex/tiptap-article-editor` 基于 `main` / `origin/main` 的 `d7dd617 Update handoff and README`，继承上一轮批量上传弹窗提交 `30ada84 Polish batch upload dialog sizing`，并叠加本轮 TipTap 编辑器提交；本次 `$work-end` 正在刷新并提交 repo-local `README.md` / `handoff.md`。
+- 本轮完成普通用户投稿编辑器从原生 textarea 到 TipTap 即时渲染编辑器的第一版改造；后端 `contentMarkdown` 字段和保存/提交/预览接口保持兼容。
+
+### 本轮已完成
+
+- 新增 TipTap 依赖：`@tiptap/vue-3`、`@tiptap/pm`、`@tiptap/starter-kit`、`@tiptap/extension-image`、`@tiptap/extension-link`、`@tiptap/extension-placeholder`。
+- 新增 `client/src/components/ArticleTiptapEditor.vue`，替换普通用户投稿正文 textarea，只影响 `#article/new` / `#article/edit/:id` 的普通投稿编辑器，不改管理员旧文章编辑能力。
+- 正文输入支持常见即时渲染：标题、粗体、斜体、引用、行内代码/代码块、无序/有序列表、链接、图片、分隔线。
+- 数据仍写回 `articleEditorForm.contentMarkdown`，保存草稿、提交审核、撤回、删除和后端预览接口继续使用 Markdown 原文。
+- 原工具栏操作迁为 TipTap 命令；按钮会跟随光标处格式状态高亮，空格会像回车一样结束粗体/斜体/行内代码/链接等内联持续样式。
+- 表格和数学公式按用户确认暂不做即时结构化渲染，只作为普通 Markdown 文本模板插入。
+- 新增 `client/src/components/ArticleTiptapPreview.vue`，普通投稿预览正文改用只读 TipTap 渲染以贴近编辑态；管理员审核预览仍使用后端 HTML。
+- 新增 `client/src/articleTiptapMarkdown.js`，集中维护 Markdown 与 TipTap JSON 的轻量转换，编辑器和预览共用同一套解析。
+- 编辑区视觉已按用户反馈收束：批量上传弹窗先在 `codex/undo-something` 当前线提交缩小；TipTap 编辑区列表标记恢复、行距/段落距缩小、工具栏 active 状态可见。
+
+### 关键改动文件
+
+- `client/package.json`
+- `package-lock.json`
+- `client/src/App.vue`
+- `client/src/style.css`
+- `client/src/articleTiptapMarkdown.js`
+- `client/src/components/ArticleTiptapEditor.vue`
+- `client/src/components/ArticleTiptapPreview.vue`
+- `README.md`
+- `handoff.md`
+
+### 验证
+
+功能提交前已通过：
+
+```bash
+npm test --workspace server
+npm run build
+git diff --check
+```
+
+- 后端测试 14/14 通过。
+- 前端构建多次通过；TipTap 编辑器和预览被拆为异步 chunk。
+- `git diff --check` 仅输出已知 LF/CRLF 提示，无空白错误。
+- 本轮未用浏览器截图验收；用户主要通过截图反馈了编辑区间距、列表标记和工具栏状态，已逐项调整。
+
+文档收尾继续执行：
+
+```bash
+git diff --check -- README.md handoff.md
+```
+
+### 已知边界与风险
+
+- 第一版 Markdown 转换追求语义一致，不保证源码逐字保真；用户已接受这一点。
+- 表格、数学公式暂不做 TipTap 结构化即时渲染，仍作为普通文本保留。
+- 当前只读预览为了贴近编辑态使用 TipTap 解析，公开阅读页和管理员审核预览仍走后端 markdown-it 渲染 HTML；两者在复杂 Markdown 边界上可能存在轻微差异。
+- TipTap 新依赖安装后 `npm install` 曾提示 2 个 moderate vulnerabilities；未执行 `npm audit fix --force`。
+
+### 下一步建议
+
+- 如需合并本轮结果，使用 `$merge-main codex/tiptap-article-editor`，按既有流程先验证再 fast-forward 到 `main`。
+- 合并时注意该分支继承了 `codex/undo-something` 的批量上传弹窗缩小提交 `30ada84`，不是只包含 `c3ffc2f`。
+- 若继续编辑器能力，可单独评估源码/WYSIWYG 双模式、表格/数学公式结构化支持、粘贴 HTML/图片处理、更完整 Markdown 解析或浏览器端可视验收。
+
 ## 2026-06-09 最新快照：投稿批量上传与评论区滚动
 
 - 当前工作分支：`codex/undo-something`
@@ -199,28 +264,30 @@ git diff --check
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环、管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口、管理员审核待办通知铃铛、公开搜索页、真实 7 日访问趋势、文章封面/SEO/评论开关/置顶的草稿到发布闭环、投稿批量上传草稿，以及评论区超过约 15 条后的内部滚动。当前工作分支是 `codex/undo-something`，最新功能提交为 `d62f526 Add draft batch import and comment scrolling`。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环、管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口、管理员审核待办通知铃铛、公开搜索页、真实 7 日访问趋势、文章封面/SEO/评论开关/置顶的草稿到发布闭环、投稿批量上传草稿、评论区超过约 15 条后的内部滚动，以及普通用户投稿 TipTap 即时渲染编辑器。当前工作分支是 `codex/tiptap-article-editor`，最新功能提交为 `c3ffc2f Add TipTap article editor`。
 
 ## 建议下个 Agent 使用的技能
 
 - `handoff`：上下文再次接近上限时继续更新本文件。
 - `browser:browser`：如用户要求打开、点击或验收本地页面时使用；此前 in-app browser / node_repl 在 Windows 上偶发 sandbox 错误，必要时可退回构建、HTTP 检查和命令行验证。
 - `$grill-me`：用户继续要求追问设计方案或用该技能名时使用；遵循“一次只问一个问题，并给推荐答案”。
+- `$merge-main`：合并当前 `codex/tiptap-article-editor` 分支时使用，先验证再 fast-forward 到 `main`。
 
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前工作分支：`codex/undo-something`
+- 当前工作分支：`codex/tiptap-article-editor`
 - 分支基点：`main` / `origin/main` 的 `d7dd617 Update handoff and README`
-- 当前功能提交：`d62f526 Add draft batch import and comment scrolling`
+- 当前功能提交：`c3ffc2f Add TipTap article editor`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover`、`codex/admin-ui-improvements` 已合并进 `main` 并推送到 `origin/main`。
 - `codex/admin-review-notification-bell` 已合并并推送，功能提交为 `7554433`
 - `codex/public-search-editor-plan` 包含 `9190994`、`aa5a50e` 和文档提交 `35904c2`，已合并到 `main`
 - `codex/fengmian` 已通过 `$merge-main` 合并到 `main` 并推送，功能提交为 `d3dac2f`
-- `codex/undo-something` 当前尚未合并到 `main`
+- `codex/undo-something` 当前尚未合并到 `main`；`codex/tiptap-article-editor` 从该线继续创建，已包含批量上传弹窗缩小提交 `30ada84`
+- `codex/tiptap-article-editor` 当前尚未合并到 `main`
 - `todo.md` 在 `codex/public-search-editor-plan` 中已更新为阶段完成后的规划状态
-- 本次合并解决了 `README.md` / `handoff.md` 文档冲突，并按 `$merge-main` 流程完成合并验证
+- 本次 `$work-end` 只刷新并提交 `README.md` / `handoff.md`；尚未执行 `$merge-main`。
 
 继续工作前建议先执行：
 
