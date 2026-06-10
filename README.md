@@ -6,15 +6,15 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前工作分支 | `codex/tiptap-article-editor` |
+| 当前工作分支 | `main` |
 | 最新 UI 工作 | 普通用户投稿正文编辑器已从原生 textarea 改为 TipTap 即时渲染编辑器；工具栏状态会随光标同步，高亮/列表/链接/图片等常用编辑操作继续可用，预览正文复用只读 TipTap 渲染以贴近编辑态 |
 | 最新功能工作 | 新增普通用户批量导入草稿接口 `POST /api/articles/drafts/import`：`.md/.txt` 一文件生成一篇 `DRAFT`，单次最多 20 个、单文件 1 MB，支持部分成功和逐文件失败原因；管理员仍走后台 zip 导入 |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎，侧栏列表数量和高度已收束 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes`、`article_metric_events`、`user_notification_reads`、`security_audit_events`，以及 `users.is_disabled`、评论 `moderation_*` 审核字段和首页 `summary.visitTrend` 真实访问趋势 |
-| 最近验证 | 2026-06-10：`c3ffc2f` 提交前已执行 `npm test --workspace server`、多次 `npm run build`、`git diff --check`；后端测试 14/14 通过，前端构建通过，空白检查仅有已知 LF/CRLF 提示 |
-| 合并状态 | `codex/tiptap-article-editor` 基于 `main` / `origin/main` 的 `d7dd617 Update handoff and README`，继承 `codex/undo-something` 的批量上传弹窗提交 `30ada84`，并新增 `c3ffc2f Add TipTap article editor`，尚未合并 |
+| 最近验证 | 2026-06-10：`codex/undo-something` 与 `codex/tiptap-article-editor` 合并前后均已执行 `npm test --workspace server`、`npm run build`、`git diff --check`；后端测试 14/14 通过，前端构建通过，空白检查通过 |
+| 合并状态 | `codex/undo-something` 与 `codex/tiptap-article-editor` 已按 `$merge-main` 流程 fast-forward 合并到 `main` 并推送到 `origin/main`；本地功能分支已安全删除，功能合并结果为 `2a2006f Update handoff and README` |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
@@ -534,7 +534,7 @@ npm run build
 
 当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、图片上传、普通用户草稿/投稿/撤回/删除、投稿编辑器批量导入 `.md/.txt` 为多篇草稿、未保存内容预览、管理员待审列表/通过/驳回、管理员审核待办汇总接口、管理员 zip 批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、评论回复、评论敏感检测队列/忽略/删除、评论点赞/取消、评论作者禁止自赞、回复禁止点赞、文章序号、首次发布时间、阅读去重、点赞/收藏登录限制、热门排行、全站 summary、用户面板收藏列表、收到的评论、互动通知、通知已读/未读、修改密码、会话管理、设备解析、手机号唯一性、本地绑定状态、安全审计、管理员用户禁用/硬删除、分类标签删除关联处理、已发布文章下架/重新发布等流程。
 
-当前 TipTap 投稿编辑器工作已在 `codex/tiptap-article-editor` 验证：
+当前 TipTap 投稿编辑器工作已合并到 `main` 并验证：
 
 ```bash
 npm test --workspace server
@@ -544,7 +544,7 @@ git diff --check
 
 说明：本轮新增 `@tiptap/vue-3`、`@tiptap/pm`、`@tiptap/starter-kit`、`@tiptap/extension-image`、`@tiptap/extension-link`、`@tiptap/extension-placeholder`，普通用户投稿正文由 `client/src/components/ArticleTiptapEditor.vue` 承载，预览由 `client/src/components/ArticleTiptapPreview.vue` 只读渲染，Markdown 转换逻辑抽在 `client/src/articleTiptapMarkdown.js`。表格和数学公式第一版仍作为普通 Markdown 文本模板插入，不做即时结构化渲染。
 
-最近投稿编辑器批量上传与评论区滚动收束工作已在 `codex/undo-something` 验证：
+最近投稿编辑器批量上传与评论区滚动收束工作已合并到 `main` 并验证：
 
 ```bash
 npm test --workspace server

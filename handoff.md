@@ -2,9 +2,9 @@
 
 ## 2026-06-10 最新快照：TipTap 即时渲染投稿编辑器
 
-- 当前工作分支：`codex/tiptap-article-editor`
+- 当前工作分支：`main`
 - 最新功能提交：`c3ffc2f Add TipTap article editor`
-- 当前同步状态：`codex/tiptap-article-editor` 基于 `main` / `origin/main` 的 `d7dd617 Update handoff and README`，继承上一轮批量上传弹窗提交 `30ada84 Polish batch upload dialog sizing`，并叠加本轮 TipTap 编辑器提交；本次 `$work-end` 正在刷新并提交 repo-local `README.md` / `handoff.md`。
+- 当前同步状态：`codex/undo-something` 与 `codex/tiptap-article-editor` 已按 `$merge-main` 流程 fast-forward 合并到 `main`，推送到 `origin/main`，并安全删除本地功能分支；当前本地仅剩 `main`。
 - 本轮完成普通用户投稿编辑器从原生 textarea 到 TipTap 即时渲染编辑器的第一版改造；后端 `contentMarkdown` 字段和保存/提交/预览接口保持兼容。
 
 ### 本轮已完成
@@ -33,7 +33,7 @@
 
 ### 验证
 
-功能提交前已通过：
+功能提交前以及合并到 `main` 后均已通过：
 
 ```bash
 npm test --workspace server
@@ -46,7 +46,7 @@ git diff --check
 - `git diff --check` 仅输出已知 LF/CRLF 提示，无空白错误。
 - 本轮未用浏览器截图验收；用户主要通过截图反馈了编辑区间距、列表标记和工具栏状态，已逐项调整。
 
-文档收尾继续执行：
+本次文档收尾继续执行：
 
 ```bash
 git diff --check -- README.md handoff.md
@@ -61,15 +61,14 @@ git diff --check -- README.md handoff.md
 
 ### 下一步建议
 
-- 如需合并本轮结果，使用 `$merge-main codex/tiptap-article-editor`，按既有流程先验证再 fast-forward 到 `main`。
-- 合并时注意该分支继承了 `codex/undo-something` 的批量上传弹窗缩小提交 `30ada84`，不是只包含 `c3ffc2f`。
+- 如需继续新一轮工作，从已同步的 `main` / `origin/main` 创建新分支。
 - 若继续编辑器能力，可单独评估源码/WYSIWYG 双模式、表格/数学公式结构化支持、粘贴 HTML/图片处理、更完整 Markdown 解析或浏览器端可视验收。
 
 ## 2026-06-09 最新快照：投稿批量上传与评论区滚动
 
-- 当前工作分支：`codex/undo-something`
+- 当前工作分支：`main`
 - 最新功能提交：`d62f526 Add draft batch import and comment scrolling`
-- 当前同步状态：`codex/undo-something` 基于 `main` / `origin/main` 的 `d7dd617 Update handoff and README`，领先 1 个功能提交；本次 `$work-end` 正在刷新并提交 repo-local `README.md` / `handoff.md`。
+- 当前同步状态：该工作已通过 `$merge-main codex/undo-something` 合并到 `main` 并推送；本地功能分支已删除。
 - 本轮完成两项用户确认范围：文章详情评论区自然增长到约 15 条主评论后内部滚动；投稿编辑器底部“批量上传”按参考图接入真实 `.md/.txt` 批量导入，一文件生成一篇草稿。
 
 ### 本轮已完成
@@ -115,7 +114,6 @@ git diff --check -- README.md handoff.md
 
 ### 下一步建议
 
-- 如需合并本轮结果，使用 `$merge-main codex/undo-something`，按既有流程先验证再 fast-forward 到 `main`。
 - 后续可考虑给批量导入结果项增加“直接编辑该草稿”的快捷入口；本轮按用户确认只展示结果并刷新“我的文章”列表。
 - 若继续扩展导入解析，可再单独讨论 Frontmatter、从首个 H1 提取标题、本地图片包/zip、分类标签批量元数据等能力；本轮明确不做这些智能解析。
 
@@ -264,30 +262,30 @@ git diff --check
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环、管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口、管理员审核待办通知铃铛、公开搜索页、真实 7 日访问趋势、文章封面/SEO/评论开关/置顶的草稿到发布闭环、投稿批量上传草稿、评论区超过约 15 条后的内部滚动，以及普通用户投稿 TipTap 即时渲染编辑器。当前工作分支是 `codex/tiptap-article-editor`，最新功能提交为 `c3ffc2f Add TipTap article editor`。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环、管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口、管理员审核待办通知铃铛、公开搜索页、真实 7 日访问趋势、文章封面/SEO/评论开关/置顶的草稿到发布闭环、投稿批量上传草稿、评论区超过约 15 条后的内部滚动，以及普通用户投稿 TipTap 即时渲染编辑器。当前工作分支是 `main`，最新功能线已合并并推送到 `origin/main`。
 
 ## 建议下个 Agent 使用的技能
 
 - `handoff`：上下文再次接近上限时继续更新本文件。
 - `browser:browser`：如用户要求打开、点击或验收本地页面时使用；此前 in-app browser / node_repl 在 Windows 上偶发 sandbox 错误，必要时可退回构建、HTTP 检查和命令行验证。
 - `$grill-me`：用户继续要求追问设计方案或用该技能名时使用；遵循“一次只问一个问题，并给推荐答案”。
-- `$merge-main`：合并当前 `codex/tiptap-article-editor` 分支时使用，先验证再 fast-forward 到 `main`。
+- `$merge-main`：后续合并新功能分支时使用，先验证再 fast-forward 到 `main`。
 
 ## 仓库与分支
 
 - 仓库路径：`D:\project\codex-project-boke`
-- 当前工作分支：`codex/tiptap-article-editor`
-- 分支基点：`main` / `origin/main` 的 `d7dd617 Update handoff and README`
-- 当前功能提交：`c3ffc2f Add TipTap article editor`
+- 当前工作分支：`main`
+- 当前同步状态：`main...origin/main`，合并后功能结果为 `2a2006f Update handoff and README`，本次 `$work-end` 将追加 repo-local 文档收尾提交。
+- 当前功能提交：`c3ffc2f Add TipTap article editor`，已随 `codex/tiptap-article-editor` 合并到 `main`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover`、`codex/admin-ui-improvements` 已合并进 `main` 并推送到 `origin/main`。
 - `codex/admin-review-notification-bell` 已合并并推送，功能提交为 `7554433`
 - `codex/public-search-editor-plan` 包含 `9190994`、`aa5a50e` 和文档提交 `35904c2`，已合并到 `main`
 - `codex/fengmian` 已通过 `$merge-main` 合并到 `main` 并推送，功能提交为 `d3dac2f`
-- `codex/undo-something` 当前尚未合并到 `main`；`codex/tiptap-article-editor` 从该线继续创建，已包含批量上传弹窗缩小提交 `30ada84`
-- `codex/tiptap-article-editor` 当前尚未合并到 `main`
+- `codex/undo-something` 已通过 `$merge-main` 合并到 `main` 并推送，功能提交为 `d62f526`，收尾提交为 `30ada84`
+- `codex/tiptap-article-editor` 已通过 `$merge-main` 合并到 `main` 并推送，功能提交为 `c3ffc2f`，收尾提交为 `2a2006f`
 - `todo.md` 在 `codex/public-search-editor-plan` 中已更新为阶段完成后的规划状态
-- 本次 `$work-end` 只刷新并提交 `README.md` / `handoff.md`；尚未执行 `$merge-main`。
+- 本次 `$work-end` 只刷新并提交 `README.md` / `handoff.md`，不包含代码改动。
 
 继续工作前建议先执行：
 
