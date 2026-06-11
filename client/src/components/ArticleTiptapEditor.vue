@@ -337,6 +337,10 @@ function insertTable() {
   currentEditor.value?.chain().focus().insertTable({ rows: 3, cols: 2, withHeaderRow: true }).run();
 }
 
+function deleteTable() {
+  currentEditor.value?.chain().focus().deleteTable().run();
+}
+
 function insertBlockMath(latex = "E = mc^2") {
   currentEditor.value?.chain().focus().insertBlockMath({ latex }).run();
 }
@@ -402,6 +406,7 @@ defineExpose({
   setLink,
   insertHorizontalRule,
   insertTable,
+  deleteTable,
   insertBlockMath,
   insertText,
   insertImage,

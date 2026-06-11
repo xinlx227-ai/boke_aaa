@@ -2808,6 +2808,15 @@ function insertArticleEditorTable() {
   runArticleEditorCommand("insertTable");
 }
 
+function deleteArticleEditorTable() {
+  if (!articleEditorToolbarState.table) {
+    articleEditorTiptapRef.value?.focus();
+    return;
+  }
+
+  runArticleEditorCommand("deleteTable");
+}
+
 function insertArticleEditorMath() {
   runArticleEditorCommand("insertBlockMath", "E = mc^2");
 }
@@ -6455,6 +6464,15 @@ onBeforeUnmount(() => {
                 >
                   <iconify-icon icon="mdi:table" width="18"></iconify-icon>
                   <span>表格</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  :disabled="!articleEditorToolbarState.table"
+                  @click="deleteArticleEditorTable"
+                >
+                  <iconify-icon icon="mdi:table-remove" width="18"></iconify-icon>
+                  <span>删除表格</span>
                 </button>
                 <button
                   type="button"
