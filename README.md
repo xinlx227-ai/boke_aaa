@@ -1,20 +1,20 @@
 # Private Blog System - 私有博客系统
 
-一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、公开搜索页、分类、标签、目录、首页排序、文章详情页新 UI、用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、用户/管理员工作台视觉统一与 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、真实阅读/点赞/收藏/热门排行统计能力、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环、管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口、管理员审核待办通知铃铛，以及文章封面、SEO、高级设置、投稿编辑器批量上传草稿、TipTap 即时渲染投稿编辑器、标准 Markdown pipe table、数学公式、安全 HTML raw block 和评论区滚动收束的草稿到发布闭环。
+一个本地全栈私有博客项目，前端使用 Vue 3 + Vite + Tailwind CSS，后端使用 Express + Prisma + MySQL。项目已经完成认证、文章发布、Markdown 渲染、图片上传、批量导入、评论、公开阅读页、公开搜索页、分类、标签、目录、首页排序、文章详情页新 UI、用户面板新 UI、独立发布新文章页面 UI、管理后台新 UI、用户/管理员工作台视觉统一与 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、真实阅读/点赞/收藏/热门排行统计能力、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环、管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口、管理员审核待办通知铃铛，以及文章封面、SEO、高级设置、投稿编辑器批量上传草稿、TipTap 即时渲染投稿编辑器、标准 Markdown pipe table、表格删除控制、数学公式、安全 HTML raw block 和评论区滚动收束的草稿到发布闭环。
 
 ## 当前状态
 
 | 项目 | 状态 |
 | --- | --- |
 | 当前工作分支 | `codex/edit-math-excel` |
-| 最新 UI 工作 | 投稿正文仍以 `contentMarkdown` 为唯一权威存储；TipTap 编辑器已接入官方表格扩展、官方数学扩展和 raw HTML block 占位节点，复杂 HTML 可点击占位块编辑源文本 |
-| 最新功能工作 | 标准 Markdown pipe table 可在编辑器结构化编辑并序列化回 Markdown；数学公式使用 `@tiptap/extension-mathematics` + KaTeX；服务端 Markdown 渲染支持表格、数学公式和安全过滤后的 raw HTML；脚注保持原始 Markdown 文本 |
+| 最新 UI 工作 | 投稿正文仍以 `contentMarkdown` 为唯一权威存储；TipTap 编辑器已接入官方表格扩展、官方数学扩展和 raw HTML block 占位节点，复杂 HTML 可点击占位块编辑源文本，表格内光标可用“删除表格”清除当前表格 |
+| 最新功能工作 | 标准 Markdown pipe table 可在编辑器结构化编辑、删除并序列化回 Markdown；数学公式使用 `@tiptap/extension-mathematics` + KaTeX；服务端 Markdown 渲染支持表格、数学公式和安全过滤后的 raw HTML；脚注保持原始 Markdown 文本 |
 | 首页布局 | 最新发布按发布时间分页展示，每页 4 篇；左侧文章列表按文章序号显示；右侧保留热门标签、阅读趋势和最受欢迎，侧栏列表数量和高度已收束 |
 | 文章排序 | `chapterOrder` 作为文章序号，新建默认总数 + 1，管理员可手动重排 |
 | 发布时间 | `published_at` / `publishedAt` 保存首次发布时间，用于最新发布排序 |
 | 统计与互动数据 | 新增 `article_stats`、`article_views`、`article_likes`、`article_favorites`、`site_visits`、`comment_likes`、`article_metric_events`、`user_notification_reads`、`security_audit_events`，以及 `users.is_disabled`、评论 `moderation_*` 审核字段和首页 `summary.visitTrend` 真实访问趋势 |
-| 最近验证 | 2026-06-10：`node --test server/test/markdown.test.js` 通过；`npm test --workspace server` 16/16 通过；`npm run build` 通过，仅保留 TipTap/KaTeX chunk size 警告；`git diff --check` 无空白错误 |
-| 合并状态 | `codex/edit-math-excel` 为当前本地功能分支，功能提交为 `f3b164d Add table math and safe HTML editor support` 与 `2f19f6b Add raw HTML source editing`；尚未合并到 `main` 或推送远端 |
+| 最近验证 | 2026-06-11：新增删除表格控制后 `npm run build` 通过，仅保留 TipTap/KaTeX chunk size 警告；`git diff --check` 无空白错误。此前 `node --test server/test/markdown.test.js` 与 `npm test --workspace server` 16/16 已通过 |
+| 合并状态 | `codex/edit-math-excel` 为当前本地功能分支，功能提交为 `f3b164d Add table math and safe HTML editor support`、`2f19f6b Add raw HTML source editing` 与 `749d41a Add table deletion control`；尚未合并到 `main` 或推送远端 |
 | 交接文档 | `handoff.md` |
 
 ## 当前 UI 说明
@@ -60,8 +60,8 @@
 - 发布页面左侧设置面板按参考图重排标签、SEO 设置和高级设置，模块之间用分隔线与留白组织。
 - 发布页面左侧设置栏在桌面端保持独立滚动，正文区按页面自然滚动。
 - 发布页面写作区已从原生 `textarea` 改为 TipTap 即时渲染编辑器，输入 `#`、粗体、斜体、列表、图片等常见 Markdown 会转为所见即所得内容，同时仍以 `contentMarkdown` 作为唯一权威正文存储。
-- 发布页面工具栏已压缩为一行轻量工具栏，主工具栏支持 H1、加粗、斜体、引用、代码、列表、链接和图片插入；按钮会跟随当前光标处的 TipTap 激活状态高亮。“更多”菜单支持 H1/H2/H3、分隔线、标准 Markdown pipe table、数学公式和清除格式。
-- 表格第一版只支持标准 Markdown pipe table；复杂表格或其他复杂 HTML 会作为 raw HTML block 保留，编辑器中显示占位块并允许点击编辑源文本，公开/审核渲染前由服务端白名单过滤。
+- 发布页面工具栏已压缩为一行轻量工具栏，主工具栏支持 H1、加粗、斜体、引用、代码、列表、链接和图片插入；按钮会跟随当前光标处的 TipTap 激活状态高亮。“更多”菜单支持 H1/H2/H3、分隔线、标准 Markdown pipe table、删除当前表格、数学公式和清除格式。
+- 表格第一版只支持标准 Markdown pipe table；光标在表格内时可用“删除表格”删除当前所在表格；复杂表格或其他复杂 HTML 会作为 raw HTML block 保留，编辑器中显示占位块并允许点击编辑源文本，公开/审核渲染前由服务端白名单过滤。
 - 数学公式使用官方 `@tiptap/extension-mathematics` 与 KaTeX，支持行内 `$...$` 和块级 `$$...$$`；脚注不做结构化 UI 或脚注插件渲染，继续保留为原始 Markdown 文本。
 - 发布页面底部状态栏保持原来的整页底部位置：橙色“批量上传”、灰色“保存草稿”和轻量自动保存提示；“批量上传”已接入普通用户文章草稿批量导入弹窗。
 - 发布页面暗色模式已改为整页一致的深蓝灰写作主题，左侧设置区比正文区稍亮，主要依靠边框、轻阴影、层级色差和少量橘色强调保留纸张感。
@@ -536,7 +536,7 @@ npm run build
 
 当前后端测试覆盖认证、会话限制、文章创建、Markdown 安全渲染、TipTap Markdown 转换中的表格/数学/raw HTML/脚注保留、图片上传、普通用户草稿/投稿/撤回/删除、投稿编辑器批量导入 `.md/.txt` 为多篇草稿、未保存内容预览、管理员待审列表/通过/驳回、管理员审核待办汇总接口、管理员 zip 批量导入、搜索/分类/标签、TOC、评论读取/创建/删除、评论回复、评论敏感检测队列/忽略/删除、评论点赞/取消、评论作者禁止自赞、回复禁止点赞、文章序号、首次发布时间、阅读去重、点赞/收藏登录限制、热门排行、全站 summary、用户面板收藏列表、收到的评论、互动通知、通知已读/未读、修改密码、会话管理、设备解析、手机号唯一性、本地绑定状态、安全审计、管理员用户禁用/硬删除、分类标签删除关联处理、已发布文章下架/重新发布等流程。
 
-当前 TipTap 表格、数学和安全 HTML 编辑器增强位于 `codex/edit-math-excel`，已验证：
+当前 TipTap 表格、数学和安全 HTML 编辑器增强位于 `codex/edit-math-excel`，最新功能提交为 `749d41a Add table deletion control`，已验证：
 
 ```bash
 node --test server/test/markdown.test.js
@@ -546,6 +546,8 @@ git diff --check
 ```
 
 说明：本轮在已有 TipTap 投稿编辑器上新增 `@tiptap/extension-table`、`@tiptap/extension-mathematics` 和 `katex`。普通用户投稿正文由 `client/src/components/ArticleTiptapEditor.vue` 承载，Markdown 转换逻辑集中在 `client/src/articleTiptapMarkdown.js`；标准 Markdown pipe table 会进入官方 Table 扩展结构，数学公式会进入官方 Mathematics 扩展，复杂 HTML 会进入自定义 raw HTML block 并在服务端安全过滤后渲染。脚注保持原始 Markdown 文本，不做脚注 UI 或插件渲染。
+
+补充：`749d41a Add table deletion control` 在“更多”菜单中加入置灰式“删除表格”按钮，光标位于表格内时执行 TipTap `deleteTable()`，用于删除当前光标所在表格。
 
 最近投稿编辑器批量上传与评论区滚动收束工作已合并到 `main` 并验证：
 

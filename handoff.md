@@ -3,7 +3,7 @@
 ## 2026-06-10 最新快照：TipTap 表格、数学和安全 HTML
 
 - 当前工作分支：`codex/edit-math-excel`
-- 最新功能提交：`f3b164d Add table math and safe HTML editor support`、`2f19f6b Add raw HTML source editing`
+- 最新功能提交：`f3b164d Add table math and safe HTML editor support`、`2f19f6b Add raw HTML source editing`、`749d41a Add table deletion control`
 - 当前同步状态：本地功能分支已完成并验证，尚未合并到 `main` 或推送远端；本次 `$work-end` 会追加 repo-local 文档收尾提交。
 - 本轮继续以 `contentMarkdown` 作为唯一权威正文存储，补齐投稿编辑器中的标准 Markdown pipe table、数学公式、复杂 HTML 保留与服务端安全过滤策略；脚注保留原始 Markdown 文本。
 
@@ -12,6 +12,7 @@
 - 新增/更新依赖：客户端 `@tiptap/extension-table`、`@tiptap/extension-mathematics`、`katex`，服务端 `katex`。
 - `client/src/articleTiptapMarkdown.js` 已支持标准 Markdown pipe table、行内 `$...$`、块级 `$$...$$`、raw HTML block、代码块语言和脚注原文保留的转换/序列化。
 - `client/src/components/ArticleTiptapEditor.vue` 使用官方 `TableKit` 与 `Mathematics`；“更多”菜单中的表格/数学公式现在插入真实 TipTap 节点，不再只是文本模板。
+- “更多”菜单新增置灰式“删除表格”按钮；光标在表格内时可执行 TipTap `deleteTable()` 删除当前所在表格，不在表格内时按钮禁用。
 - 复杂 HTML 进入自定义 `rawHtmlBlock`，编辑态显示占位块；点击占位块可用源码弹窗编辑原始 HTML，序列化后仍保存在 `contentMarkdown`。
 - 普通投稿即时预览改用后端 `contentHtml`，与管理员审核和公开阅读页共享服务端 Markdown/安全 HTML 渲染路径。
 - `server/src/lib/markdown.js` 启用表格、数学渲染和白名单 HTML 过滤；阻断 `script`、`iframe`、表单、事件属性、`style`、`javascript:` 等危险内容，允许站内 `/uploads/...` 图片。
@@ -46,6 +47,7 @@ git diff --check
 
 - 后端测试 16/16 通过。
 - 前端构建通过；TipTap/KaTeX 相关编辑器 chunk 大于 500 kB，Vite 仅给出 chunk size warning。
+- 新增删除表格控制后，2026-06-11 再次执行 `npm run build` 和 `git diff --check` 通过。
 - `git diff --check` 仅输出已知 LF/CRLF 提示，无空白错误。
 - 本轮启动过本地 dev server 并用 HTTP 检查确认前端首页与后端 articles API 返回 200；未做浏览器截图验收。
 
@@ -58,7 +60,7 @@ git diff --check -- README.md handoff.md
 ### 已知边界与风险
 
 - 第一版 Markdown 转换追求语义一致，不保证源码逐字保真；用户已接受这一点。
-- 表格第一版仅支持标准 Markdown pipe table；合并单元格、嵌套表格和复杂 HTML 表格不会转为结构化 TipTap 表格，可作为 raw HTML block 保留。
+- 表格第一版仅支持标准 Markdown pipe table；可删除光标所在表格，但合并单元格、嵌套表格和复杂 HTML 表格不会转为结构化 TipTap 表格，可作为 raw HTML block 保留。
 - raw HTML 的源码编辑入口是轻量 `window.prompt`，不是完整模态源码编辑器。
 - 数学公式依赖 KaTeX；复杂或非法 LaTeX 以 `throwOnError: false` 策略尽量渲染。
 - TipTap/KaTeX 让编辑器 chunk 明显增大，当前仅记录 Vite chunk size warning。
@@ -266,7 +268,7 @@ git diff --check
 
 ## 本次交接用途
 
-本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环、管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口、管理员审核待办通知铃铛、公开搜索页、真实 7 日访问趋势、文章封面/SEO/评论开关/置顶的草稿到发布闭环、投稿批量上传草稿、评论区超过约 15 条后的内部滚动、普通用户投稿 TipTap 即时渲染编辑器，以及当前分支上的标准 Markdown pipe table、数学公式和安全 raw HTML 支持。当前工作分支是 `codex/edit-math-excel`，功能线已本地提交并验证，尚未合并或推送。
+本项目已经完成多轮主要工作：真实阅读/点赞/收藏/热门排行统计 API、评论区主评论点赞与一层回复、普通用户面板新 UI、独立发布新文章页面 UI、管理员后台新 UI、用户/管理员工作台视觉统一和 CSS 变量暗色主题系统、文章编辑页旧版公共 UI 误渲染修复、普通用户草稿投稿和管理员待审核队列、用户面板收藏/社交/安全闭环、管理员用户管理、分类标签管理、已发布文章管理、敏感评论审核真实接口、管理员审核待办通知铃铛、公开搜索页、真实 7 日访问趋势、文章封面/SEO/评论开关/置顶的草稿到发布闭环、投稿批量上传草稿、评论区超过约 15 条后的内部滚动、普通用户投稿 TipTap 即时渲染编辑器，以及当前分支上的标准 Markdown pipe table、删除光标所在表格、数学公式和安全 raw HTML 支持。当前工作分支是 `codex/edit-math-excel`，功能线已本地提交并验证，尚未合并或推送。
 
 ## 建议下个 Agent 使用的技能
 
@@ -280,7 +282,7 @@ git diff --check
 - 仓库路径：`D:\project\codex-project-boke`
 - 当前工作分支：`codex/edit-math-excel`
 - 当前同步状态：本地功能分支已完成并验证，尚未合并到 `main` 或推送远端；本次 `$work-end` 将追加 repo-local 文档收尾提交。
-- 当前功能提交：`f3b164d Add table math and safe HTML editor support`、`2f19f6b Add raw HTML source editing`
+- 当前功能提交：`f3b164d Add table math and safe HTML editor support`、`2f19f6b Add raw HTML source editing`、`749d41a Add table deletion control`
 - 远端：`origin https://gitee.com/xinlx227/my_first_blog.git`
 - `codex/article-apiset`、`codex/comment-thread-interactions`、`codex/newuser-ui`、`articleedit-ui`、`codex/newadmin-ui`、`codex/someting-recover`、`codex/admin-ui-improvements` 已合并进 `main` 并推送到 `origin/main`。
 - `codex/admin-review-notification-bell` 已合并并推送，功能提交为 `7554433`
@@ -290,7 +292,7 @@ git diff --check
 - `codex/tiptap-article-editor` 已通过 `$merge-main` 合并到 `main` 并推送，功能提交为 `c3ffc2f`，收尾提交为 `2a2006f`
 - `codex/edit-math-excel` 为当前本地功能分支，尚未合并；下一步可执行 `$merge-main codex/edit-math-excel`
 - `todo.md` 在 `codex/public-search-editor-plan` 中已更新为阶段完成后的规划状态
-- 本次 `$work-end` 先补充了 raw HTML 源码编辑入口并提交 `2f19f6b`，随后刷新并提交 `README.md` / `handoff.md`。
+- 本次 `$work-end` 在已有功能提交基础上刷新并提交 `README.md` / `handoff.md`，记录 `749d41a Add table deletion control` 的删除表格入口。
 
 继续工作前建议先执行：
 
