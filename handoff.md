@@ -1,10 +1,11 @@
 # Handoff: codex-project-boke 当前状态
 
-## 2026-06-10 最新快照：TipTap 表格、数学和安全 HTML
+## 2026-06-11 最新快照：TipTap 表格、数学和安全 HTML 已并入主线
 
-- 当前工作分支：`codex/edit-math-excel`
+- 当前工作分支：`main`
+- 最新主线提交：`b50ca0f Update handoff and README`
 - 最新功能提交：`f3b164d Add table math and safe HTML editor support`、`2f19f6b Add raw HTML source editing`、`749d41a Add table deletion control`
-- 当前同步状态：本地功能分支已完成并验证，尚未合并到 `main` 或推送远端；本次 `$work-end` 会追加 repo-local 文档收尾提交。
+- 当前同步状态：`codex/edit-math-excel` 已通过 `$merge-main codex/edit-math-excel` fast-forward 合并到 `main` 并推送到 `origin/main`；本地功能分支已删除，当前工作区干净且本地仅剩 `main` 分支。
 - 本轮继续以 `contentMarkdown` 作为唯一权威正文存储，补齐投稿编辑器中的标准 Markdown pipe table、数学公式、复杂 HTML 保留与服务端安全过滤策略；脚注保留原始 Markdown 文本。
 
 ### 本轮已完成
@@ -51,11 +52,18 @@ git diff --check
 - `git diff --check` 仅输出已知 LF/CRLF 提示，无空白错误。
 - 本轮启动过本地 dev server 并用 HTTP 检查确认前端首页与后端 articles API 返回 200；未做浏览器截图验收。
 
-本次文档收尾继续执行：
+合并前后在功能分支和 `main` 上均已执行标准验证：
 
 ```bash
-git diff --check -- README.md handoff.md
+npm test --workspace server
+npm run build
+git diff --check
 ```
+
+- 后端测试 16/16 通过。
+- 前端构建通过；Vite 仍提示 TipTap/KaTeX 编辑器 chunk 大于 500 kB，但不影响构建结果。
+- `git diff --check` 通过。
+- 本次未涉及 Prisma schema 或迁移文件，因此未额外执行 Prisma validate。
 
 ### 已知边界与风险
 
@@ -67,8 +75,8 @@ git diff --check -- README.md handoff.md
 
 ### 下一步建议
 
-- 若要合并本轮功能，按既有流程执行 `$merge-main codex/edit-math-excel`：先验证，再 fast-forward 到 `main`。
-- 若继续打磨编辑器，可把 raw HTML prompt 升级为源码模态框，并补浏览器端表格/数学/HTML 的可视验收。
+- 若继续打磨编辑器，可从当前 `main` / `origin/main` 新建分支，把 raw HTML prompt 升级为源码模态框，并补浏览器端表格/数学/HTML 的可视验收。
+- 建议技能：继续合并主线时使用 `$merge-main`；结束一轮仓库工作并同步本地文档时使用 `$work-end`；只更新交接上下文时使用 `$handoff`。
 
 ## 2026-06-09 最新快照：投稿批量上传与评论区滚动
 
